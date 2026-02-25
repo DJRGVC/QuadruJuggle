@@ -43,6 +43,52 @@ def reset_paddle_pose(
     paddle.write_root_pose_to_sim(pose, env_ids=env_ids)
 
 
+def reset_ball_on_paddle(
+    env: ManagerBasedRLEnv,
+    env_ids: torch.Tensor,
+    ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
+    paddle_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.13),
+    ball_radius: float = 0.020,
+    xy_offset_range: float = 0.02,
+) -> None:
+    """Reset the ball to rest on the paddle surface with zero velocity.
+
+    Places the ball at paddle_centre + (0, 0, ball_radius) plus a small
+    random XY perturbation so the task is non-trivial from step 1.
+    The paddle position is approximated using the same upright-trunk
+    assumption as reset_paddle_pose (trunk at env_origin + 0.40 m).
+    The continuous paddle-tracking event will correct any residual error
+    from the first physics step onward.
+    """
+    ball: RigidObject = env.scene[ball_cfg.name]
+
+    env_origins = env.scene.env_origins[env_ids]          # (N, 3)
+    n = len(env_ids)
+
+    # Approximate paddle centre in world frame (trunk upright, standing height)
+    trunk_pos = env_origins + torch.tensor([0.0, 0.0, 0.40], device=env.device)
+    off = torch.tensor(paddle_offset_b, device=env.device, dtype=torch.float32)
+    paddle_pos = trunk_pos + off.unsqueeze(0)              # (N, 3)
+
+    # Ball centre: directly above paddle surface (paddle_z + ball_radius)
+    ball_pos = paddle_pos.clone()
+    ball_pos[:, 2] += ball_radius
+
+    # Small random XY offset so the policy must actively balance from reset
+    xy_noise = (torch.rand(n, 2, device=env.device) * 2.0 - 1.0) * xy_offset_range
+    ball_pos[:, :2] += xy_noise
+
+    # Identity quaternion, zero velocity
+    quat = torch.tensor(
+        [1.0, 0.0, 0.0, 0.0], device=env.device, dtype=torch.float32
+    ).unsqueeze(0).expand(n, -1)
+    pose = torch.cat([ball_pos, quat], dim=-1)             # (N, 7)
+    vel = torch.zeros(n, 6, device=env.device)
+
+    ball.write_root_pose_to_sim(pose, env_ids=env_ids)
+    ball.write_root_velocity_to_sim(vel, env_ids=env_ids)
+
+
 def update_paddle_pose(
     env: ManagerBasedRLEnv,
     env_ids: torch.Tensor,

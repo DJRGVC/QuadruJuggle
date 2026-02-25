@@ -127,7 +127,7 @@ class BallBalanceSceneCfg(InteractiveSceneCfg):
         init_state=RigidObjectCfg.InitialStateCfg(
             # Drop from 1 m above the robot: trunk z≈0.40m + paddle offset 0.07m
             # + half-thickness 0.025m + ball radius 0.020m + 1.0m drop = 1.515m
-            pos=(0.0, 0.0, 1.52),
+            pos=(0.0, 0.0, 0.58),
         ),
     )
 
@@ -274,25 +274,16 @@ class EventCfg:
         },
     )
 
-    # Reset ball: centred on paddle with a small XY offset to make the task non-trivial.
-    # Z comes from init_state.pos (0.60 m) — ball drops ~5 cm onto paddle.
+    # Reset ball directly onto the paddle surface at zero velocity.
+    # No drop → no bounce → immediate ball_on_paddle signal from step 1.
     reset_ball = EventTerm(
-        func=mdp.reset_root_state_uniform,
+        func=mdp.reset_ball_on_paddle,
         mode="reset",
         params={
-            "pose_range": {
-                "x": (-0.02, 0.02),
-                "y": (-0.02, 0.02),
-            },
-            "velocity_range": {
-                "x": (0.0, 0.0),
-                "y": (0.0, 0.0),
-                "z": (0.0, 0.0),
-                "roll": (0.0, 0.0),
-                "pitch": (0.0, 0.0),
-                "yaw": (0.0, 0.0),
-            },
-            "asset_cfg": SceneEntityCfg("ball"),
+            "ball_cfg": SceneEntityCfg("ball"),
+            "paddle_offset_b": _PADDLE_OFFSET_B,
+            "ball_radius": _BALL_RADIUS,
+            "xy_offset_range": 0.02,
         },
     )
 
@@ -308,11 +299,56 @@ class RewardsCfg:
         func=mdp.ball_on_paddle_exp,
         weight=2.0,
         params={
-            "std": 0.10,
+            "std": 0.25,
             "ball_cfg": SceneEntityCfg("ball"),
             "robot_cfg": SceneEntityCfg("robot"),
             "paddle_offset_b": _PADDLE_OFFSET_B,
+            "min_height": 0.28,       # gate: 0 reward when trunk below this
+            "nominal_height": 0.40,   # gate: full reward at standing height
         },
+    )
+
+    # Shaping: penalise lateral ball velocity (gradient when ball starts sliding)
+    ball_lateral_vel = RewTerm(
+        func=mdp.ball_lateral_vel_penalty,
+        weight=-1.0,
+        params={
+            "ball_cfg": SceneEntityCfg("ball"),
+            "robot_cfg": SceneEntityCfg("robot"),
+            "min_height": 0.28,
+            "nominal_height": 0.40,
+        },
+    )
+
+    # Shaping: penalise ball being airborne above paddle (encourages damping bounces)
+    ball_height = RewTerm(
+        func=mdp.ball_height_penalty,
+        weight=-2.0,
+        params={
+            "ball_radius": _BALL_RADIUS,
+            "ball_cfg": SceneEntityCfg("ball"),
+            "robot_cfg": SceneEntityCfg("robot"),
+            "paddle_offset_b": _PADDLE_OFFSET_B,
+            "min_height": 0.28,
+            "nominal_height": 0.40,
+        },
+    )
+
+    # Shaping: penalise trunk dropping below standing height (prevents collapsing)
+    base_height = RewTerm(
+        func=mdp.base_height_penalty,
+        weight=-20.0,
+        params={
+            "min_height": 0.28,
+            "robot_cfg": SceneEntityCfg("robot"),
+        },
+    )
+
+    # Shaping: penalise trunk rolling/pitching (prevents the lean-to-side exploit)
+    trunk_tilt = RewTerm(
+        func=mdp.trunk_tilt_penalty,
+        weight=-2.0,
+        params={"robot_cfg": SceneEntityCfg("robot")},
     )
 
     # Shaping: discourage body motion (stay still to balance ball)
@@ -347,7 +383,7 @@ class TerminationsCfg:
     ball_off_paddle = DoneTerm(
         func=mdp.ball_off_paddle,
         params={
-            "radius": 0.15,
+            "radius": 0.30,
             "ball_cfg": SceneEntityCfg("ball"),
             "robot_cfg": SceneEntityCfg("robot"),
             "paddle_offset_b": _PADDLE_OFFSET_B,
@@ -364,13 +400,11 @@ class TerminationsCfg:
         },
     )
 
-    base_contact = DoneTerm(
-        func=mdp.illegal_contact,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names="trunk"),
-            "threshold": 1.0,
-        },
-    )
+    # base_contact intentionally removed from training — early in training the
+    # robot always falls, which causes instant termination before the ball ever
+    # reaches the paddle, giving zero learning signal.  The height penalty
+    # (base_height in RewardsCfg) discourages collapsing instead.
+    # base_contact is re-enabled in BallBalanceEnvCfg_PLAY for evaluation.
 
 
 # ---------------------------------------------------------------------------
@@ -379,7 +413,7 @@ class TerminationsCfg:
 
 @configclass
 class BallBalanceEnvCfg(ManagerBasedRLEnvCfg):
-    scene: BallBalanceSceneCfg = BallBalanceSceneCfg(num_envs=4096, env_spacing=3.0)
+    scene: BallBalanceSceneCfg = BallBalanceSceneCfg(num_envs=12288, env_spacing=3.0)
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
     events: EventCfg = EventCfg()
@@ -393,6 +427,9 @@ class BallBalanceEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = self.decimation
         self.viewer.eye = (2.0, 2.0, 1.5)
         self.viewer.lookat = (0.0, 0.0, 0.5)
+        # PhysX GPU contact patch buffer — default is too small for 12k+ envs
+        # with ball+paddle+robot contacts.  Set well above the observed peak (~255k).
+        self.sim.physx.gpu_max_rigid_patch_count = 400000
 
 
 @configclass
@@ -402,5 +439,8 @@ class BallBalanceEnvCfg_PLAY(BallBalanceEnvCfg):
         self.scene.num_envs = 16
         self.scene.env_spacing = 3.5
         self.observations.policy.enable_corruption = False
-        self.events.reset_ball.params["pose_range"]["x"] = (-0.00, 0.00)
-        self.events.reset_ball.params["pose_range"]["y"] = (-0.00, 0.00)
+        # Spawn ball perfectly centred for play evaluation
+        self.events.reset_ball.params["xy_offset_range"] = 0.0
+        # Don't end the episode just because an early policy squats — lets us
+        # observe ball behaviour even with an undertrained policy
+        self.terminations.base_contact = None
