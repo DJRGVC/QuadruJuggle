@@ -1,0 +1,22 @@
+[package]
+version = "0.1.0"
+category = "isaaclab"
+readme  = "README.md"
+
+title = "Go1 Ball Balance"
+author = "daniel-grant"
+maintainer = "daniel-grant"
+description = "Training a Unitree Go1 to balance a ping-pong ball on a back-mounted paddle."
+repository = "https://github.com/daniel-grant/QuadruJuggle"
+keywords = ["isaaclab", "go1", "ball-balance", "rl"]
+
+[dependencies]
+"isaaclab" = {}
+"isaaclab_assets" = {}
+"isaaclab_rl" = {}
+"isaaclab_tasks" = {}
+
+[[python.module]]
+name = "go1_ball_balance"
+
+[isaac_lab_settings]
