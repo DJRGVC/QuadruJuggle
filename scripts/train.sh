@@ -8,8 +8,9 @@ LOG_DIR="${ISAACLAB_DIR}/logs/rsl_rl/go1_ball_balance"
 
 source "${ISAACLAB_DIR}/.venv311/bin/activate"
 
-NUM_ENVS=4096
-MAX_ITERATIONS=3000
+# Override from environment: NUM_ENVS=1024 MAX_ITERATIONS=500 ./scripts/train.sh
+NUM_ENVS="${NUM_ENVS:-4096}"
+MAX_ITERATIONS="${MAX_ITERATIONS:-3000}"
 TASK="Isaac-BallBalance-Go1-v0"
 
 echo "=================================================="

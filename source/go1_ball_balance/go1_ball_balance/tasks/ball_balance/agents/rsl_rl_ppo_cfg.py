@@ -8,7 +8,7 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 class BallBalancePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 48
     max_iterations = 3000
-    save_interval = 100
+    save_interval = 50
     experiment_name = "go1_ball_balance"
     empirical_normalization = False
 
