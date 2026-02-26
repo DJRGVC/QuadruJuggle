@@ -6,9 +6,9 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 
 @configclass
 class BallBalancePPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 24
+    num_steps_per_env = 64        # longer rollouts improve advantage estimates for ~500-step episodes
     max_iterations = 3000
-    save_interval = 100
+    save_interval = 50            # checkpoint more often (useful for short reward-tuning runs)
     experiment_name = "go1_ball_balance"
     empirical_normalization = False
 
@@ -23,14 +23,14 @@ class BallBalancePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
-        clip_param=0.2,
-        entropy_coef=0.005,
-        num_learning_epochs=4,
+        clip_param=0.1,               # tighter clip — prevents large single-step policy jumps
+        entropy_coef=0.01,
+        num_learning_epochs=3,        # fewer passes per rollout — less policy change per iteration
         num_mini_batches=4,
         learning_rate=1.0e-3,
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,
-        desired_kl=0.01,
-        max_grad_norm=1.0,
+        desired_kl=0.004,             # tighter KL — caps adaptive LR growth near a good solution
+        max_grad_norm=0.5,            # tighter grad clip — prevents single bad gradient from destabilising
     )

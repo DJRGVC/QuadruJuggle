@@ -49,16 +49,21 @@ def reset_ball_on_paddle(
     ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
     paddle_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.13),
     ball_radius: float = 0.020,
-    xy_offset_range: float = 0.02,
+    xy_std: float = 0.05,
+    drop_height_mean: float = 0.20,
+    drop_height_std: float = 0.05,
 ) -> None:
-    """Reset the ball to rest on the paddle surface with zero velocity.
+    """Reset the ball above the paddle with Gaussian-randomised height and XY position.
 
-    Places the ball at paddle_centre + (0, 0, ball_radius) plus a small
-    random XY perturbation so the task is non-trivial from step 1.
-    The paddle position is approximated using the same upright-trunk
-    assumption as reset_paddle_pose (trunk at env_origin + 0.40 m).
-    The continuous paddle-tracking event will correct any residual error
-    from the first physics step onward.
+    The ball is spawned drop_height_mean ± drop_height_std metres above the paddle
+    surface, and xy_std metres (Gaussian) away from the paddle centre in XY.
+    This forces the policy to catch/recover the ball from varied positions each
+    episode rather than starting in a trivially balanced state.
+
+    Args:
+        xy_std:           Gaussian std (metres) for XY offset from paddle centre.
+        drop_height_mean: Mean height above paddle surface to spawn ball (metres).
+        drop_height_std:  Gaussian std of drop height (metres); set 0 for fixed height.
     """
     ball: RigidObject = env.scene[ball_cfg.name]
 
@@ -70,13 +75,15 @@ def reset_ball_on_paddle(
     off = torch.tensor(paddle_offset_b, device=env.device, dtype=torch.float32)
     paddle_pos = trunk_pos + off.unsqueeze(0)              # (N, 3)
 
-    # Ball centre: directly above paddle surface (paddle_z + ball_radius)
+    # Gaussian XY offset from paddle centre
+    xy_noise = torch.randn(n, 2, device=env.device) * xy_std
     ball_pos = paddle_pos.clone()
-    ball_pos[:, 2] += ball_radius
-
-    # Small random XY offset so the policy must actively balance from reset
-    xy_noise = (torch.rand(n, 2, device=env.device) * 2.0 - 1.0) * xy_offset_range
     ball_pos[:, :2] += xy_noise
+
+    # Gaussian drop height above paddle surface
+    drop_height = drop_height_mean + torch.randn(n, device=env.device) * drop_height_std
+    drop_height = drop_height.clamp(min=ball_radius)      # never below paddle surface
+    ball_pos[:, 2] += drop_height
 
     # Identity quaternion, zero velocity
     quat = torch.tensor(

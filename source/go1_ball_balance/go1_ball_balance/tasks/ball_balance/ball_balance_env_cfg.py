@@ -116,7 +116,7 @@ class BallBalanceSceneCfg(InteractiveSceneCfg):
                 collision_enabled=True,
             ),
             physics_material=sim_utils.RigidBodyMaterialCfg(
-                restitution=0.85,   # ping-pong ball bounces
+                restitution=0.5,    # reduced from 0.85 to limit chaotic multi-bounce drift
                 static_friction=0.3,
                 dynamic_friction=0.3,
             ),
@@ -274,8 +274,7 @@ class EventCfg:
         },
     )
 
-    # Reset ball directly onto the paddle surface at zero velocity.
-    # No drop → no bounce → immediate ball_on_paddle signal from step 1.
+    # Reset ball above the paddle with Gaussian-randomised height and XY position.
     reset_ball = EventTerm(
         func=mdp.reset_ball_on_paddle,
         mode="reset",
@@ -283,7 +282,9 @@ class EventCfg:
             "ball_cfg": SceneEntityCfg("ball"),
             "paddle_offset_b": _PADDLE_OFFSET_B,
             "ball_radius": _BALL_RADIUS,
-            "xy_offset_range": 0.02,
+            "xy_std": 0.05,
+            "drop_height_mean": 0.10,
+            "drop_height_std": 0.025,
         },
     )
 
@@ -294,24 +295,43 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    # Primary: keep ball centred on paddle
+    # Survival: height-gated — primary signal to stand; collapsed robot earns nothing
+    alive = RewTerm(
+        func=mdp.alive_upright,
+        weight=12.0,
+        params={
+            "robot_cfg": SceneEntityCfg("robot"),
+            "min_height": 0.28,
+            "nominal_height": 0.40,
+        },
+    )
+
+    # Terminal penalty: reduced while robot is still learning to stand.
+    # -50 fired every episode (robot always collapses early) = noisy gradient.
+    early_termination = RewTerm(func=mdp.early_termination_penalty, weight=-5.0)
+
+    # Secondary: keep ball centred on paddle — measures 3D distance from ideal
+    # resting position (paddle_centre + ball_radius * paddle_normal) so the robot
+    # cannot exploit by tilting to align its paddle normal with the ball.
+    # Weight kept below alive so standing always dominates over active ball control.
     ball_on_paddle = RewTerm(
         func=mdp.ball_on_paddle_exp,
-        weight=2.0,
+        weight=1.5,
         params={
-            "std": 0.25,
+            "std": 0.30,
+            "ball_radius": _BALL_RADIUS,
             "ball_cfg": SceneEntityCfg("ball"),
             "robot_cfg": SceneEntityCfg("robot"),
             "paddle_offset_b": _PADDLE_OFFSET_B,
-            "min_height": 0.28,       # gate: 0 reward when trunk below this
-            "nominal_height": 0.40,   # gate: full reward at standing height
+            "min_height": 0.28,
+            "nominal_height": 0.40,
         },
     )
 
     # Shaping: penalise lateral ball velocity (gradient when ball starts sliding)
     ball_lateral_vel = RewTerm(
         func=mdp.ball_lateral_vel_penalty,
-        weight=-1.0,
+        weight=-0.5,
         params={
             "ball_cfg": SceneEntityCfg("ball"),
             "robot_cfg": SceneEntityCfg("robot"),
@@ -323,7 +343,7 @@ class RewardsCfg:
     # Shaping: penalise ball being airborne above paddle (encourages damping bounces)
     ball_height = RewTerm(
         func=mdp.ball_height_penalty,
-        weight=-2.0,
+        weight=-0.5,
         params={
             "ball_radius": _BALL_RADIUS,
             "ball_cfg": SceneEntityCfg("ball"),
@@ -337,34 +357,40 @@ class RewardsCfg:
     # Shaping: penalise trunk dropping below standing height (prevents collapsing)
     base_height = RewTerm(
         func=mdp.base_height_penalty,
-        weight=-20.0,
+        weight=-10.0,
         params={
             "min_height": 0.28,
             "robot_cfg": SceneEntityCfg("robot"),
         },
     )
 
-    # Shaping: penalise trunk rolling/pitching (prevents the lean-to-side exploit)
+    # Shaping: penalise trunk tilt — directly discourages the exploit where the
+    # robot tilts to align its paddle normal with the ball instead of standing.
+    # Lower weight than before (-1.0 vs old -2.0) to avoid overcorrecting.
     trunk_tilt = RewTerm(
         func=mdp.trunk_tilt_penalty,
-        weight=-2.0,
+        weight=-1.0,
         params={"robot_cfg": SceneEntityCfg("robot")},
     )
 
-    # Shaping: discourage body motion (stay still to balance ball)
+    # Shaping: light discouragement of body motion (10x reduced — standing requires
+    # active control and corrections; heavy penalties here cause passive collapse)
     body_lin_vel = RewTerm(
         func=mdp.body_lin_vel_penalty,
-        weight=-0.1,
+        weight=-0.01,
         params={"robot_cfg": SceneEntityCfg("robot")},
     )
     body_ang_vel = RewTerm(
         func=mdp.body_ang_vel_penalty,
-        weight=-0.05,
+        weight=-0.005,
         params={"robot_cfg": SceneEntityCfg("robot")},
     )
 
-    # Regularisation
+    # Regularisation: penalise rapid changes in joint targets — kept light so the
+    # policy can still make corrective ball-tracking movements without freezing.
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
+
+    # Regularisation: penalise joint effort (smooths policy, avoids violent motions)
     joint_torques = RewTerm(
         func=mdp.joint_torques_l2,
         weight=-2.0e-4,
@@ -439,8 +465,9 @@ class BallBalanceEnvCfg_PLAY(BallBalanceEnvCfg):
         self.scene.num_envs = 16
         self.scene.env_spacing = 3.5
         self.observations.policy.enable_corruption = False
-        # Spawn ball perfectly centred for play evaluation
-        self.events.reset_ball.params["xy_offset_range"] = 0.0
+        # Spawn ball at fixed centre with short fixed drop for play evaluation
+        self.events.reset_ball.params["xy_std"] = 0.0
+        self.events.reset_ball.params["drop_height_std"] = 0.0
         # Don't end the episode just because an early policy squats — lets us
         # observe ball behaviour even with an undertrained policy
         self.terminations.base_contact = None

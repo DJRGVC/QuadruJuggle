@@ -1,0 +1,384 @@
+--- git status ---
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/agents/rsl_rl_ppo_cfg.py
+	modified:   source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/ball_balance_env_cfg.py
+	modified:   source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/mdp/events.py
+	modified:   source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/mdp/rewards.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	logs/
+	myrecordings/
+	outputs/
+	scripts/tbdump.py
+	source/go1_ball_balance/uv.lock
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/agents/rsl_rl_ppo_cfg.py b/source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/agents/rsl_rl_ppo_cfg.py
+index 368dca3..118d11c 100644
+--- a/source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/agents/rsl_rl_ppo_cfg.py
++++ b/source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/agents/rsl_rl_ppo_cfg.py
+@@ -6,9 +6,9 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
+ 
+ @configclass
+ class BallBalancePPORunnerCfg(RslRlOnPolicyRunnerCfg):
+-    num_steps_per_env = 24
++    num_steps_per_env = 64        # longer rollouts improve advantage estimates for ~500-step episodes
+     max_iterations = 3000
+-    save_interval = 100
++    save_interval = 50            # checkpoint more often (useful for short reward-tuning runs)
+     experiment_name = "go1_ball_balance"
+     empirical_normalization = False
+ 
+@@ -23,14 +23,14 @@ class BallBalancePPORunnerCfg(RslRlOnPolicyRunnerCfg):
+     algorithm = RslRlPpoAlgorithmCfg(
+         value_loss_coef=1.0,
+         use_clipped_value_loss=True,
+-        clip_param=0.2,
+-        entropy_coef=0.005,
+-        num_learning_epochs=4,
++        clip_param=0.1,               # tighter clip — prevents large single-step policy jumps
++        entropy_coef=0.01,
++        num_learning_epochs=3,        # fewer passes per rollout — less policy change per iteration
+         num_mini_batches=4,
+         learning_rate=1.0e-3,
+         schedule="adaptive",
+         gamma=0.99,
+         lam=0.95,
+-        desired_kl=0.01,
+-        max_grad_norm=1.0,
++        desired_kl=0.004,             # tighter KL — caps adaptive LR growth near a good solution
++        max_grad_norm=0.5,            # tighter grad clip — prevents single bad gradient from destabilising
+     )
+diff --git a/source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/ball_balance_env_cfg.py b/source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/ball_balance_env_cfg.py
+index 49596a6..fbf5779 100644
+--- a/source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/ball_balance_env_cfg.py
++++ b/source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/ball_balance_env_cfg.py
+@@ -116,7 +116,7 @@ class BallBalanceSceneCfg(InteractiveSceneCfg):
+                 collision_enabled=True,
+             ),
+             physics_material=sim_utils.RigidBodyMaterialCfg(
+-                restitution=0.85,   # ping-pong ball bounces
++                restitution=0.5,    # reduced from 0.85 to limit chaotic multi-bounce drift
+                 static_friction=0.3,
+                 dynamic_friction=0.3,
+             ),
+@@ -274,8 +274,7 @@ class EventCfg:
+         },
+     )
+ 
+-    # Reset ball directly onto the paddle surface at zero velocity.
+-    # No drop → no bounce → immediate ball_on_paddle signal from step 1.
++    # Reset ball above the paddle with Gaussian-randomised height and XY position.
+     reset_ball = EventTerm(
+         func=mdp.reset_ball_on_paddle,
+         mode="reset",
+@@ -283,7 +282,9 @@ class EventCfg:
+             "ball_cfg": SceneEntityCfg("ball"),
+             "paddle_offset_b": _PADDLE_OFFSET_B,
+             "ball_radius": _BALL_RADIUS,
+-            "xy_offset_range": 0.02,
++            "xy_std": 0.05,
++            "drop_height_mean": 0.10,
++            "drop_height_std": 0.025,
+         },
+     )
+ 
+@@ -294,24 +295,43 @@ class EventCfg:
+ 
+ @configclass
+ class RewardsCfg:
+-    # Primary: keep ball centred on paddle
++    # Survival: height-gated — primary signal to stand; collapsed robot earns nothing
++    alive = RewTerm(
++        func=mdp.alive_upright,
++        weight=12.0,
++        params={
++            "robot_cfg": SceneEntityCfg("robot"),
++            "min_height": 0.28,
++            "nominal_height": 0.40,
++        },
++    )
++
++    # Terminal penalty: reduced while robot is still learning to stand.
++    # -50 fired every episode (robot always collapses early) = noisy gradient.
++    early_termination = RewTerm(func=mdp.early_termination_penalty, weight=-5.0)
++
++    # Secondary: keep ball centred on paddle — measures 3D distance from ideal
++    # resting position (paddle_centre + ball_radius * paddle_normal) so the robot
++    # cannot exploit by tilting to align its paddle normal with the ball.
++    # Weight kept below alive so standing always dominates over active ball control.
+     ball_on_paddle = RewTerm(
+         func=mdp.ball_on_paddle_exp,
+-        weight=2.0,
++        weight=1.5,
+         params={
+-            "std": 0.25,
++            "std": 0.30,
++            "ball_radius": _BALL_RADIUS,
+             "ball_cfg": SceneEntityCfg("ball"),
+             "robot_cfg": SceneEntityCfg("robot"),
+             "paddle_offset_b": _PADDLE_OFFSET_B,
+-            "min_height": 0.28,       # gate: 0 reward when trunk below this
+-            "nominal_height": 0.40,   # gate: full reward at standing height
++            "min_height": 0.28,
++            "nominal_height": 0.40,
+         },
+     )
+ 
+     # Shaping: penalise lateral ball velocity (gradient when ball starts sliding)
+     ball_lateral_vel = RewTerm(
+         func=mdp.ball_lateral_vel_penalty,
+-        weight=-1.0,
++        weight=-0.5,
+         params={
+             "ball_cfg": SceneEntityCfg("ball"),
+             "robot_cfg": SceneEntityCfg("robot"),
+@@ -323,7 +343,7 @@ class RewardsCfg:
+     # Shaping: penalise ball being airborne above paddle (encourages damping bounces)
+     ball_height = RewTerm(
+         func=mdp.ball_height_penalty,
+-        weight=-2.0,
++        weight=-0.5,
+         params={
+             "ball_radius": _BALL_RADIUS,
+             "ball_cfg": SceneEntityCfg("ball"),
+@@ -337,34 +357,40 @@ class RewardsCfg:
+     # Shaping: penalise trunk dropping below standing height (prevents collapsing)
+     base_height = RewTerm(
+         func=mdp.base_height_penalty,
+-        weight=-20.0,
++        weight=-10.0,
+         params={
+             "min_height": 0.28,
+             "robot_cfg": SceneEntityCfg("robot"),
+         },
+     )
+ 
+-    # Shaping: penalise trunk rolling/pitching (prevents the lean-to-side exploit)
++    # Shaping: penalise trunk tilt — directly discourages the exploit where the
++    # robot tilts to align its paddle normal with the ball instead of standing.
++    # Lower weight than before (-1.0 vs old -2.0) to avoid overcorrecting.
+     trunk_tilt = RewTerm(
+         func=mdp.trunk_tilt_penalty,
+-        weight=-2.0,
++        weight=-1.0,
+         params={"robot_cfg": SceneEntityCfg("robot")},
+     )
+ 
+-    # Shaping: discourage body motion (stay still to balance ball)
++    # Shaping: light discouragement of body motion (10x reduced — standing requires
++    # active control and corrections; heavy penalties here cause passive collapse)
+     body_lin_vel = RewTerm(
+         func=mdp.body_lin_vel_penalty,
+-        weight=-0.1,
++        weight=-0.01,
+         params={"robot_cfg": SceneEntityCfg("robot")},
+     )
+     body_ang_vel = RewTerm(
+         func=mdp.body_ang_vel_penalty,
+-        weight=-0.05,
++        weight=-0.005,
+         params={"robot_cfg": SceneEntityCfg("robot")},
+     )
+ 
+-    # Regularisation
++    # Regularisation: penalise rapid changes in joint targets — kept light so the
++    # policy can still make corrective ball-tracking movements without freezing.
+     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
++
++    # Regularisation: penalise joint effort (smooths policy, avoids violent motions)
+     joint_torques = RewTerm(
+         func=mdp.joint_torques_l2,
+         weight=-2.0e-4,
+@@ -439,8 +465,9 @@ class BallBalanceEnvCfg_PLAY(BallBalanceEnvCfg):
+         self.scene.num_envs = 16
+         self.scene.env_spacing = 3.5
+         self.observations.policy.enable_corruption = False
+-        # Spawn ball perfectly centred for play evaluation
+-        self.events.reset_ball.params["xy_offset_range"] = 0.0
++        # Spawn ball at fixed centre with short fixed drop for play evaluation
++        self.events.reset_ball.params["xy_std"] = 0.0
++        self.events.reset_ball.params["drop_height_std"] = 0.0
+         # Don't end the episode just because an early policy squats — lets us
+         # observe ball behaviour even with an undertrained policy
+         self.terminations.base_contact = None
+\ No newline at end of file
+diff --git a/source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/mdp/events.py b/source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/mdp/events.py
+index cebc44d..d819f32 100644
+--- a/source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/mdp/events.py
++++ b/source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/mdp/events.py
+@@ -49,16 +49,21 @@ def reset_ball_on_paddle(
+     ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
+     paddle_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.13),
+     ball_radius: float = 0.020,
+-    xy_offset_range: float = 0.02,
++    xy_std: float = 0.05,
++    drop_height_mean: float = 0.20,
++    drop_height_std: float = 0.05,
+ ) -> None:
+-    """Reset the ball to rest on the paddle surface with zero velocity.
+-
+-    Places the ball at paddle_centre + (0, 0, ball_radius) plus a small
+-    random XY perturbation so the task is non-trivial from step 1.
+-    The paddle position is approximated using the same upright-trunk
+-    assumption as reset_paddle_pose (trunk at env_origin + 0.40 m).
+-    The continuous paddle-tracking event will correct any residual error
+-    from the first physics step onward.
++    """Reset the ball above the paddle with Gaussian-randomised height and XY position.
++
++    The ball is spawned drop_height_mean ± drop_height_std metres above the paddle
++    surface, and xy_std metres (Gaussian) away from the paddle centre in XY.
++    This forces the policy to catch/recover the ball from varied positions each
++    episode rather than starting in a trivially balanced state.
++
++    Args:
++        xy_std:           Gaussian std (metres) for XY offset from paddle centre.
++        drop_height_mean: Mean height above paddle surface to spawn ball (metres).
++        drop_height_std:  Gaussian std of drop height (metres); set 0 for fixed height.
+     """
+     ball: RigidObject = env.scene[ball_cfg.name]
+ 
+@@ -70,14 +75,16 @@ def reset_ball_on_paddle(
+     off = torch.tensor(paddle_offset_b, device=env.device, dtype=torch.float32)
+     paddle_pos = trunk_pos + off.unsqueeze(0)              # (N, 3)
+ 
+-    # Ball centre: directly above paddle surface (paddle_z + ball_radius)
++    # Gaussian XY offset from paddle centre
++    xy_noise = torch.randn(n, 2, device=env.device) * xy_std
+     ball_pos = paddle_pos.clone()
+-    ball_pos[:, 2] += ball_radius
+-
+-    # Small random XY offset so the policy must actively balance from reset
+-    xy_noise = (torch.rand(n, 2, device=env.device) * 2.0 - 1.0) * xy_offset_range
+     ball_pos[:, :2] += xy_noise
+ 
++    # Gaussian drop height above paddle surface
++    drop_height = drop_height_mean + torch.randn(n, device=env.device) * drop_height_std
++    drop_height = drop_height.clamp(min=ball_radius)      # never below paddle surface
++    ball_pos[:, 2] += drop_height
++
+     # Identity quaternion, zero velocity
+     quat = torch.tensor(
+         [1.0, 0.0, 0.0, 0.0], device=env.device, dtype=torch.float32
+diff --git a/source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/mdp/rewards.py b/source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/mdp/rewards.py
+index da59f0d..fdd1453 100644
+--- a/source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/mdp/rewards.py
++++ b/source/go1_ball_balance/go1_ball_balance/tasks/ball_balance/mdp/rewards.py
+@@ -16,6 +16,7 @@ if TYPE_CHECKING:
+ def ball_on_paddle_exp(
+     env: ManagerBasedRLEnv,
+     std: float = 0.1,
++    ball_radius: float = 0.020,
+     ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
+     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+     paddle_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.18),
+@@ -25,15 +26,16 @@ def ball_on_paddle_exp(
+     """Exponential reward for keeping the ball centred on the paddle,
+     gated by trunk height so a collapsed robot earns no ball reward.
+ 
+-    r = height_gate * exp(-||ball_xy - paddle_center_xy||^2 / (2 * std^2))
+-
+-    height_gate ramps linearly from 0 at ``min_height`` to 1 at
+-    ``nominal_height``, ensuring the robot must stand upright to collect
+-    any ball reward at all.
++    Measures 3D distance from the ideal resting position
++    (paddle_centre + ball_radius * paddle_normal_world) rather than world XY.
++    This prevents the robot from exploiting the reward by tilting its trunk
++    to align the paddle normal with the ball — a tilted robot places the ball
++    far from the paddle surface, giving high 3D distance and low reward.
+ 
+     Args:
+         env: The RL environment.
+-        std: Gaussian half-width in metres. Smaller = tighter.
++        std: Gaussian half-width in metres.
++        ball_radius: Physical radius of the ball (metres).
+         ball_cfg: Scene entity config for the ball.
+         robot_cfg: Scene entity config for the robot.
+         paddle_offset_b: Paddle-centre offset from trunk origin (body frame).
+@@ -52,10 +54,16 @@ def ball_on_paddle_exp(
+     offset_b = torch.tensor(paddle_offset_b, device=env.device).unsqueeze(0).expand(env.num_envs, -1)
+     paddle_pos_w = trunk_pos_w + math_utils.quat_rotate(trunk_quat_w, offset_b)
+ 
+-    ball_pos_w = ball.data.root_pos_w
++    # Paddle normal in world frame (trunk "up" direction)
++    up_b = torch.zeros(env.num_envs, 3, device=env.device)
++    up_b[:, 2] = 1.0
++    paddle_normal_w = math_utils.quat_rotate(trunk_quat_w, up_b)  # (N, 3)
++
++    # Ideal ball position: resting on paddle surface at centre
++    target_pos_w = paddle_pos_w + ball_radius * paddle_normal_w   # (N, 3)
+ 
+-    # XY distance only
+-    dist_xy = torch.norm(ball_pos_w[:, :2] - paddle_pos_w[:, :2], dim=-1)
++    # 3D distance from ideal resting position
++    dist = torch.norm(ball.data.root_pos_w - target_pos_w, dim=-1)
+ 
+     # Height gate: 0 when trunk is at/below min_height, 1 at nominal standing height
+     trunk_z = trunk_pos_w[:, 2]
+@@ -63,7 +71,7 @@ def ball_on_paddle_exp(
+         (trunk_z - min_height) / (nominal_height - min_height), 0.0, 1.0
+     )
+ 
+-    return height_gate * torch.exp(-dist_xy.pow(2) / (2.0 * std**2))
++    return height_gate * torch.exp(-dist.pow(2) / (2.0 * std**2))
+ 
+ 
+ def body_lin_vel_penalty(
+@@ -192,6 +200,48 @@ def ball_height_penalty(
+     return height_gate * airborne_height
+ 
+ 
++def is_alive(env: ManagerBasedRLEnv) -> torch.Tensor:
++    """Constant +1 survival bonus every step — makes longer episodes strictly better
++    than dying early, countering the 'die-fast' local minimum.
++
++    Returns:
++        Tensor of shape (num_envs,) — all ones.
++    """
++    return torch.ones(env.num_envs, device=env.device)
++
++
++def alive_upright(
++    env: ManagerBasedRLEnv,
++    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
++    min_height: float = 0.28,
++    nominal_height: float = 0.40,
++) -> torch.Tensor:
++    """Survival bonus gated by trunk height — only awarded when the robot is
++    standing upright.  A collapsed robot earns nothing, eliminating the
++    'collapse-and-wait' exploit where the robot lies still to avoid penalties.
++
++    Returns values in [0, 1]; apply with a large positive weight.
++    """
++    robot: Articulation = env.scene[robot_cfg.name]
++    trunk_z = robot.data.root_pos_w[:, 2]
++    return torch.clamp((trunk_z - min_height) / (nominal_height - min_height), 0.0, 1.0)
++
++
++def early_termination_penalty(env: ManagerBasedRLEnv) -> torch.Tensor:
++    """One-shot penalty when the episode ends due to a non-timeout termination
++    (i.e. ball_off_paddle or ball_below_paddle).
++
++    Terminations are computed before rewards in Isaac Lab's step(), so
++    env.termination_manager.dones is valid here.
++
++    Returns:
++        Tensor of shape (num_envs,) — 1.0 on bad-termination steps, else 0.0.
++        Apply with a large negative weight (e.g. -50.0).
++    """
++    bad_done = env.termination_manager.dones & ~env.termination_manager.time_outs
++    return bad_done.float()
++
++
+ def base_height_penalty(
+     env: ManagerBasedRLEnv,
+     min_height: float = 0.28,

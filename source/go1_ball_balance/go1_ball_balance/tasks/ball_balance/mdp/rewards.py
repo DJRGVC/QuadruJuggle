@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 def ball_on_paddle_exp(
     env: ManagerBasedRLEnv,
     std: float = 0.1,
+    ball_radius: float = 0.020,
     ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     paddle_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.18),
@@ -25,15 +26,16 @@ def ball_on_paddle_exp(
     """Exponential reward for keeping the ball centred on the paddle,
     gated by trunk height so a collapsed robot earns no ball reward.
 
-    r = height_gate * exp(-||ball_xy - paddle_center_xy||^2 / (2 * std^2))
-
-    height_gate ramps linearly from 0 at ``min_height`` to 1 at
-    ``nominal_height``, ensuring the robot must stand upright to collect
-    any ball reward at all.
+    Measures 3D distance from the ideal resting position
+    (paddle_centre + ball_radius * paddle_normal_world) rather than world XY.
+    This prevents the robot from exploiting the reward by tilting its trunk
+    to align the paddle normal with the ball — a tilted robot places the ball
+    far from the paddle surface, giving high 3D distance and low reward.
 
     Args:
         env: The RL environment.
-        std: Gaussian half-width in metres. Smaller = tighter.
+        std: Gaussian half-width in metres.
+        ball_radius: Physical radius of the ball (metres).
         ball_cfg: Scene entity config for the ball.
         robot_cfg: Scene entity config for the robot.
         paddle_offset_b: Paddle-centre offset from trunk origin (body frame).
@@ -52,10 +54,16 @@ def ball_on_paddle_exp(
     offset_b = torch.tensor(paddle_offset_b, device=env.device).unsqueeze(0).expand(env.num_envs, -1)
     paddle_pos_w = trunk_pos_w + math_utils.quat_rotate(trunk_quat_w, offset_b)
 
-    ball_pos_w = ball.data.root_pos_w
+    # Paddle normal in world frame (trunk "up" direction)
+    up_b = torch.zeros(env.num_envs, 3, device=env.device)
+    up_b[:, 2] = 1.0
+    paddle_normal_w = math_utils.quat_rotate(trunk_quat_w, up_b)  # (N, 3)
 
-    # XY distance only
-    dist_xy = torch.norm(ball_pos_w[:, :2] - paddle_pos_w[:, :2], dim=-1)
+    # Ideal ball position: resting on paddle surface at centre
+    target_pos_w = paddle_pos_w + ball_radius * paddle_normal_w   # (N, 3)
+
+    # 3D distance from ideal resting position
+    dist = torch.norm(ball.data.root_pos_w - target_pos_w, dim=-1)
 
     # Height gate: 0 when trunk is at/below min_height, 1 at nominal standing height
     trunk_z = trunk_pos_w[:, 2]
@@ -63,7 +71,7 @@ def ball_on_paddle_exp(
         (trunk_z - min_height) / (nominal_height - min_height), 0.0, 1.0
     )
 
-    return height_gate * torch.exp(-dist_xy.pow(2) / (2.0 * std**2))
+    return height_gate * torch.exp(-dist.pow(2) / (2.0 * std**2))
 
 
 def body_lin_vel_penalty(
@@ -190,6 +198,48 @@ def ball_height_penalty(
     )
 
     return height_gate * airborne_height
+
+
+def is_alive(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Constant +1 survival bonus every step — makes longer episodes strictly better
+    than dying early, countering the 'die-fast' local minimum.
+
+    Returns:
+        Tensor of shape (num_envs,) — all ones.
+    """
+    return torch.ones(env.num_envs, device=env.device)
+
+
+def alive_upright(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    min_height: float = 0.28,
+    nominal_height: float = 0.40,
+) -> torch.Tensor:
+    """Survival bonus gated by trunk height — only awarded when the robot is
+    standing upright.  A collapsed robot earns nothing, eliminating the
+    'collapse-and-wait' exploit where the robot lies still to avoid penalties.
+
+    Returns values in [0, 1]; apply with a large positive weight.
+    """
+    robot: Articulation = env.scene[robot_cfg.name]
+    trunk_z = robot.data.root_pos_w[:, 2]
+    return torch.clamp((trunk_z - min_height) / (nominal_height - min_height), 0.0, 1.0)
+
+
+def early_termination_penalty(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """One-shot penalty when the episode ends due to a non-timeout termination
+    (i.e. ball_off_paddle or ball_below_paddle).
+
+    Terminations are computed before rewards in Isaac Lab's step(), so
+    env.termination_manager.dones is valid here.
+
+    Returns:
+        Tensor of shape (num_envs,) — 1.0 on bad-termination steps, else 0.0.
+        Apply with a large negative weight (e.g. -50.0).
+    """
+    bad_done = env.termination_manager.dones & ~env.termination_manager.time_outs
+    return bad_done.float()
 
 
 def base_height_penalty(
