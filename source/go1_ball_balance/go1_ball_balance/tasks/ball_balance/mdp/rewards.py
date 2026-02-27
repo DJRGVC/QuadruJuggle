@@ -215,16 +215,40 @@ def alive_upright(
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     min_height: float = 0.28,
     nominal_height: float = 0.40,
+    ball_cfg: SceneEntityCfg | None = None,
+    paddle_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.045),
+    ball_inner_radius: float = 0.15,
+    ball_max_radius: float = 0.40,
 ) -> torch.Tensor:
-    """Survival bonus gated by trunk height — only awarded when the robot is
-    standing upright.  A collapsed robot earns nothing, eliminating the
-    'collapse-and-wait' exploit where the robot lies still to avoid penalties.
+    """Survival bonus gated by trunk height AND (optionally) ball proximity.
+
+    Height gate: 0 when trunk is at/below min_height, 1 at nominal standing height.
+    Ball gate:   1 when ball XY is within ball_inner_radius of the paddle centre,
+                 linearly decreasing to 0 at ball_max_radius.  This eliminates the
+                 'move sideways out of the way' exploit — the robot earns no alive
+                 reward once the ball is far from its paddle.
 
     Returns values in [0, 1]; apply with a large positive weight.
     """
     robot: Articulation = env.scene[robot_cfg.name]
     trunk_z = robot.data.root_pos_w[:, 2]
-    return torch.clamp((trunk_z - min_height) / (nominal_height - min_height), 0.0, 1.0)
+    height_gate = torch.clamp((trunk_z - min_height) / (nominal_height - min_height), 0.0, 1.0)
+
+    if ball_cfg is None:
+        return height_gate
+
+    ball: RigidObject = env.scene[ball_cfg.name]
+    trunk_pos_w = robot.data.root_pos_w
+    trunk_quat_w = robot.data.root_quat_w
+
+    offset_b = torch.tensor(paddle_offset_b, device=env.device).unsqueeze(0).expand(env.num_envs, -1)
+    paddle_pos_w = trunk_pos_w + math_utils.quat_rotate(trunk_quat_w, offset_b)
+
+    dist_xy = torch.norm(ball.data.root_pos_w[:, :2] - paddle_pos_w[:, :2], dim=-1)
+    span = max(ball_max_radius - ball_inner_radius, 1e-6)
+    ball_gate = torch.clamp(1.0 - (dist_xy - ball_inner_radius) / span, 0.0, 1.0)
+
+    return height_gate * ball_gate
 
 
 def early_termination_penalty(env: ManagerBasedRLEnv) -> torch.Tensor:

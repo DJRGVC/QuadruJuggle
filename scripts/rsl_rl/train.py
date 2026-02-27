@@ -214,8 +214,54 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
 
-    # run training
-    runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
+    # ---------------------------------------------------------------------------
+    # Curricula — both updated every CHUNK iterations between learn() calls.
+    #
+    # 1. Gamma: short effective horizon early (fast feedback while learning to
+    #    stand), extending to a longer horizon as the policy matures.
+    # 2. Ball spawn XY radius: start tight (ball nearly centred) so the robot
+    #    can learn basic balance first, then increase to full randomisation.
+    # ---------------------------------------------------------------------------
+    GAMMA_START       = 0.97    # effective horizon ~33 steps
+    GAMMA_FINAL       = 0.997   # effective horizon ~333 steps
+    GAMMA_RAMP_ITERS  = 500
+
+    BALL_STD_START    = 0.01    # metres — nearly centred at start
+    BALL_STD_FINAL    = 0.05    # metres — full randomisation
+    BALL_STD_RAMP     = 300     # reach full randomisation by this iteration
+
+    CHUNK = 10
+
+    def _gamma(it: int) -> float:
+        t = min(it / GAMMA_RAMP_ITERS, 1.0)
+        return GAMMA_START + t * (GAMMA_FINAL - GAMMA_START)
+
+    def _ball_std(it: int) -> float:
+        t = min(it / BALL_STD_RAMP, 1.0)
+        return BALL_STD_START + t * (BALL_STD_FINAL - BALL_STD_START)
+
+    # Grab the reset_ball event term once so we can patch its params each chunk.
+    try:
+        _ball_term = runner.env.unwrapped.event_manager.get_term_cfg("reset_ball")
+    except Exception:
+        _ball_term = None
+
+    total_iters = agent_cfg.max_iterations
+    runner.alg.gamma = GAMMA_START
+    first_chunk = True
+
+    for start in range(0, total_iters, CHUNK):
+        n  = min(CHUNK, total_iters - start)
+        g  = _gamma(start)
+        bs = _ball_std(start)
+
+        runner.alg.gamma = g
+        if _ball_term is not None:
+            _ball_term.params["xy_std"] = bs
+
+        print(f"[Curriculum] iter {start:>5d}: gamma={g:.5f}  ball_xy_std={bs:.4f} m")
+        runner.learn(num_learning_iterations=n, init_at_random_ep_len=first_chunk)
+        first_chunk = False
 
     print(f"Training time: {round(time.time() - start_time, 2)} seconds")
 

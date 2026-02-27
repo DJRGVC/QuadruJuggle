@@ -223,7 +223,7 @@ class EventCfg:
         func=mdp.reset_joints_by_scale,
         mode="reset",
         params={
-            "position_range": (1.0, 1.0),
+            "position_range": (0.85, 1.15),  # ±15 % of default — forces generalisation
             "velocity_range": (0.0, 0.0),
         },
     )
@@ -295,20 +295,26 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    # Survival: height-gated — primary signal to stand; collapsed robot earns nothing
+    # Survival: gated by trunk height AND ball proximity.  The ball gate drops the
+    # alive reward to zero once the ball is >0.40 m from the paddle centre, directly
+    # eliminating the 'move sideways out of the way' exploit.
     alive = RewTerm(
         func=mdp.alive_upright,
-        weight=12.0,
+        weight=15.0,
         params={
             "robot_cfg": SceneEntityCfg("robot"),
             "min_height": 0.28,
             "nominal_height": 0.40,
+            "ball_cfg": SceneEntityCfg("ball"),
+            "paddle_offset_b": _PADDLE_OFFSET_B,
+            "ball_inner_radius": 0.15,
+            "ball_max_radius": 0.40,
         },
     )
 
     # Terminal penalty: reduced while robot is still learning to stand.
     # -50 fired every episode (robot always collapses early) = noisy gradient.
-    early_termination = RewTerm(func=mdp.early_termination_penalty, weight=-5.0)
+    early_termination = RewTerm(func=mdp.early_termination_penalty, weight=-50.0)
 
     # Secondary: keep ball centred on paddle — measures 3D distance from ideal
     # resting position (paddle_centre + ball_radius * paddle_normal) so the robot
@@ -318,7 +324,7 @@ class RewardsCfg:
         func=mdp.ball_on_paddle_exp,
         weight=1.5,
         params={
-            "std": 0.30,
+            "std": 0.15,
             "ball_radius": _BALL_RADIUS,
             "ball_cfg": SceneEntityCfg("ball"),
             "robot_cfg": SceneEntityCfg("robot"),
@@ -331,7 +337,7 @@ class RewardsCfg:
     # Shaping: penalise lateral ball velocity (gradient when ball starts sliding)
     ball_lateral_vel = RewTerm(
         func=mdp.ball_lateral_vel_penalty,
-        weight=-0.5,
+        weight=-2.0,
         params={
             "ball_cfg": SceneEntityCfg("ball"),
             "robot_cfg": SceneEntityCfg("robot"),
@@ -357,32 +363,33 @@ class RewardsCfg:
     # Shaping: penalise trunk dropping below standing height (prevents collapsing)
     base_height = RewTerm(
         func=mdp.base_height_penalty,
-        weight=-10.0,
+        weight=-20.0,
         params={
             "min_height": 0.28,
             "robot_cfg": SceneEntityCfg("robot"),
         },
     )
 
-    # Shaping: penalise trunk tilt — directly discourages the exploit where the
-    # robot tilts to align its paddle normal with the ball instead of standing.
-    # Lower weight than before (-1.0 vs old -2.0) to avoid overcorrecting.
+    # Shaping: penalise trunk tilt.  Reduced from -5.0 — at -5.0 the robot was
+    # over-penalised for the small corrective tilts needed to balance the ball,
+    # making escape more attractive than balancing.
     trunk_tilt = RewTerm(
         func=mdp.trunk_tilt_penalty,
-        weight=-1.0,
+        weight=-2.0,
         params={"robot_cfg": SceneEntityCfg("robot")},
     )
 
     # Shaping: light discouragement of body motion (10x reduced — standing requires
     # active control and corrections; heavy penalties here cause passive collapse)
+    # Increased sharply: lateral escape costs ~1.5/step at 0.5 m/s vs ~0 before.
     body_lin_vel = RewTerm(
         func=mdp.body_lin_vel_penalty,
-        weight=-0.01,
+        weight=-3.0,
         params={"robot_cfg": SceneEntityCfg("robot")},
     )
     body_ang_vel = RewTerm(
         func=mdp.body_ang_vel_penalty,
-        weight=-0.005,
+        weight=-0.5,
         params={"robot_cfg": SceneEntityCfg("robot")},
     )
 
@@ -448,7 +455,7 @@ class BallBalanceEnvCfg(ManagerBasedRLEnvCfg):
 
     def __post_init__(self):
         self.decimation = 4              # policy runs at 50 Hz (sim at 200 Hz)
-        self.episode_length_s = 10.0
+        self.episode_length_s = 100.0   # 5 000 steps — long enough to learn sustained balance
         self.sim.dt = 1.0 / 200.0
         self.sim.render_interval = self.decimation
         self.viewer.eye = (2.0, 2.0, 1.5)
