@@ -52,6 +52,7 @@ def reset_ball_on_paddle(
     xy_std: float = 0.05,
     drop_height_mean: float = 0.20,
     drop_height_std: float = 0.05,
+    vel_xy_std: float = 0.0,
 ) -> None:
     """Reset the ball above the paddle with Gaussian-randomised height and XY position.
 
@@ -64,6 +65,10 @@ def reset_ball_on_paddle(
         xy_std:           Gaussian std (metres) for XY offset from paddle centre.
         drop_height_mean: Mean height above paddle surface to spawn ball (metres).
         drop_height_std:  Gaussian std of drop height (metres); set 0 for fixed height.
+        vel_xy_std:       Gaussian std (m/s) for random lateral spawn velocity.
+                          0 for purely vertical bounce (early curriculum stages).
+                          Curriculum increases this in later stages to require the
+                          policy to track a drifting ball.
     """
     ball: RigidObject = env.scene[ball_cfg.name]
 
@@ -85,12 +90,16 @@ def reset_ball_on_paddle(
     drop_height = drop_height.clamp(min=ball_radius)      # never below paddle surface
     ball_pos[:, 2] += drop_height
 
-    # Identity quaternion, zero velocity
+    # Identity quaternion
     quat = torch.tensor(
         [1.0, 0.0, 0.0, 0.0], device=env.device, dtype=torch.float32
     ).unsqueeze(0).expand(n, -1)
     pose = torch.cat([ball_pos, quat], dim=-1)             # (N, 7)
+
+    # Random lateral spawn velocity (curriculum adds drift in later stages)
     vel = torch.zeros(n, 6, device=env.device)
+    if vel_xy_std > 0.0:
+        vel[:, :2] = torch.randn(n, 2, device=env.device) * vel_xy_std
 
     ball.write_root_pose_to_sim(pose, env_ids=env_ids)
     ball.write_root_velocity_to_sim(vel, env_ids=env_ids)
@@ -116,7 +125,7 @@ def update_paddle_pose(
     trunk_quat_w = robot.data.root_quat_w   # (num_envs, 4) wxyz
 
     off = torch.tensor(offset_b, device=env.device, dtype=torch.float32)
-    off_w = math_utils.quat_rotate(trunk_quat_w, off.unsqueeze(0).expand(env.num_envs, -1))
+    off_w = math_utils.quat_apply(trunk_quat_w, off.unsqueeze(0).expand(env.num_envs, -1))
     paddle_pos_w = trunk_pos_w + off_w
 
     pose = torch.cat([paddle_pos_w, trunk_quat_w], dim=-1)  # (num_envs, 7)

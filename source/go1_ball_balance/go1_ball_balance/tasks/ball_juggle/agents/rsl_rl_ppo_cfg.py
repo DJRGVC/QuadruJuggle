@@ -1,15 +1,19 @@
-"""RSL-RL PPO runner config for the ball-balance task."""
+"""RSL-RL PPO runner config for the ball-juggle task."""
 
 from isaaclab.utils import configclass
 from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, RslRlPpoAlgorithmCfg
 
 
 @configclass
-class BallBalancePPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 24
-    max_iterations = 10000
+class BallJugglePPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    # 48 steps × 12 288 envs = 589 824 samples per update.
+    # Same rollout length as ball_balance: 1500-step episodes at 50 Hz,
+    # 48 steps covers 3.2 % of an episode — sufficient GAE horizon for the
+    # slow-timescale juggling contact task.
+    num_steps_per_env = 48
+    max_iterations = 50000
     save_interval = 50
-    experiment_name = "go1_ball_balance"
+    experiment_name = "go1_ball_juggle"
     empirical_normalization = False
 
     policy = RslRlPpoActorCriticCfg(

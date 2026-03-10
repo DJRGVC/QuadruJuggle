@@ -45,14 +45,14 @@ def ball_pos_in_paddle_frame(
 
     # Paddle centre in world frame = trunk_pos_w + rotate(paddle_offset_b, trunk_quat_w)
     offset_b = torch.tensor(paddle_offset_b, device=env.device).unsqueeze(0).expand(env.num_envs, -1)
-    paddle_pos_w = trunk_pos_w + math_utils.quat_rotate(trunk_quat_w, offset_b)
+    paddle_pos_w = trunk_pos_w + math_utils.quat_apply(trunk_quat_w, offset_b)
 
     # Ball position in world frame
     ball_pos_w = ball.data.root_pos_w            # (N, 3)
 
     # Vector from paddle centre to ball, rotated into trunk frame
     diff_w = ball_pos_w - paddle_pos_w
-    diff_b = math_utils.quat_rotate_inverse(trunk_quat_w, diff_w)
+    diff_b = math_utils.quat_apply_inverse(trunk_quat_w, diff_w)
 
     return diff_b
 
@@ -78,4 +78,4 @@ def ball_vel_in_paddle_frame(
     trunk_quat_w = robot.data.root_quat_w        # (N, 4) wxyz
     ball_vel_w = ball.data.root_lin_vel_w        # (N, 3)
 
-    return math_utils.quat_rotate_inverse(trunk_quat_w, ball_vel_w)
+    return math_utils.quat_apply_inverse(trunk_quat_w, ball_vel_w)

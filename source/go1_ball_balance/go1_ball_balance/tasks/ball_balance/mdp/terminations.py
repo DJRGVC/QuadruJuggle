@@ -13,6 +13,32 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
+def trunk_height_collapsed(
+    env: ManagerBasedRLEnv,
+    minimum_height: float = 0.12,
+    grace_steps: int = 50,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Terminate when trunk height is below minimum_height, but only after grace_steps.
+
+    The grace period lets physics settle after reset before the termination is armed.
+    Without it, joint-angle randomisation at spawn can cause a brief free-fall that
+    dips the trunk below the threshold before the policy has taken a single action.
+
+    Args:
+        minimum_height: Trunk Z (world frame) below which the episode ends.
+        grace_steps:    Number of policy steps to skip at episode start.
+        asset_cfg:      Scene entity config for the robot.
+
+    Returns:
+        Bool tensor of shape (num_envs,).
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    below = asset.data.root_pos_w[:, 2] < minimum_height
+    past_grace = env.episode_length_buf >= grace_steps
+    return below & past_grace
+
+
 def ball_off_paddle(
     env: ManagerBasedRLEnv,
     radius: float = 0.15,
@@ -40,7 +66,7 @@ def ball_off_paddle(
     trunk_quat_w = robot.data.root_quat_w
 
     offset_b = torch.tensor(paddle_offset_b, device=env.device).unsqueeze(0).expand(env.num_envs, -1)
-    paddle_pos_w = trunk_pos_w + math_utils.quat_rotate(trunk_quat_w, offset_b)
+    paddle_pos_w = trunk_pos_w + math_utils.quat_apply(trunk_quat_w, offset_b)
 
     ball_pos_w = ball.data.root_pos_w
 
@@ -75,7 +101,7 @@ def ball_below_paddle(
     trunk_quat_w = robot.data.root_quat_w
 
     offset_b = torch.tensor(paddle_offset_b, device=env.device).unsqueeze(0).expand(env.num_envs, -1)
-    paddle_pos_w = trunk_pos_w + math_utils.quat_rotate(trunk_quat_w, offset_b)
+    paddle_pos_w = trunk_pos_w + math_utils.quat_apply(trunk_quat_w, offset_b)
 
     ball_z = ball.data.root_pos_w[:, 2]
     paddle_z = paddle_pos_w[:, 2]

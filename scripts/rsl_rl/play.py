@@ -8,6 +8,7 @@
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import signal
 import sys
 
 from isaaclab.app import AppLauncher
@@ -23,7 +24,7 @@ parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
-parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+parser.add_argument("--task", type=str, default="Isaac-BallBalance-Go1-Play-v0", help="Name of the task.")
 parser.add_argument(
     "--agent", type=str, default="rsl_rl_cfg_entry_point", help="Name of the RL agent configuration entry point."
 )
@@ -34,6 +35,35 @@ parser.add_argument(
     help="Use the pre-trained checkpoint from Nucleus.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+parser.add_argument(
+    "--slow",
+    type=float,
+    default=None,
+    metavar="N",
+    help="Slow-motion multiplier: sleep N × the policy step duration per step (e.g. --slow 4 = 4× slower than real-time).",
+)
+# --record-traj and --record-steps are stripped from sys.argv BEFORE argparse/Hydra
+# ever see them.  Reason: argparse's parse_known_args() can occasionally leak the
+# VALUE of a hyphenated flag (e.g. "/tmp/traj.npz") into hydra_args.  Hydra then
+# tries to parse "/tmp/traj.npz" as a config override and throws
+# LexerNoViableAltException because "/" is not a valid character in its grammar.
+# Pre-stripping avoids this.
+_record_traj_path = None
+_record_steps = 600          # default: 3 s at 200 Hz physics rate; override with --record-steps N
+_clean_argv = []
+_i = 0
+while _i < len(sys.argv):
+    if sys.argv[_i] in ("--record-traj", "--record_traj") and _i + 1 < len(sys.argv):
+        _record_traj_path = sys.argv[_i + 1]
+        _i += 2
+    elif sys.argv[_i] in ("--record-steps", "--record_steps") and _i + 1 < len(sys.argv):
+        _record_steps = int(sys.argv[_i + 1])
+        _i += 2
+    else:
+        _clean_argv.append(sys.argv[_i])
+        _i += 1
+sys.argv = _clean_argv
+
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -57,6 +87,7 @@ import os
 import time
 
 import gymnasium as gym
+import numpy as np
 import torch
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
 
@@ -116,6 +147,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # set the log directory for the environment (works for all environment types)
     env_cfg.log_dir = log_dir
 
+    # Slow-motion / trajectory-recording setup: reduce decimation to 1 so each
+    # env.step() advances exactly one 5 ms physics timestep.  The policy still runs
+    # at its training frequency — we call env.step() original_decimation times per
+    # policy update, holding the action constant across sub-steps.
+    if args_cli.slow is not None or _record_traj_path is not None:
+        _n_sub_steps = env_cfg.decimation   # typically 4
+        env_cfg.decimation = 1
+    else:
+        _n_sub_steps = 1
+
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
@@ -173,32 +214,123 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
     export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
 
-    dt = env.unwrapped.step_dt
+    sub_dt = env.unwrapped.step_dt          # 5 ms when decimation=1, 20 ms otherwise
+    dt = sub_dt * _n_sub_steps              # true policy-step duration (always ~20 ms)
+    _FRAME_S = 1.0 / 60.0                   # display cadence between sub-steps
+
+    # trajectory recording buffer (populated inside the loop when --record-traj is set)
+    _rec = _record_traj_path is not None
+    _buf: dict = {}
+    if _rec:
+        _buf = {k: [] for k in (
+            "root_pos", "root_quat", "root_lin_vel", "root_ang_vel",
+            "joint_pos", "joint_vel",
+            "ball_pos", "ball_quat", "ball_lin_vel",
+        )}
+        print(f"[INFO] Recording trajectory to: {_record_traj_path}  "
+              f"(physics_dt={sub_dt*1000:.2f} ms, every sub-step, "
+              f"limit={_record_steps} frames = {_record_steps * sub_dt:.1f}s)")
+
+    # Ctrl-C handler: set a flag so the while loop exits cleanly and the save runs.
+    # A second Ctrl-C restores the default handler (hard kill).
+    _stop = False
+    if _rec:
+        def _on_sigint(sig, frame):
+            nonlocal _stop
+            _stop = True
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
+            print("\n[INFO] Ctrl-C caught — finishing current step then saving. "
+                  "Press Ctrl-C again to force-quit (data may be lost).")
+        signal.signal(signal.SIGINT, _on_sigint)
 
     # reset environment
     obs = env.get_observations()
     timestep = 0
     # simulate environment
-    while simulation_app.is_running():
+    while simulation_app.is_running() and not _stop:
         start_time = time.time()
         # run everything in inference mode
         with torch.inference_mode():
-            # agent stepping
             actions = policy(obs)
-            # env stepping
-            obs, _, dones, _ = env.step(actions)
-            # reset recurrent states for episodes that have terminated
-            policy_nn.reset(dones)
+            for _ in range(_n_sub_steps):
+                sub_start = time.time()
+                # env.step() advances one physics sub-step and renders it
+                obs, _, dones, _ = env.step(actions)
+                # reset recurrent states for episodes that have terminated
+                policy_nn.reset(dones)
+
+                # record state at every physics sub-step
+                if _rec:
+                    _scene = env.unwrapped.scene
+                    _robot = _scene["robot"]
+                    _ball  = _scene["ball"]
+                    _orig  = _scene.env_origins          # (N_envs, 3)
+                    _buf["root_pos"].append((_robot.data.root_pos_w - _orig).cpu().numpy().copy())
+                    _buf["root_quat"].append(_robot.data.root_quat_w.cpu().numpy().copy())
+                    _buf["root_lin_vel"].append(_robot.data.root_lin_vel_w.cpu().numpy().copy())
+                    _buf["root_ang_vel"].append(_robot.data.root_ang_vel_w.cpu().numpy().copy())
+                    _buf["joint_pos"].append(_robot.data.joint_pos.cpu().numpy().copy())
+                    _buf["joint_vel"].append(_robot.data.joint_vel.cpu().numpy().copy())
+                    _buf["ball_pos"].append((_ball.data.root_pos_w - _orig).cpu().numpy().copy())
+                    _buf["ball_quat"].append(_ball.data.root_quat_w.cpu().numpy().copy())
+                    _buf["ball_lin_vel"].append(_ball.data.root_lin_vel_w.cpu().numpy().copy())
+                    if len(_buf["root_pos"]) >= _record_steps:
+                        break   # exit inner for-loop; outer while checks the limit below
+
+                # slow-motion: pad each sub-step to the target wall-clock duration,
+                # filling the gap with additional render calls for a smooth display
+                if args_cli.slow is not None:
+                    deadline = sub_start + sub_dt * args_cli.slow
+                    while time.time() < deadline:
+                        frame_start = time.time()
+                        simulation_app.update()
+                        remaining = deadline - time.time()
+                        if remaining <= 0:
+                            break
+                        sleep_s = min(_FRAME_S - (time.time() - frame_start), remaining)
+                        if sleep_s > 0:
+                            time.sleep(sleep_s)
+
         if args_cli.video:
             timestep += 1
             # Exit the play loop after recording one video
             if timestep == args_cli.video_length:
                 break
 
-        # time delay for real-time evaluation
-        sleep_time = dt - (time.time() - start_time)
-        if args_cli.real_time and sleep_time > 0:
-            time.sleep(sleep_time)
+        # trajectory recording: auto-exit after the first episode ends
+        # (dones fires when any env times out or terminates; with num_envs=1
+        # this is exactly one clean episode, with no cross-episode teleports)
+        if _rec and dones.any():
+            n_frames = len(_buf["root_pos"])
+            print(f"[INFO] Episode complete ({n_frames} frames recorded). "
+                  f"Saving and exiting ...")
+            break
+
+        # trajectory recording: auto-exit after hitting the step limit
+        if _rec and len(_buf["root_pos"]) >= _record_steps:
+            print(f"[INFO] Step limit reached ({_record_steps} frames = "
+                  f"{_record_steps * sub_dt:.1f}s). Saving and exiting ...")
+            break
+
+        # real-time sleep (non-slow mode only)
+        if args_cli.slow is None:
+            sleep_time = dt - (time.time() - start_time)
+            if args_cli.real_time and sleep_time > 0:
+                time.sleep(sleep_time)
+
+    # save trajectory if requested
+    if _rec and _buf.get("root_pos"):
+        save_path = _record_traj_path
+        np.savez_compressed(
+            save_path,
+            **{k: np.stack(v) for k, v in _buf.items()},
+            physics_dt=np.float64(sub_dt),
+        )
+        T  = len(_buf["root_pos"])
+        N  = _buf["root_pos"][0].shape[0]
+        print(f"[INFO] Trajectory saved → {save_path}")
+        print(f"       {T} frames × {N} envs  |  physics_dt={sub_dt*1000:.2f} ms  "
+              f"|  {T/N:.0f} frames per env  |  {T*sub_dt/N:.1f}s per env")
 
     # close the simulator
     env.close()

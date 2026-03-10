@@ -1,38 +1,45 @@
-"""Environment configuration for Go1 ball-balance task (Phase 1 — privileged state).
+"""Environment configuration for Go1 ball-balance task.
+
+Phase 2: Teach the robot to keep a ping-pong ball centred on its back paddle.
+The robot must stand upright AND actively balance the ball simultaneously.
+Episodes terminate early if the ball falls off; a -200 one-shot penalty makes
+this strictly worse than any standing configuration.
 
 Scene:
   - Unitree Go1 on flat ground
-  - A paddle: flat rectangular plate (0.26 m × 0.20 m × 0.008 m) spawned as a
-    kinematic rigid body.  A custom interval event tracks the robot trunk each
-    policy step and moves the paddle to trunk_pos + _PADDLE_OFFSET_B.
-  - A ping-pong ball: 40 mm sphere, mass 2.7 g, low restitution so it doesn't
-    bounce off immediately.
+  - A paddle: kinematic rigid body tracked to trunk at 200 Hz.
+  - A ping-pong ball: 40 mm sphere, spawned just above the paddle centre.
 
 Observations (policy):
-  - ball_pos_in_paddle_frame  (3)  — XYZ of ball relative to paddle centre
-  - ball_vel_in_paddle_frame  (3)  — linear velocity of ball in trunk frame
-  - base_lin_vel              (3)  — robot base linear velocity (body frame)
-  - base_ang_vel              (3)  — robot base angular velocity (body frame)
-  - projected_gravity         (3)  — gravity vector in body frame (tilt indicator)
-  - joint_pos (relative)     (12)  — joint positions minus default
-  - joint_vel                (12)  — joint velocities
+  - ball_pos_in_paddle_frame  (3)
+  - ball_vel_in_paddle_frame  (3)
+  - base_lin_vel              (3)
+  - base_ang_vel              (3)
+  - projected_gravity         (3)
+  - joint_pos (relative)     (12)
+  - joint_vel                (12)
   Total: 39 dimensions
 
 Actions:
-  - 12-DOF joint position targets (same as flat-terrain locomotion)
+  - 12-DOF joint position targets
 
-Rewards:
-  - ball_on_paddle_exp        +1.0   Gaussian kernel on XY distance, std=0.1 m
-  - body_lin_vel_penalty      -0.1   penalise trunk lateral / forward motion
-  - body_ang_vel_penalty      -0.05  penalise trunk rotation
-  - action_rate_l2            -0.01  smooth joint commands
-  - joint_torques_l2          -2e-4  joint effort penalty
+Rewards (Phase 2):
+  - alive              +1.0   per-step survival (primary axis)
+  - base_height        -5.0   penalise trunk below 0.34 m
+  - early_termination -200.0  one-shot on ball_off / ball_below (> max episode alive)
+  - ball_on_paddle     +8.0   Gaussian centering, std=0.25m, time_scale=4, height-gated
+  - ball_lateral_vel   -1.0   penalise ball sliding, height-gated
+  - ball_xy_dist       -2.0   linear XY distance from paddle centre — constant centering gradient
+  - trunk_tilt         -2.0   penalise roll/pitch
+  - body_lin_vel       -0.10  light trunk motion penalty
+  - body_ang_vel       -0.05  light trunk rotation penalty
+  - action_rate        -0.01  smooth joint commands
+  - joint_torques      -2e-4  joint effort
 
-Terminations:
-  - ball_off_paddle  (radius 0.15 m)
-  - ball_below_paddle
-  - base_contact     (trunk hits ground)
+Terminations (Phase 2):
   - time_out         (episode_length_s)
+  - ball_off_paddle  (XY dist > 0.50 m from paddle centre)
+  - ball_below_paddle (ball drops 50 mm below paddle surface)
 """
 
 import os
@@ -66,9 +73,13 @@ _ASSETS_DIR = os.path.normpath(_ASSETS_DIR)
 # Paddle geometry constants (must match wherever the ball is reset)
 # ---------------------------------------------------------------------------
 # Offset of the paddle centre from the robot trunk origin, in the trunk body
-# frame (x=forward, y=left, z=up).  Tune this single number if the paddle sits
-# too high or too low on the robot's back.
-_PADDLE_OFFSET_B = (0.0, 0.0, 0.045)   # metres, body frame
+# frame (x=forward, y=left, z=up).
+#
+# Go1 trunk collision box: 0.114 m full height, root at centre → top at +0.057 m.
+# Paddle disc thickness: 10 mm → half-thickness 5 mm.
+# offset = trunk_half_height(0.057) + paddle_half_thickness(0.005) + clearance(0.008)
+#        = 0.070 m  → paddle bottom sits 8 mm above the trunk top surface.
+_PADDLE_OFFSET_B = (0.0, 0.0, 0.070)   # metres, body frame
 # Paddle radius (0.125 m → 0.25 m diameter / 2 = 0.125 m)
 _PADDLE_HALF_EXTENT = 0.085           # metres  (170 mm diameter)
 # Ball radius
@@ -116,7 +127,15 @@ class BallBalanceSceneCfg(InteractiveSceneCfg):
                 collision_enabled=True,
             ),
             physics_material=sim_utils.RigidBodyMaterialCfg(
-                restitution=0.5,    # reduced from 0.85 to limit chaotic multi-bounce drift
+                restitution=0.85,
+                # "max" combine mode: PhysX effective_r = max(ball_r, paddle_r).
+                # The paddle is loaded from USD so its material cannot be set via
+                # UsdFileCfg.  With combine_mode="max", effective_r = max(0.85, 0.0)
+                # = 0.85 regardless of the paddle's default material — giving the
+                # full 4–5× bounce increase vs the default "average" (0.43).
+                # Real-life equivalent: carbon-fibre plate, acrylic sheet, or
+                # melamine-coated ping-pong table surface on the robot back.
+                restitution_combine_mode="max",
                 static_friction=0.3,
                 dynamic_friction=0.3,
             ),
@@ -136,6 +155,9 @@ class BallBalanceSceneCfg(InteractiveSceneCfg):
     #   radius=0.0625 m (0.125 m diameter), thickness=10 mm, 256 triangles.
     # Physics APIs (RigidBodyAPI, CollisionAPI) are baked into disc.usda so
     # Isaac Lab can find and manage the rigid body correctly.
+    #
+    # UsdFileCfg does not accept physics_material — bounce is controlled via the
+    # ball's restitution_combine_mode instead (see ball config below).
     paddle = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Paddle",
         spawn=sim_utils.UsdFileCfg(
@@ -155,6 +177,13 @@ class BallBalanceSceneCfg(InteractiveSceneCfg):
     # Contact sensor on trunk for base-contact termination
     contact_forces = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/trunk",
+        history_length=3,
+        track_air_time=False,
+    )
+
+    # Foot contact sensors for anti-exploit penalties (see RewardsCfg).
+    foot_contact_forces = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/.*_foot",
         history_length=3,
         track_air_time=False,
     )
@@ -223,7 +252,7 @@ class EventCfg:
         func=mdp.reset_joints_by_scale,
         mode="reset",
         params={
-            "position_range": (0.85, 1.15),  # ±15 % of default — forces generalisation
+            "position_range": (1.0, 1.0),   # no joint randomisation — robot always spawns stably upright
             "velocity_range": (0.0, 0.0),
         },
     )
@@ -262,11 +291,15 @@ class EventCfg:
         },
     )
 
-    # Track trunk with paddle every policy step (kinematic body)
+    # Track trunk with paddle every physics step (kinematic body).
+    # interval = sim.dt = 0.005 s → fires at 200 Hz regardless of decimation.
+    # Using the policy rate (0.02 s) was fine for standing but causes up to 15 ms
+    # of paddle lag during rapid motion, which corrupts ball contact physics in
+    # Phase 2.  Physics-rate tracking costs negligible extra compute.
     update_paddle = EventTerm(
         func=mdp.update_paddle_pose,
         mode="interval",
-        interval_range_s=(0.02, 0.02),
+        interval_range_s=(0.005, 0.005),
         params={
             "paddle_cfg": SceneEntityCfg("paddle"),
             "robot_cfg": SceneEntityCfg("robot"),
@@ -275,6 +308,10 @@ class EventCfg:
     )
 
     # Reset ball above the paddle with Gaussian-randomised height and XY position.
+    #
+    # Spawn curriculum is handled automatically by scripts/rsl_rl/train.py
+    # (_bb_install_curriculum / _bb_apply_stage).  Stages A→D are defined there.
+    # These params reflect Stage A (easy); train.py overwrites them at runtime.
     reset_ball = EventTerm(
         func=mdp.reset_ball_on_paddle,
         mode="reset",
@@ -282,9 +319,9 @@ class EventCfg:
             "ball_cfg": SceneEntityCfg("ball"),
             "paddle_offset_b": _PADDLE_OFFSET_B,
             "ball_radius": _BALL_RADIUS,
-            "xy_std": 0.05,
-            "drop_height_mean": 0.10,
-            "drop_height_std": 0.025,
+            "xy_std": 0.03,
+            "drop_height_mean": 0.08,
+            "drop_height_std": 0.02,
         },
     )
 
@@ -295,113 +332,157 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    # Survival: gated by trunk height AND ball proximity.  The ball gate drops the
-    # alive reward to zero once the ball is >0.40 m from the paddle centre, directly
-    # eliminating the 'move sideways out of the way' exploit.
-    alive = RewTerm(
-        func=mdp.alive_upright,
-        weight=15.0,
-        params={
-            "robot_cfg": SceneEntityCfg("robot"),
-            "min_height": 0.28,
-            "nominal_height": 0.40,
-            "ball_cfg": SceneEntityCfg("ball"),
-            "paddle_offset_b": _PADDLE_OFFSET_B,
-            "ball_inner_radius": 0.15,
-            "ball_max_radius": 0.40,
-        },
-    )
+    # ── Standing / collapse prevention ────────────────────────────────────────
 
-    # Terminal penalty: reduced while robot is still learning to stand.
-    # -50 fired every episode (robot always collapses early) = noisy gradient.
-    early_termination = RewTerm(func=mdp.early_termination_penalty, weight=-50.0)
+    # Survival: +1 every step. Makes longer episodes always better than dying.
+    alive = RewTerm(func=mdp.is_alive, weight=1.0)
 
-    # Secondary: keep ball centred on paddle — measures 3D distance from ideal
-    # resting position (paddle_centre + ball_radius * paddle_normal) so the robot
-    # cannot exploit by tilting to align its paddle normal with the ball.
-    # Weight kept below alive so standing always dominates over active ball control.
-    ball_on_paddle = RewTerm(
-        func=mdp.ball_on_paddle_exp,
-        weight=1.5,
-        params={
-            "std": 0.15,
-            "ball_radius": _BALL_RADIUS,
-            "ball_cfg": SceneEntityCfg("ball"),
-            "robot_cfg": SceneEntityCfg("robot"),
-            "paddle_offset_b": _PADDLE_OFFSET_B,
-            "min_height": 0.28,
-            "nominal_height": 0.40,
-        },
-    )
-
-    # Shaping: penalise lateral ball velocity (gradient when ball starts sliding)
-    ball_lateral_vel = RewTerm(
-        func=mdp.ball_lateral_vel_penalty,
-        weight=-2.0,
-        params={
-            "ball_cfg": SceneEntityCfg("ball"),
-            "robot_cfg": SceneEntityCfg("robot"),
-            "min_height": 0.28,
-            "nominal_height": 0.40,
-        },
-    )
-
-    # Shaping: penalise ball being airborne above paddle (encourages damping bounces)
-    ball_height = RewTerm(
-        func=mdp.ball_height_penalty,
-        weight=-0.5,
-        params={
-            "ball_radius": _BALL_RADIUS,
-            "ball_cfg": SceneEntityCfg("ball"),
-            "robot_cfg": SceneEntityCfg("robot"),
-            "paddle_offset_b": _PADDLE_OFFSET_B,
-            "min_height": 0.28,
-            "nominal_height": 0.40,
-        },
-    )
-
-    # Shaping: penalise trunk dropping below standing height (prevents collapsing)
+    # Height: continuous penalty for trunk below standing height.
     base_height = RewTerm(
         func=mdp.base_height_penalty,
-        weight=-20.0,
+        weight=-5.0,
         params={
-            "min_height": 0.28,
+            "min_height": 0.34,
             "robot_cfg": SceneEntityCfg("robot"),
         },
     )
 
-    # Shaping: penalise trunk tilt.  Reduced from -5.0 — at -5.0 the robot was
-    # over-penalised for the small corrective tilts needed to balance the ball,
-    # making escape more attractive than balancing.
+    # One-shot terminal penalty on ball_off / ball_below termination.
+    # Weight -200 >> max episode alive reward (1500 steps × +1 = 1500), so
+    # losing the ball is always strictly worse than any standing configuration.
+    # Calibrated per Zhuang 2023 (Robot Parkour) and Ji 2023 (DribbleBot).
+    early_termination = RewTerm(
+        func=mdp.early_termination_penalty,
+        weight=-200.0,
+    )
+
+    # ── Ball balancing ────────────────────────────────────────────────────────
+
+    # Gaussian centering reward: exp(-d^2 / 2σ^2) measured in 3D from the
+    # ideal resting position (paddle centre + ball_radius × paddle_normal).
+    # Height-gated so a collapsed robot earns no ball reward.
+    #
+    # Sigma curriculum (ROGER RSS 2025 pattern) — tightened automatically by
+    # scripts/rsl_rl/train.py in lock-step with spawn difficulty:
+    #   Stage A: std=0.25m  (easy, wide kernel)
+    #   Stage B: std=0.15m
+    #   Stage C: std=0.10m
+    #   Stage D: std=0.08m  (tight centering, full juggling)
+    #
+    # time_scale=4: ball reward grows 1× → 5× linearly over the episode,
+    # strongly rewarding sustained balance over short lucky stretches.
+    ball_on_paddle = RewTerm(
+        func=mdp.ball_on_paddle_exp,
+        weight=8.0,
+        params={
+            "std": 0.25,
+            "ball_radius": _BALL_RADIUS,
+            "ball_cfg": SceneEntityCfg("ball"),
+            "robot_cfg": SceneEntityCfg("robot"),
+            "paddle_offset_b": _PADDLE_OFFSET_B,
+            "min_height": 0.34,
+            "nominal_height": 0.40,
+            "time_scale": 4.0,
+        },
+    )
+
+    # Penalise lateral (XY) ball velocity — gradient to damp sliding before
+    # the ball reaches the paddle edge.  Height-gated.  See DribbleBot (Ji 2023).
+    ball_lateral_vel = RewTerm(
+        func=mdp.ball_lateral_vel_penalty,
+        weight=-1.0,
+        params={
+            "ball_cfg": SceneEntityCfg("ball"),
+            "robot_cfg": SceneEntityCfg("robot"),
+            "min_height": 0.34,
+            "nominal_height": 0.40,
+        },
+    )
+
+    # Linear XY-distance penalty: constant gradient at ALL offsets from paddle centre.
+    # The Gaussian ball_on_paddle_exp kernel (std=0.25 m) is nearly flat at Stage A:
+    # at 68 mm offset (80% of paddle radius) the reward is 96.4% of maximum — essentially
+    # no centering gradient.  The Go1 also stands ~1.42° nose-up (front thigh=0.8 rad,
+    # rear=1.0 rad → front hips sit 9 mm higher), creating a rearward gravity component
+    # of 0.24 m/s² along the paddle.  During ball bounces this accumulates into a
+    # stable off-centre equilibrium at the rear.
+    # Weight raised from -2.0 → -5.0: at 68 mm offset this gives -0.34/step penalty
+    # (-510 over 1500 steps), strong enough to overcome the rearward physical bias at all
+    # curriculum stages.  (DribbleBot Ji 2023; ROGER Portela 2025 use similar linear term.)
+    ball_xy_dist = RewTerm(
+        func=mdp.ball_xy_dist_penalty,
+        weight=-5.0,
+        params={
+            "ball_cfg": SceneEntityCfg("ball"),
+            "robot_cfg": SceneEntityCfg("robot"),
+            "paddle_offset_b": _PADDLE_OFFSET_B,
+            "min_height": 0.34,
+            "nominal_height": 0.40,
+        },
+    )
+
+    # ball_height penalty removed: with restitution=0.85 the ball naturally
+    # bounces 3-4 cm on every contact.  Penalising all airborne height would
+    # fire constantly and fight the physics.  Re-introduce in Stage 2 once
+    # bouncing is rewarded (target: consistent apex height rather than damp).
+
+    # ── Posture ───────────────────────────────────────────────────────────────
+
+    # Penalise roll/pitch via projected gravity XY magnitude.  More numerically
+    # stable than quaternion deviation (Walk These Ways, Margolis 2022).
+    # Weight raised from -2.0 → -4.0: Go1's default stance is 1.42° nose-up (front
+    # thighs 0.8 rad vs rear 1.0 rad), creating a rearward gravity component on the
+    # paddle.  Stronger tilt penalty encourages the policy to actively level the trunk.
     trunk_tilt = RewTerm(
         func=mdp.trunk_tilt_penalty,
-        weight=-2.0,
+        weight=-4.0,
         params={"robot_cfg": SceneEntityCfg("robot")},
     )
 
-    # Shaping: light discouragement of body motion (10x reduced — standing requires
-    # active control and corrections; heavy penalties here cause passive collapse)
-    # Increased sharply: lateral escape costs ~1.5/step at 0.5 m/s vs ~0 before.
+    # ── Regularisation ────────────────────────────────────────────────────────
+
+    # Light trunk motion penalties: prevent body-swing exploitation (DribbleBot).
     body_lin_vel = RewTerm(
         func=mdp.body_lin_vel_penalty,
-        weight=-3.0,
+        weight=-0.10,
         params={"robot_cfg": SceneEntityCfg("robot")},
     )
     body_ang_vel = RewTerm(
         func=mdp.body_ang_vel_penalty,
-        weight=-0.5,
+        weight=-0.05,
         params={"robot_cfg": SceneEntityCfg("robot")},
     )
 
-    # Regularisation: penalise rapid changes in joint targets — kept light so the
-    # policy can still make corrective ball-tracking movements without freezing.
+    # Smooth joint commands without freezing the policy.
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
 
-    # Regularisation: penalise joint effort (smooths policy, avoids violent motions)
+    # Joint effort regularisation for hardware efficiency.
     joint_torques = RewTerm(
         func=mdp.joint_torques_l2,
-        weight=-2.0e-4,
+        weight=-2e-4,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+    )
+
+    # ── Anti-exploit penalties ─────────────────────────────────────────────────
+
+    # Prevent leg-extension exploit: robot fully extends all 4 legs to raise
+    # trunk to ~0.47-0.50 m (vs natural 0.40 m).  Balance task uses tighter
+    # ceiling than juggling (0.43 m vs 0.45 m) because no active trunk thrust
+    # is needed — the robot should hold a natural still stance.
+    # At 4 cm over (0.47 m trunk): -0.20/step = -300/episode.
+    base_height_max = RewTerm(
+        func=mdp.base_height_max_penalty,
+        weight=-5.0,
+        params={"max_height": 0.43, "robot_cfg": SceneEntityCfg("robot")},
+    )
+
+    # Prevent kickstand exploit: one leg splayed sideways for lateral stability.
+    # Penalises count of airborne feet (0-4) at weight -0.5/foot.
+    # One kickstand foot = -750/episode ≈ 50% of alive reward.
+    foot_contact = RewTerm(
+        func=mdp.feet_off_ground_penalty,
+        weight=-0.5,
+        params={"foot_contact_cfg": SceneEntityCfg("foot_contact_forces")},
     )
 
 
@@ -411,19 +492,26 @@ class RewardsCfg:
 
 @configclass
 class TerminationsCfg:
+    # Natural episode end.
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
-    ball_off_paddle = DoneTerm(
+    # Ball drifts too far from paddle centre (XY distance > 500 mm).
+    # 500 mm gives the robot room to catch the ball during high-energy bounces
+    # (Stage F/G: 80-100 cm drops, bounce arc can carry ball 300-400 mm from
+    # centre before it descends back).  Paddle radius is 85 mm; termination
+    # fires well outside the paddle edge in all cases.
+    ball_off = DoneTerm(
         func=mdp.ball_off_paddle,
         params={
-            "radius": 0.30,
+            "radius": 0.50,
             "ball_cfg": SceneEntityCfg("ball"),
             "robot_cfg": SceneEntityCfg("robot"),
             "paddle_offset_b": _PADDLE_OFFSET_B,
         },
     )
 
-    ball_below_paddle = DoneTerm(
+    # Ball drops below the paddle surface (ball has fallen off the edge).
+    ball_below = DoneTerm(
         func=mdp.ball_below_paddle,
         params={
             "min_height_offset": -0.05,
@@ -432,12 +520,6 @@ class TerminationsCfg:
             "paddle_offset_b": _PADDLE_OFFSET_B,
         },
     )
-
-    # base_contact intentionally removed from training — early in training the
-    # robot always falls, which causes instant termination before the ball ever
-    # reaches the paddle, giving zero learning signal.  The height penalty
-    # (base_height in RewardsCfg) discourages collapsing instead.
-    # base_contact is re-enabled in BallBalanceEnvCfg_PLAY for evaluation.
 
 
 # ---------------------------------------------------------------------------
@@ -455,7 +537,7 @@ class BallBalanceEnvCfg(ManagerBasedRLEnvCfg):
 
     def __post_init__(self):
         self.decimation = 4              # policy runs at 50 Hz (sim at 200 Hz)
-        self.episode_length_s = 100.0   # 5 000 steps — long enough to learn sustained balance
+        self.episode_length_s = 30.0    # 1 500 steps — at the top of current performance plateau
         self.sim.dt = 1.0 / 200.0
         self.sim.render_interval = self.decimation
         self.viewer.eye = (2.0, 2.0, 1.5)
@@ -472,9 +554,11 @@ class BallBalanceEnvCfg_PLAY(BallBalanceEnvCfg):
         self.scene.num_envs = 16
         self.scene.env_spacing = 3.5
         self.observations.policy.enable_corruption = False
-        # Spawn ball at fixed centre with short fixed drop for play evaluation
-        self.events.reset_ball.params["xy_std"] = 0.0
-        self.events.reset_ball.params["drop_height_std"] = 0.0
-        # Don't end the episode just because an early policy squats — lets us
-        # observe ball behaviour even with an undertrained policy
-        self.terminations.base_contact = None
+        # Use final-stage (Stage G) spawn parameters so play videos show the
+        # hardest curriculum conditions the policy was trained on.
+        # Without this the play script uses Stage A defaults (drop=0.08 m, σ=0.25)
+        # making the ball look like it barely moves.
+        self.events.reset_ball.params["drop_height_mean"] = 1.00   # Stage G
+        self.events.reset_ball.params["drop_height_std"] = 0.0     # no spread for clean demo
+        self.events.reset_ball.params["xy_std"] = 0.0              # centred for demo
+        self.rewards.ball_on_paddle.params["std"] = 0.08           # Stage G sigma
