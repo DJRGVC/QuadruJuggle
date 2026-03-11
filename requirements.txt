@@ -1,0 +1,23 @@
+# Isaac Lab & Omniverse — install via Isaac Lab's installer, not pip.
+# See: https://isaac-sim.github.io/IsaacLab/main/source/setup/installation.html
+# isaaclab
+# isaaclab_rl
+# isaaclab_tasks
+# isaaclab_assets
+# isaacsim
+
+# Core
+torch
+numpy
+gymnasium
+
+# RL training
+rsl_rl
+
+# Visualization & utilities
+tensorboard
+matplotlib
+fpdf
+psutil
+toml
+packaging

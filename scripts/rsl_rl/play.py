@@ -50,6 +50,7 @@ parser.add_argument(
 # Pre-stripping avoids this.
 _record_traj_path = None
 _record_steps = 600          # default: 3 s at 200 Hz physics rate; override with --record-steps N
+_pi2_checkpoint_path = None  # for hierarchical tasks: path to frozen pi2 checkpoint
 _clean_argv = []
 _i = 0
 while _i < len(sys.argv):
@@ -58,6 +59,9 @@ while _i < len(sys.argv):
         _i += 2
     elif sys.argv[_i] in ("--record-steps", "--record_steps") and _i + 1 < len(sys.argv):
         _record_steps = int(sys.argv[_i + 1])
+        _i += 2
+    elif sys.argv[_i] in ("--pi2-checkpoint", "--pi2_checkpoint") and _i + 1 < len(sys.argv):
+        _pi2_checkpoint_path = sys.argv[_i + 1]
         _i += 2
     else:
         _clean_argv.append(sys.argv[_i])
@@ -157,8 +161,18 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     else:
         _n_sub_steps = 1
 
+    # Inject pi2 checkpoint for hierarchical tasks
+    if _pi2_checkpoint_path is not None:
+        if hasattr(env_cfg, "actions") and hasattr(env_cfg.actions, "torso_cmd"):
+            env_cfg.actions.torso_cmd.pi2_checkpoint = os.path.abspath(_pi2_checkpoint_path)
+            print(f"[INFO] pi2 checkpoint: {env_cfg.actions.torso_cmd.pi2_checkpoint}")
+
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+
+    # Enable smooth command interpolation for torso-tracking play
+    if hasattr(env_cfg, "_torso_smooth_enabled") and env_cfg._torso_smooth_enabled:
+        env.unwrapped._torso_smooth_enabled = True
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):
@@ -291,8 +305,29 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                         if sleep_s > 0:
                             time.sleep(sleep_s)
 
+        timestep += 1
+
+        # Torso-tracking telemetry: print commanded vs actual values for env 0
+        _uw = env.unwrapped
+        if hasattr(_uw, "_torso_cmd") and timestep % 20 == 0:
+            import isaaclab.utils.math as _math_utils
+            _robot = _uw.scene["robot"]
+            _cmd = _uw._torso_cmd[0].cpu()
+            _z = _robot.data.root_pos_w[0, 2].item()
+            _zd = _robot.data.root_lin_vel_w[0, 2].item()
+            _r, _p, _ = _math_utils.euler_xyz_from_quat(_robot.data.root_quat_w[0:1])
+            _wr = _robot.data.root_ang_vel_b[0, 0].item()
+            _wp = _robot.data.root_ang_vel_b[0, 1].item()
+            print(
+                f"[TORSO] cmd h={_cmd[0]:.3f} act={_z:.3f} | "
+                f"hd={_cmd[1]:.2f} act={_zd:.2f} | "
+                f"roll={_cmd[2]:.2f} act={_r[0]:.2f} | "
+                f"pitch={_cmd[3]:.2f} act={_p[0]:.2f} | "
+                f"wr={_cmd[4]:.1f} act={_wr:.1f} | "
+                f"wp={_cmd[5]:.1f} act={_wp:.1f}"
+            )
+
         if args_cli.video:
-            timestep += 1
             # Exit the play loop after recording one video
             if timestep == args_cli.video_length:
                 break
