@@ -1,12 +1,42 @@
-# Isaac Lab & Omniverse — install via Isaac Lab's installer, not pip.
-# See: https://isaac-sim.github.io/IsaacLab/main/source/setup/installation.html
-# isaaclab
-# isaaclab_rl
-# isaaclab_tasks
-# isaaclab_assets
-# isaacsim
+# =============================================================================
+# QuadruJuggle — Dependency Installation Guide
+# =============================================================================
+#
+# STEP 1: Install Isaac Lab (includes Isaac Sim, PyTorch, and core Omniverse packages)
+#
+#   Isaac Lab bundles its own Python 3.11 venv with torch, numpy, gymnasium, etc.
+#   Follow the official installation guide:
+#     https://isaac-sim.github.io/IsaacLab/main/source/setup/installation.html
+#
+#   TL;DR (Linux, pip workflow):
+#     1. Clone Isaac Lab:        git clone https://github.com/isaac-sim/IsaacLab.git
+#     2. Create the venv:        cd IsaacLab && python3.11 -m venv .venv311
+#     3. Activate it:            source .venv311/bin/activate
+#     4. Run the installer:      ./isaaclab.sh --install   # installs isaacsim + isaaclab + extensions
+#
+#   This gives you: isaaclab, isaaclab_rl, isaaclab_tasks, isaaclab_assets, isaacsim,
+#   torch, numpy, gymnasium — all pre-configured for GPU simulation.
+#
+# STEP 2: Install this project's extension (inside the same venv)
+#
+#     cd <this-repo>/source/go1_ball_balance
+#     pip install -e .
+#
+# STEP 3: Install remaining pip dependencies
+#
+#     pip install -r requirements.txt
+#
+# STEP 4: Running training / visualization
+#
+#   Always use `uv run --active` to ensure the Isaac Lab venv is respected:
+#     uv run --active python scripts/rsl_rl/train.py --task Isaac-BallBalance-Go1-v0 --num_envs 4096 --headless
+#     uv run --active python scripts/rsl_rl/play.py  --task Isaac-BallBalance-Go1-Play-v0 --num_envs 16
+#
+#   If you don't have uv, plain `python` works as long as the .venv311 venv is activated.
+#
+# =============================================================================
 
-# Core
+# Core (already installed by Isaac Lab, listed here for completeness)
 torch
 numpy
 gymnasium
