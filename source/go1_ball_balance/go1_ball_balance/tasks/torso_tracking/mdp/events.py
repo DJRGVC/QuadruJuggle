@@ -92,8 +92,8 @@ def _place_velocity_arrow(
     arrow_quat = math_utils.quat_from_euler_xyz(zeros, half_pi, vel_angle_w)
 
     # Arrow base = paddle centre + (paddle_radius + margin) in velocity dir
-    # Then offset another half-arrow-length (0.125m) so base is at the edge
-    total_offset = paddle_radius + margin + 0.125  # edge + margin + half arrow
+    # Then offset another half-arrow-length (0.15m) so base is at the edge
+    total_offset = paddle_radius + margin + 0.15  # edge + margin + half arrow
     pos = paddle_pos_w.clone()
     pos[:, 0] += total_offset * torch.cos(vel_angle_w)
     pos[:, 1] += total_offset * torch.sin(vel_angle_w)

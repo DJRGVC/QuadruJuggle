@@ -180,8 +180,8 @@ class TorsoTrackingSceneCfg(InteractiveSceneCfg):
     cmd_velocity_arrow = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/CmdVelocityArrow",
         spawn=sim_utils.CylinderCfg(
-            radius=0.006,
-            height=0.25,
+            radius=0.012,
+            height=0.30,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 kinematic_enabled=True,
                 disable_gravity=True,
@@ -201,8 +201,8 @@ class TorsoTrackingSceneCfg(InteractiveSceneCfg):
     actual_velocity_arrow = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/ActualVelocityArrow",
         spawn=sim_utils.CylinderCfg(
-            radius=0.006,
-            height=0.25,
+            radius=0.012,
+            height=0.30,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 kinematic_enabled=True,
                 disable_gravity=True,
@@ -369,7 +369,7 @@ class EventCfg:
             "robot_cfg": SceneEntityCfg("robot"),
             "paddle_offset_b": _PADDLE_OFFSET_B,
             "paddle_radius": 0.085,
-            "margin": 0.20,
+            "margin": 0.05,
         },
     )
 
@@ -598,7 +598,7 @@ class TorsoTrackingEnvCfg_PLAY(TorsoTrackingEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.num_envs = 5
-        self.scene.env_spacing = 5.0   # wide spacing — robots walk around
+        self.scene.env_spacing = 1.5   # tight spacing for playback viewing
         self.observations.policy.enable_corruption = False
         # Resample from full Stage C ranges every 5-10s (same as training)
         self.events.resample_commands_interval.interval_range_s = (2.0, 5.0)
