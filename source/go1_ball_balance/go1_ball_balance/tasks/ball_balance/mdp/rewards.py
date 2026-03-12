@@ -430,3 +430,38 @@ def feet_off_ground_penalty(
     force_mags = torch.norm(sensor.data.net_forces_w, dim=-1)  # (N, 4)
     airborne   = (force_mags < min_force).float()               # (N, 4)
     return airborne.sum(dim=-1)                                  # (N,)
+
+
+def feet_slide_penalty(
+    env: ManagerBasedRLEnv,
+    foot_contact_cfg: SceneEntityCfg = SceneEntityCfg("foot_contact_forces"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    min_force: float = 1.0,
+) -> torch.Tensor:
+    """Penalise feet sliding on the ground (XY velocity while in contact).
+
+    Returns the sum of foot XY speed across all feet that are in contact
+    (force > min_force).  A perfectly planted foot returns 0; a sliding foot
+    returns its planar speed in m/s.
+
+    Based on Isaac Lab's ``feet_slide`` (locomotion/velocity) and Spot's
+    ``foot_slip_penalty``.  Academic basis: Ji et al. DribbleBot (ICRA 2023).
+
+    Requires:
+        - ``foot_contact_forces`` ContactSensorCfg on ``.*_foot``
+        - ``robot`` Articulation with body names matching ``.*_foot``
+    """
+    sensor: ContactSensor = env.scene[foot_contact_cfg.name]
+    robot: Articulation = env.scene[robot_cfg.name]
+
+    # Contact detection: force > threshold over recent history
+    force_history = sensor.data.net_forces_w_history  # (N, history, num_feet, 3)
+    in_contact = force_history.norm(dim=-1).max(dim=1)[0] > min_force  # (N, num_feet)
+
+    # Foot XY velocity (body_lin_vel_w includes all bodies; foot bodies are last 4)
+    foot_body_ids = robot_cfg.body_ids if robot_cfg.body_ids != slice(None) else slice(-4, None)
+    foot_vel_xy = robot.data.body_lin_vel_w[:, foot_body_ids, :2]  # (N, 4, 2)
+    foot_speed_xy = foot_vel_xy.norm(dim=-1)  # (N, 4)
+
+    # Only penalise when foot is in contact
+    return (in_contact.float() * foot_speed_xy).sum(dim=-1)  # (N,)

@@ -1,4 +1,4 @@
-"""Hierarchical ball-juggle task — pi1 outputs 6D torso commands, frozen pi2 converts to joints."""
+"""Hierarchical ball-juggle task — pi1 outputs 8D torso commands, frozen pi2 converts to joints."""
 
 import gymnasium as gym
 

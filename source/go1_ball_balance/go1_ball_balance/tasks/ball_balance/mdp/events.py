@@ -105,6 +105,37 @@ def reset_ball_on_paddle(
     ball.write_root_velocity_to_sim(vel, env_ids=env_ids)
 
 
+def randomize_target_apex(
+    env: ManagerBasedRLEnv,
+    env_ids: torch.Tensor,
+    target_min: float = 0.30,
+    target_max: float = 1.00,
+    sigma_ratio: float = 2.5,
+) -> None:
+    """Randomize per-env target apex height at episode reset.
+
+    Samples target_height uniformly from [target_min, target_max] for each
+    reset env.  Sigma is derived as target / sigma_ratio to maintain the
+    target/σ ≥ 2.0 invariant.
+
+    Creates ``env._target_apex_heights`` and ``env._target_apex_sigmas``
+    buffers on first call.  The ball_apex_height_reward and
+    target_apex_height_obs functions read from these buffers when present.
+    """
+    if not hasattr(env, "_target_apex_heights"):
+        mid = (target_min + target_max) / 2.0
+        env._target_apex_heights = torch.full(
+            (env.num_envs,), mid, device=env.device, dtype=torch.float32,
+        )
+        env._target_apex_sigmas = torch.full(
+            (env.num_envs,), mid / sigma_ratio, device=env.device, dtype=torch.float32,
+        )
+
+    targets = torch.empty(len(env_ids), device=env.device).uniform_(target_min, target_max)
+    env._target_apex_heights[env_ids] = targets
+    env._target_apex_sigmas[env_ids] = targets / sigma_ratio
+
+
 def update_paddle_pose(
     env: ManagerBasedRLEnv,
     env_ids: torch.Tensor,

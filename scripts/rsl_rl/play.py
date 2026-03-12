@@ -51,6 +51,7 @@ parser.add_argument(
 _record_traj_path = None
 _record_steps = 600          # default: 3 s at 200 Hz physics rate; override with --record-steps N
 _pi2_checkpoint_path = None  # for hierarchical tasks: path to frozen pi2 checkpoint
+_max_vxy = None              # override: force vxy commands to ±this value (e.g. 0.5)
 _clean_argv = []
 _i = 0
 while _i < len(sys.argv):
@@ -62,6 +63,9 @@ while _i < len(sys.argv):
         _i += 2
     elif sys.argv[_i] in ("--pi2-checkpoint", "--pi2_checkpoint") and _i + 1 < len(sys.argv):
         _pi2_checkpoint_path = sys.argv[_i + 1]
+        _i += 2
+    elif sys.argv[_i] in ("--max-vxy", "--max_vxy") and _i + 1 < len(sys.argv):
+        _max_vxy = float(sys.argv[_i + 1])
         _i += 2
     else:
         _clean_argv.append(sys.argv[_i])
@@ -174,6 +178,21 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if hasattr(env_cfg, "_torso_smooth_enabled") and env_cfg._torso_smooth_enabled:
         env.unwrapped._torso_smooth_enabled = True
 
+    # Enable circle command pattern for torso-tracking play
+    if hasattr(env_cfg, "_torso_circle_enabled") and env_cfg._torso_circle_enabled:
+        env.unwrapped._torso_circle_enabled = True
+
+    # Override vxy command ranges if --max-vxy is set
+    if _max_vxy is not None and hasattr(env.unwrapped, "_torso_cmd_ranges"):
+        env.unwrapped._torso_cmd_ranges["vx"] = [-_max_vxy, _max_vxy]
+        env.unwrapped._torso_cmd_ranges["vy"] = [-_max_vxy, _max_vxy]
+        print(f"[INFO] Overriding vxy command range to ±{_max_vxy:.2f} m/s")
+    elif _max_vxy is not None:
+        # Buffer not created yet — it will be created on first resample;
+        # store the override so _ensure_cmd_buffer picks it up
+        env.unwrapped._max_vxy_override = _max_vxy
+        print(f"[INFO] Will override vxy command range to ±{_max_vxy:.2f} m/s (deferred)")
+
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):
         env = multi_agent_to_single_agent(env)
@@ -193,7 +212,24 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # wrap around environment for rsl-rl
     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
-    print(f"[INFO]: Loading model checkpoint from: {resume_path}")
+    # ── Banner: show exactly which checkpoint is being played ──────────────
+    from datetime import datetime as _dt
+    _ckpt_mtime = os.path.getmtime(resume_path)
+    _ckpt_time_str = _dt.fromtimestamp(_ckpt_mtime).strftime("%Y-%m-%d %H:%M:%S")
+    _run_dir = os.path.basename(os.path.dirname(resume_path))
+    _ckpt_name = os.path.basename(resume_path)
+    print(
+        "\n"
+        "╔══════════════════════════════════════════════════════════════════╗\n"
+        f"║  PLAYING CHECKPOINT                                            ║\n"
+        f"║  Task:  {task_name:<56}║\n"
+        f"║  Run:   {_run_dir:<56}║\n"
+        f"║  File:  {_ckpt_name:<56}║\n"
+        f"║  Saved: {_ckpt_time_str:<56}║\n"
+        f"║  Path:  {resume_path[-56:]:<56}║\n"
+        "╚══════════════════════════════════════════════════════════════════╝"
+    )
+
     # load previously trained model
     if agent_cfg.class_name == "OnPolicyRunner":
         runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
@@ -318,13 +354,19 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             _r, _p, _ = _math_utils.euler_xyz_from_quat(_robot.data.root_quat_w[0:1])
             _wr = _robot.data.root_ang_vel_b[0, 0].item()
             _wp = _robot.data.root_ang_vel_b[0, 1].item()
+            _vx = _robot.data.root_lin_vel_b[0, 0].item()
+            _vy = _robot.data.root_lin_vel_b[0, 1].item()
+            _vx_cmd = _cmd[6].item() if _cmd.shape[0] > 6 else 0.0
+            _vy_cmd = _cmd[7].item() if _cmd.shape[0] > 7 else 0.0
             print(
                 f"[TORSO] cmd h={_cmd[0]:.3f} act={_z:.3f} | "
                 f"hd={_cmd[1]:.2f} act={_zd:.2f} | "
                 f"roll={_cmd[2]:.2f} act={_r[0]:.2f} | "
                 f"pitch={_cmd[3]:.2f} act={_p[0]:.2f} | "
                 f"wr={_cmd[4]:.1f} act={_wr:.1f} | "
-                f"wp={_cmd[5]:.1f} act={_wp:.1f}"
+                f"wp={_cmd[5]:.1f} act={_wp:.1f} | "
+                f"vx={_vx_cmd:.2f} act={_vx:.2f} | "
+                f"vy={_vy_cmd:.2f} act={_vy:.2f}"
             )
 
         if args_cli.video:

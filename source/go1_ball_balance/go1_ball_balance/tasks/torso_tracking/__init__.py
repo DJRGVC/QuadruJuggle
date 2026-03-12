@@ -1,4 +1,4 @@
-"""Torso-tracking task — Go1 tracks 6D torso pose/velocity commands (pi2)."""
+"""Torso-tracking task — Go1 tracks 8D torso pose/velocity commands (pi2)."""
 
 import gymnasium as gym
 

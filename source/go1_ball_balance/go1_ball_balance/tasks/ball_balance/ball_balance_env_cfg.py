@@ -545,6 +545,7 @@ class BallBalanceEnvCfg(ManagerBasedRLEnvCfg):
         # PhysX GPU contact patch buffer — default is too small for 12k+ envs
         # with ball+paddle+robot contacts.  Set well above the observed peak (~255k).
         self.sim.physx.gpu_max_rigid_patch_count = 400000
+        self.sim.physx.enable_ccd = True
 
 
 @configclass

@@ -1,7 +1,7 @@
 """RSL-RL PPO runner config for the hierarchical ball-juggle task (pi1).
 
 pi1 is the high-level ball planner: it observes ball state + proprioception
-and outputs 6D torso commands.  The action space is simpler (6D vs 12D) but
+and outputs 8D torso commands.  The action space is simpler (8D vs 12D) but
 the planning task is more complex, so we use 3 hidden layers.
 """
 
@@ -18,16 +18,20 @@ class BallJuggleHierPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     empirical_normalization = False
 
     policy = RslRlPpoActorCriticCfg(
-        init_noise_std=1.0,
-        actor_hidden_dims=[256, 128, 64],   # 3 layers for complex planning task
-        critic_hidden_dims=[256, 128, 64],
+        init_noise_std=0.5,
+        # 1.0→0.5: pi2 amplifies noise via _CMD_SCALES (up to 4.0×); 1.0 sends OOD
+        # commands (±8 rad/s omega) that crash pi2 immediately.  0.5 keeps 95% of
+        # initial commands within pi2's training range.
+        actor_hidden_dims=[256, 128],   # 2 layers — match pi2 architecture
+        critic_hidden_dims=[256, 128],
         activation="elu",
     )
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
-        entropy_coef=0.01,
+        entropy_coef=0.005,
+        # 0.01→0.005: same entropy explosion fix as pi2 (noise_std grew unbounded)
         num_learning_epochs=5,
         num_mini_batches=4,
         learning_rate=1.0e-3,

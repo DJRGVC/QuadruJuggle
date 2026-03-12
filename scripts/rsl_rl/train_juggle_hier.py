@@ -3,7 +3,7 @@
 
 """Train pi1 (ball planner) for the hierarchical ball-juggle task.
 
-pi1 outputs 6D torso commands; frozen pi2 (torso tracker) converts them
+pi1 outputs 8D torso commands; frozen pi2 (torso tracker) converts them
 to 12D joint targets.  The pi2 checkpoint must be provided via --pi2-checkpoint.
 
 Uses the same 14-stage juggling curriculum as train_juggle.py.
@@ -37,6 +37,10 @@ parser.add_argument("--ray-proc-id", "-rid", type=int, default=None)
 parser.add_argument(
     "--pi2-checkpoint", type=str, required=True,
     help="Path to the trained pi2 (torso-tracking) checkpoint.",
+)
+parser.add_argument(
+    "--start-stage", type=int, default=0,
+    help="Curriculum stage to start from (0=A, 13=N, etc.). Use with --resume for hot restarts.",
 )
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
@@ -100,31 +104,42 @@ torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = False
 
 
-# ── Juggling curriculum (same 14 stages as flat train_juggle.py) ─────────────
+# ── Juggling curriculum (tight σ + target randomization) ──────────────────────
+# Key invariant: target/σ ≥ 2.0 at every stage.  When target < 2σ the Gaussian
+# reward at h=0 (ball sitting on paddle) is > 0.13 — high enough that the policy
+# learns to balance instead of juggle, then stalls when σ eventually tightens.
+#
+# Per-env target randomization: each stage specifies (target_min, target_max).
+# Early stages use fixed targets (min=max) to learn basic bouncing.  Starting
+# at Stage I, the range expands so the policy learns to handle varied heights.
+# By Stage P the full [0.30, 1.00] range is active.  σ = target / sigma_ratio
+# per env, maintaining the target/σ invariant regardless of sampled height.
 _BJ_STAGES = [
-    # target_h  sigma   xy_std  vel_xy_std
-    (0.10,      0.20,   0.020,  0.00),   # A
-    (0.17,      0.18,   0.025,  0.00),   # B
-    (0.24,      0.15,   0.028,  0.00),   # C
-    (0.32,      0.13,   0.032,  0.00),   # D
-    (0.40,      0.11,   0.036,  0.00),   # E
-    (0.48,      0.10,   0.040,  0.00),   # F
-    (0.56,      0.09,   0.045,  0.02),   # G
-    (0.64,      0.08,   0.050,  0.04),   # H
-    (0.72,      0.07,   0.055,  0.06),   # I
-    (0.80,      0.07,   0.060,  0.08),   # J
-    (0.86,      0.06,   0.068,  0.10),   # K
-    (0.92,      0.06,   0.075,  0.12),   # L
-    (0.96,      0.05,   0.082,  0.15),   # M
-    (1.00,      0.05,   0.090,  0.18),   # N
+    # tgt_min  tgt_max  σ_ratio  xy_std  vel_xy_std
+    (0.05,     0.05,    2.0,     0.020,  0.00),   # A  — bootstrap bounce, fixed
+    (0.10,     0.10,    2.5,     0.022,  0.00),   # B  — fixed
+    (0.15,     0.15,    2.5,     0.025,  0.00),   # C  — fixed
+    (0.20,     0.20,    2.5,     0.028,  0.00),   # D  — fixed
+    (0.25,     0.25,    2.5,     0.030,  0.00),   # E  — fixed
+    (0.30,     0.30,    2.5,     0.033,  0.00),   # F  — fixed
+    (0.36,     0.36,    2.5,     0.036,  0.00),   # G  — fixed
+    (0.42,     0.42,    2.5,     0.040,  0.00),   # H  — fixed
+    (0.30,     0.48,    2.5,     0.045,  0.02),   # I  — range begins, lateral vel
+    (0.30,     0.55,    2.5,     0.050,  0.04),   # J
+    (0.30,     0.62,    2.5,     0.055,  0.06),   # K
+    (0.30,     0.70,    2.5,     0.060,  0.08),   # L
+    (0.30,     0.78,    2.5,     0.068,  0.10),   # M
+    (0.30,     0.86,    2.5,     0.075,  0.12),   # N
+    (0.30,     0.92,    2.5,     0.082,  0.15),   # O
+    (0.30,     1.00,    2.5,     0.090,  0.18),   # P  — full range
 ]
 _BJ_THRESHOLD      = 0.75
 _BJ_APEX_THRESHOLD = 5.0
-_BJ_SUSTAIN    = 15
-_BJ_TRANSITION = 10
+_BJ_SUSTAIN    = 20    # was 15 — require stronger mastery before advancing
+_BJ_TRANSITION = 15    # was 10 — slower parameter blending
 
 # Early stopping
-_ES_PATIENCE = 300     # longer patience for hierarchical (pi2 adds lag)
+_ES_PATIENCE = 700     # longer patience for hierarchical (pi2 adds lag)
 _ES_MIN_DELTA = 0.5
 
 
@@ -133,32 +148,45 @@ class EarlyStopException(Exception):
 
 
 def _bj_set_params(
-    rl_env, target_h: float, sigma: float, xy_std: float, vel_xy_std: float
+    rl_env,
+    target_min: float, target_max: float, sigma_ratio: float,
+    xy_std: float, vel_xy_std: float,
 ) -> None:
-    """Write reward and event params directly."""
-    for i, name in enumerate(rl_env.reward_manager._term_names):
-        if name == "ball_apex_height":
-            rl_env.reward_manager._term_cfgs[i].params["target_height"] = target_h
-            rl_env.reward_manager._term_cfgs[i].params["std"] = sigma
-            break
+    """Write per-env target range and event params directly."""
+    # Update the randomize_target_apex event params
     for term_cfg in rl_env.event_manager._mode_term_cfgs.get("reset", []):
+        if hasattr(term_cfg, "params") and "target_min" in (term_cfg.params or {}):
+            term_cfg.params["target_min"] = target_min
+            term_cfg.params["target_max"] = target_max
+            term_cfg.params["sigma_ratio"] = sigma_ratio
         if hasattr(term_cfg, "params") and "xy_std" in (term_cfg.params or {}):
             term_cfg.params["xy_std"] = xy_std
         if hasattr(term_cfg, "params") and "vel_xy_std" in (term_cfg.params or {}):
             term_cfg.params["vel_xy_std"] = vel_xy_std
+    # Also update scalar fallbacks in reward params (used if per-env buffers not yet created)
+    mid = (target_min + target_max) / 2.0
+    for i, name in enumerate(rl_env.reward_manager._term_names):
+        if name == "ball_apex_height":
+            rl_env.reward_manager._term_cfgs[i].params["target_height"] = mid
+            rl_env.reward_manager._term_cfgs[i].params["std"] = mid / sigma_ratio
+            break
 
 
 def _bj_apply_stage(rl_env, stage_idx: int) -> None:
-    target_h, sigma, xy_std, vel_xy_std = _BJ_STAGES[stage_idx]
-    _bj_set_params(rl_env, target_h, sigma, xy_std, vel_xy_std)
+    tgt_min, tgt_max, sigma_ratio, xy_std, vel_xy_std = _BJ_STAGES[stage_idx]
+    _bj_set_params(rl_env, tgt_min, tgt_max, sigma_ratio, xy_std, vel_xy_std)
+    if tgt_min == tgt_max:
+        tgt_str = f"target={tgt_min:.2f} m (fixed)"
+    else:
+        tgt_str = f"target=[{tgt_min:.2f}, {tgt_max:.2f}] m"
     print(
         f"\n[HIER-JUGGLE-CURRICULUM] Stage {stage_idx}/{len(_BJ_STAGES) - 1}  "
-        f"target={target_h:.2f} m  sigma={sigma:.3f} m  "
+        f"{tgt_str}  σ_ratio={sigma_ratio:.1f}  "
         f"xy_std={xy_std:.3f} m  vel_xy={vel_xy_std:.3f} m/s\n"
     )
 
 
-def _bj_install_curriculum(runner) -> None:
+def _bj_install_curriculum(runner, start_stage: int = 0) -> None:
     """Monkey-patch runner.log() for juggling curriculum + early stopping."""
     try:
         rl_env = runner.env.unwrapped
@@ -166,10 +194,12 @@ def _bj_install_curriculum(runner) -> None:
         print("[HIER-JUGGLE-CURRICULUM] Could not access unwrapped env — curriculum disabled.")
         return
 
+    start_stage = max(0, min(start_stage, len(_BJ_STAGES) - 1))
+
     original_log = runner.log
-    _STAGE_LETTERS = "ABCDEFGHIJKLMN"
+    _STAGE_LETTERS = "ABCDEFGHIJKLMNOP"
     state = {
-        "stage":       0,
+        "stage":       start_stage,
         "above_count": 0,
         "stage_iter":  0,
         "old_stage":   None,
@@ -177,6 +207,10 @@ def _bj_install_curriculum(runner) -> None:
         "best_reward": float("-inf"),
         "no_improve":  0,
     }
+
+    # Apply start stage parameters immediately
+    if start_stage > 0:
+        _bj_apply_stage(rl_env, start_stage)
 
     log_dir = getattr(runner, "log_dir", None)
 
@@ -197,10 +231,11 @@ def _bj_install_curriculum(runner) -> None:
             n = _BJ_STAGES[s]
             _bj_set_params(
                 rl_env,
-                target_h   = o[0] + alpha * (n[0] - o[0]),
-                sigma      = o[1] + alpha * (n[1] - o[1]),
-                xy_std     = o[2] + alpha * (n[2] - o[2]),
-                vel_xy_std = o[3] + alpha * (n[3] - o[3]),
+                target_min  = o[0] + alpha * (n[0] - o[0]),
+                target_max  = o[1] + alpha * (n[1] - o[1]),
+                sigma_ratio = o[2] + alpha * (n[2] - o[2]),
+                xy_std      = o[3] + alpha * (n[3] - o[3]),
+                vel_xy_std  = o[4] + alpha * (n[4] - o[4]),
             )
             if state["trans_iter"] >= _BJ_TRANSITION:
                 state["old_stage"] = None
@@ -241,47 +276,55 @@ def _bj_install_curriculum(runner) -> None:
                 label = _STAGE_LETTERS[s] if s < len(_STAGE_LETTERS) else str(s)
                 final = s >= len(_BJ_STAGES) - 1
                 n = _BJ_STAGES[s]
+                if n[0] == n[1]:
+                    tgt_str = f"target={n[0]:.2f} m"
+                else:
+                    tgt_str = f"target=[{n[0]:.2f}, {n[1]:.2f}] m"
                 print(
                     f"\n[HIER-JUGGLE-CURRICULUM] Stage {s-1}→{s} ({_STAGE_LETTERS[s-1]}→{label})  "
                     f"blending over {_BJ_TRANSITION} iters  "
-                    f"target: {n[0]:.2f} m  sigma={n[1]:.3f} m  "
-                    f"xy={n[2]:.3f} m  vel_xy={n[3]:.3f} m/s\n"
+                    f"{tgt_str}  σ_ratio={n[2]:.1f}  "
+                    f"xy={n[3]:.3f} m  vel_xy={n[4]:.3f} m/s\n"
                 )
 
         # ── early stopping ─────────────────────────────────────────────────────
+        # Skip ES during blend transitions — reward is inflated by easier
+        # previous-stage parameters, setting an unreachable best_reward.
         # RSL-RL stores episode returns in locs["rewbuffer"] (list), not "mean_reward"
+        blending = state["old_stage"] is not None
         rew_buf = locs.get("rewbuffer", [])
         if rew_buf:
             import statistics
             mean_reward = statistics.mean(rew_buf)
         else:
             mean_reward = 0.0
-        if mean_reward > state["best_reward"] + _ES_MIN_DELTA:
-            state["best_reward"] = mean_reward
-            state["no_improve"] = 0
-            if log_dir:
-                best_path = os.path.join(log_dir, "model_best.pt")
-                runner.save(best_path)
-        else:
-            state["no_improve"] += 1
+        if not blending:
+            if mean_reward > state["best_reward"] + _ES_MIN_DELTA:
+                state["best_reward"] = mean_reward
+                state["no_improve"] = 0
+                if log_dir:
+                    best_path = os.path.join(log_dir, "model_best.pt")
+                    runner.save(best_path)
+            else:
+                state["no_improve"] += 1
 
         # ── per-iteration status line ─────────────────────────────────────────
+        # Always display CURRENT stage; show blend progress as suffix
+        s_display     = s
+        label_display = _STAGE_LETTERS[s] if s < len(_STAGE_LETTERS) else str(s)
         if state["old_stage"] is not None:
             alpha = min(state["trans_iter"] / _BJ_TRANSITION, 1.0)
             o = _BJ_STAGES[state["old_stage"]]
             n = _BJ_STAGES[s]
-            cur_tgt = o[0] + alpha * (n[0] - o[0])
-            cur_sig = o[1] + alpha * (n[1] - o[1])
-            cur_xy  = o[2] + alpha * (n[2] - o[2])
-            cur_vel = o[3] + alpha * (n[3] - o[3])
-            blend_tag     = f" [→{label} blend {state['trans_iter']}/{_BJ_TRANSITION}]"
-            s_display     = state["old_stage"]
-            label_display = _STAGE_LETTERS[s_display] if s_display < len(_STAGE_LETTERS) else str(s_display)
+            cur_tmin = o[0] + alpha * (n[0] - o[0])
+            cur_tmax = o[1] + alpha * (n[1] - o[1])
+            cur_xy   = o[3] + alpha * (n[3] - o[3])
+            cur_vel  = o[4] + alpha * (n[4] - o[4])
+            old_label = _STAGE_LETTERS[state["old_stage"]] if state["old_stage"] < len(_STAGE_LETTERS) else str(state["old_stage"])
+            blend_tag = f" [blend {old_label}→{label_display} {state['trans_iter']}/{_BJ_TRANSITION}]"
         else:
-            cur_tgt, cur_sig, cur_xy, cur_vel = _BJ_STAGES[s]
-            blend_tag     = ""
-            s_display     = s
-            label_display = label
+            cur_tmin, cur_tmax, _, cur_xy, cur_vel = _BJ_STAGES[s]
+            blend_tag = ""
 
         to_str   = f"{time_out_frac:.0%}" if time_out_frac is not None else "n/a"
         apex_str = f"{ball_apex_frac:.2f}" if ball_apex_frac is not None else "n/a"
@@ -294,10 +337,14 @@ def _bj_install_curriculum(runner) -> None:
                 f"timeout={to_str}/{_BJ_THRESHOLD:.0%}  "
                 f"apex={apex_str}/{_BJ_APEX_THRESHOLD:.1f} ({'OK' if juggling_ok else 'NO'})"
             )
+        if cur_tmin == cur_tmax:
+            tgt_display = f"target={cur_tmin:.2f} m"
+        else:
+            tgt_display = f"target=[{cur_tmin:.2f},{cur_tmax:.2f}] m"
         print(
-            f"[HIER-JUGGLE-CURRICULUM] Stage {s_display}/{len(_BJ_STAGES) - 1} ({label_display}) | "
+            f"[HIER-JUGGLE-CURRICULUM] Stage {s_display + 1}/{len(_BJ_STAGES)} ({label_display}) | "
             f"iter {s_iter:>4} in stage | "
-            f"target={cur_tgt:.2f} m  sigma={cur_sig:.3f} m  "
+            f"{tgt_display}  "
             f"xy={cur_xy:.3f} m  vel_xy={cur_vel:.3f} m/s | "
             f"{suffix}{blend_tag} | "
             f"ES {state['no_improve']}/{_ES_PATIENCE}"
@@ -311,8 +358,10 @@ def _bj_install_curriculum(runner) -> None:
             raise EarlyStopException()
 
     runner.log = _wrapped_log
+    label = _STAGE_LETTERS[start_stage] if start_stage < len(_STAGE_LETTERS) else str(start_stage)
     print(
         f"[HIER-JUGGLE-CURRICULUM] Installed.  "
+        f"Start: {start_stage} ({label})  "
         f"Stages: {len(_BJ_STAGES)}  "
         f"Threshold: {_BJ_THRESHOLD:.0%}  "
         f"Sustain: {_BJ_SUSTAIN} iters  "
@@ -403,7 +452,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
 
     # Install juggling curriculum + early stopping
-    _bj_install_curriculum(runner)
+    _bj_install_curriculum(runner, start_stage=args_cli.start_stage)
 
     try:
         runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)

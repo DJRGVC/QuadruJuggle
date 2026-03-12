@@ -30,16 +30,15 @@ def ball_apex_height_reward(
     above the paddle surface (0 when resting on the paddle).  Peak reward of 1.0
     when the ball is exactly at target_height; decays symmetrically above and below.
 
-    This fires every policy step — when the ball is ascending through target_height
-    AND when descending through it — so repeated bouncing earns reward continuously.
+    Supports per-env targets: if ``env._target_apex_heights`` exists (set by the
+    ``randomize_target_apex`` reset event), those per-env values are used instead
+    of the scalar ``target_height`` / ``std`` params.
 
     Height-gated so a collapsed robot earns no ball reward.
 
     Args:
-        target_height: Target ball height above paddle surface (metres).
-            Curriculum stages: 0.10 → 0.20 → 0.30 → 0.45 → 0.60 m.
-        std: Gaussian half-width (metres).  Tighter = more precise apex required.
-            Curriculum tightens in lock-step with target_height.
+        target_height: Fallback scalar target (used when per-env targets are not set).
+        std: Fallback scalar sigma.
         ball_radius: Physical radius of the ball (metres).
         ball_cfg: Scene entity config for the ball.
         robot_cfg: Scene entity config for the robot.
@@ -64,8 +63,16 @@ def ball_apex_height_reward(
     paddle_z = paddle_pos_w[:, 2]
     h = ball_z - paddle_z - ball_radius   # (N,)
 
+    # Per-env targets override scalar params when available
+    if hasattr(env, "_target_apex_heights"):
+        tgt = env._target_apex_heights   # (N,)
+        sig = env._target_apex_sigmas    # (N,)
+    else:
+        tgt = target_height
+        sig = std
+
     # Gaussian kernel centred at target_height
-    reward = torch.exp(-(h - target_height).pow(2) / (2.0 * std ** 2))
+    reward = torch.exp(-(h - tgt).pow(2) / (2.0 * sig ** 2))
 
     # Height gate: suppress reward when robot is collapsed
     trunk_z = trunk_pos_w[:, 2]

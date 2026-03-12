@@ -1,7 +1,7 @@
 """MDP components for the hierarchical ball-juggle task.
 
 Reuses all MDP terms from the flat ball_juggle task.
-The only difference is the action space (6D torso commands via TorsoCommandAction
+The only difference is the action space (8D torso commands via TorsoCommandAction
 instead of 12D joint targets).
 """
 

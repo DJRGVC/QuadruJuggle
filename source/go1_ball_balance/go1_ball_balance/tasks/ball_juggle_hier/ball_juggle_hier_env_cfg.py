@@ -1,10 +1,10 @@
 """Environment configuration for the hierarchical ball-juggle task (pi1 + frozen pi2).
 
 Same scene, observations, rewards, and terminations as the flat ball_juggle task.
-The key difference is the action space: 6D torso commands (via TorsoCommandAction)
+The key difference is the action space: 8D torso commands (via TorsoCommandAction)
 instead of 12D joint position targets.
 
-pi1 (this task's policy) outputs 6D torso commands.
+pi1 (this task's policy) outputs 8D torso commands.
 TorsoCommandAction runs the frozen pi2 actor to produce 12D joint targets.
 
 The pi2_checkpoint path must be set before env creation — see train_juggle_hier.py.
@@ -161,7 +161,7 @@ class ObservationsCfg:
 
 
 # ---------------------------------------------------------------------------
-# MDP: Actions (6D — via TorsoCommandAction wrapping frozen pi2)
+# MDP: Actions (8D — via TorsoCommandAction wrapping frozen pi2)
 # ---------------------------------------------------------------------------
 
 @configclass
@@ -224,6 +224,16 @@ class EventCfg:
         },
     )
 
+    randomize_target = EventTerm(
+        func=mdp.randomize_target_apex,
+        mode="reset",
+        params={
+            "target_min": 0.05,
+            "target_max": 0.05,
+            "sigma_ratio": 2.0,
+        },
+    )
+
     reset_ball = EventTerm(
         func=mdp.reset_ball_on_paddle,
         mode="reset",
@@ -235,6 +245,47 @@ class EventCfg:
             "drop_height_mean": 0.05,
             "drop_height_std": 0.005,
             "vel_xy_std": 0.0,
+        },
+    )
+
+    # -- Domain Randomization (pi1-specific: ball & paddle properties) --
+
+    # Ball mass ±20% (competition vs practice balls, 2.7g nominal)
+    # Ref: Huang et al. "Goalkeeper" IROS 2023
+    randomize_ball_mass = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="reset",
+        params={
+            "mass_distribution_params": (0.80, 1.20),
+            "operation": "scale",
+            "asset_cfg": SceneEntityCfg("ball"),
+        },
+    )
+
+    # Ball restitution [0.75, 0.95] (ball wear, temperature, brand variation)
+    # Ref: Ji et al. "DribbleBot" ICRA 2023 — ball property DR
+    randomize_ball_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="reset",
+        params={
+            "static_friction_range": (0.2, 0.5),
+            "dynamic_friction_range": (0.2, 0.5),
+            "restitution_range": (0.75, 0.95),
+            "num_buckets": 64,
+            "asset_cfg": SceneEntityCfg("ball"),
+        },
+    )
+
+    # Paddle surface friction [0.2, 0.8] (surface wear, moisture, material)
+    randomize_paddle_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="reset",
+        params={
+            "static_friction_range": (0.2, 0.8),
+            "dynamic_friction_range": (0.2, 0.8),
+            "restitution_range": (0.0, 0.0),
+            "num_buckets": 64,
+            "asset_cfg": SceneEntityCfg("paddle"),
         },
     )
 
@@ -250,7 +301,7 @@ class RewardsCfg:
     base_height = RewTerm(
         func=mdp.base_height_penalty,
         weight=-5.0,
-        params={"min_height": 0.34, "robot_cfg": SceneEntityCfg("robot")},
+        params={"min_height": 0.17, "robot_cfg": SceneEntityCfg("robot")},
     )
 
     early_termination = RewTerm(func=mdp.early_termination_penalty, weight=-200.0)
@@ -259,32 +310,32 @@ class RewardsCfg:
         func=mdp.ball_apex_height_reward,
         weight=25.0,
         params={
-            "target_height": 0.10,
-            "std": 0.10,
+            "target_height": 0.05,
+            "std": 0.025,
             "ball_radius": _BALL_RADIUS,
             "ball_cfg": SceneEntityCfg("ball"),
             "robot_cfg": SceneEntityCfg("robot"),
             "paddle_offset_b": _PADDLE_OFFSET_B,
-            "min_height": 0.34,
-            "nominal_height": 0.40,
+            "min_height": 0.20,
+            "nominal_height": 0.35,
         },
     )
 
     ball_xy_dist = RewTerm(
         func=mdp.ball_xy_dist_penalty,
-        weight=-1.0,
+        weight=-5.0,
         params={
             "ball_cfg": SceneEntityCfg("ball"),
             "robot_cfg": SceneEntityCfg("robot"),
             "paddle_offset_b": _PADDLE_OFFSET_B,
-            "min_height": 0.34,
-            "nominal_height": 0.40,
+            "min_height": 0.20,
+            "nominal_height": 0.35,
         },
     )
 
     trunk_tilt = RewTerm(
         func=mdp.trunk_tilt_penalty,
-        weight=-2.0,
+        weight=-0.5,
         params={"robot_cfg": SceneEntityCfg("robot")},
     )
 
@@ -307,13 +358,13 @@ class RewardsCfg:
 
     base_height_max = RewTerm(
         func=mdp.base_height_max_penalty,
-        weight=-8.0,
-        params={"max_height": 0.43, "robot_cfg": SceneEntityCfg("robot")},
+        weight=-5.0,
+        params={"max_height": 0.53, "robot_cfg": SceneEntityCfg("robot")},
     )
 
     foot_contact = RewTerm(
         func=mdp.feet_off_ground_penalty,
-        weight=-3.0,
+        weight=-0.5,
         params={"foot_contact_cfg": SceneEntityCfg("foot_contact_forces")},
     )
 
@@ -368,6 +419,7 @@ class BallJuggleHierEnvCfg(ManagerBasedRLEnvCfg):
         self.viewer.eye = (2.0, 2.0, 1.5)
         self.viewer.lookat = (0.0, 0.0, 0.5)
         self.sim.physx.gpu_max_rigid_patch_count = 400000
+        self.sim.physx.enable_ccd = True
 
 
 @configclass
@@ -379,6 +431,7 @@ class BallJuggleHierEnvCfg_PLAY(BallJuggleHierEnvCfg):
         self.observations.policy.enable_corruption = False
         self.events.reset_ball.params["xy_std"] = 0.0
         self.events.reset_ball.params["drop_height_std"] = 0.0
-        # Final stage (Stage G) reward parameters for play evaluation
-        self.rewards.ball_apex_height.params["target_height"] = 1.00
-        self.rewards.ball_apex_height.params["std"] = 0.05
+        # Randomize target heights across envs for visual variety
+        self.events.randomize_target.params["target_min"] = 0.30
+        self.events.randomize_target.params["target_max"] = 0.92
+        self.events.randomize_target.params["sigma_ratio"] = 2.5

@@ -464,6 +464,7 @@ class BallJuggleEnvCfg(ManagerBasedRLEnvCfg):
         self.viewer.eye = (2.0, 2.0, 1.5)
         self.viewer.lookat = (0.0, 0.0, 0.5)
         self.sim.physx.gpu_max_rigid_patch_count = 400000
+        self.sim.physx.enable_ccd = True
 
 
 @configclass
