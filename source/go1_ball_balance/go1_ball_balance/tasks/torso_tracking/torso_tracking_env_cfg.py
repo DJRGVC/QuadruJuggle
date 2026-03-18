@@ -273,7 +273,7 @@ class EventCfg:
     resample_commands_interval = EventTerm(
         func=mdp.resample_torso_commands,
         mode="interval",
-        interval_range_s=(0.25, 1.0),
+        interval_range_s=(0.15, 0.5),
     )
 
     # Smooth command blending (runs every physics step, only active when
@@ -315,8 +315,8 @@ class RewardsCfg:
     )
     height_vel_tracking = RewTerm(
         func=mdp.height_vel_tracking_reward,
-        weight=2.0,
-        params={"std": 0.1, "robot_cfg": SceneEntityCfg("robot")},
+        weight=3.0,
+        params={"std": 0.3, "robot_cfg": SceneEntityCfg("robot")},
     )
     roll_tracking = RewTerm(
         func=mdp.roll_tracking_reward,
@@ -325,18 +325,18 @@ class RewardsCfg:
     )
     pitch_tracking = RewTerm(
         func=mdp.pitch_tracking_reward,
-        weight=3.0,
-        params={"std": 0.05, "robot_cfg": SceneEntityCfg("robot")},
+        weight=4.0,
+        params={"std": 0.08, "robot_cfg": SceneEntityCfg("robot")},
     )
     roll_rate_tracking = RewTerm(
         func=mdp.roll_rate_tracking_reward,
-        weight=1.5,
-        params={"std": 0.3, "robot_cfg": SceneEntityCfg("robot")},
+        weight=2.5,
+        params={"std": 0.8, "robot_cfg": SceneEntityCfg("robot")},
     )
     pitch_rate_tracking = RewTerm(
         func=mdp.pitch_rate_tracking_reward,
-        weight=1.5,
-        params={"std": 0.3, "robot_cfg": SceneEntityCfg("robot")},
+        weight=2.5,
+        params={"std": 0.8, "robot_cfg": SceneEntityCfg("robot")},
     )
 
     # -- Penalties --

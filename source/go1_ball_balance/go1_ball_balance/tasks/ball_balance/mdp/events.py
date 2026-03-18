@@ -53,6 +53,7 @@ def reset_ball_on_paddle(
     drop_height_mean: float = 0.20,
     drop_height_std: float = 0.05,
     vel_xy_std: float = 0.0,
+    vel_z_mean: float = 0.0,
 ) -> None:
     """Reset the ball above the paddle with Gaussian-randomised height and XY position.
 
@@ -69,6 +70,8 @@ def reset_ball_on_paddle(
                           0 for purely vertical bounce (early curriculum stages).
                           Curriculum increases this in later stages to require the
                           policy to track a drifting ball.
+        vel_z_mean:       Mean initial upward velocity (m/s) for the ball.
+                          Use this to kick-start juggling when the paddle is passive.
     """
     ball: RigidObject = env.scene[ball_cfg.name]
 
@@ -100,6 +103,8 @@ def reset_ball_on_paddle(
     vel = torch.zeros(n, 6, device=env.device)
     if vel_xy_std > 0.0:
         vel[:, :2] = torch.randn(n, 2, device=env.device) * vel_xy_std
+    if vel_z_mean != 0.0:
+        vel[:, 2] = vel_z_mean
 
     ball.write_root_pose_to_sim(pose, env_ids=env_ids)
     ball.write_root_velocity_to_sim(vel, env_ids=env_ids)

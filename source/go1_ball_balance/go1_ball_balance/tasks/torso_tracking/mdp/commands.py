@@ -30,7 +30,7 @@ _CMD_RANGES_DEFAULT = {
 }
 
 # Smoothing time constant (seconds).  Larger = slower transitions.
-_SMOOTH_TAU = 0.4
+_SMOOTH_TAU = 0.15
 
 
 def _ensure_cmd_buffer(env: ManagerBasedRLEnv) -> torch.Tensor:

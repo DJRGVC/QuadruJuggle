@@ -119,7 +119,7 @@ _TT_SUSTAIN = 10       # consecutive iterations at threshold
 _TT_TRANSITION = 5     # iterations to blend between stages
 
 # Early stopping config
-_ES_PATIENCE = 100     # iterations without improvement
+_ES_PATIENCE = 99999   # effectively disabled
 _ES_MIN_DELTA = 0.5    # minimum total reward improvement to count
 
 
