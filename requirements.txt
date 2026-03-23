@@ -1,53 +1,84 @@
 # =============================================================================
-# QuadruJuggle — Dependency Installation Guide
+# QuadruJuggle — Dependency Guide
+# Ubuntu 24.04 LTS  |  Isaac Lab 2.3.2  |  Isaac Sim 5.1.0  |  Python 3.11
 # =============================================================================
 #
-# STEP 1: Install Isaac Lab (includes Isaac Sim, PyTorch, and core Omniverse packages)
+# ── SYSTEM PREREQUISITES ─────────────────────────────────────────────────────
 #
-#   Isaac Lab bundles its own Python 3.11 venv with torch, numpy, gymnasium, etc.
-#   Follow the official installation guide:
-#     https://isaac-sim.github.io/IsaacLab/main/source/setup/installation.html
+#   OS:      Ubuntu 24.04 LTS (x86_64)
+#   GPU:     NVIDIA RTX with ≥ 8 GB VRAM  (RTX 3060 Ti tested)
+#   Driver:  NVIDIA ≥ 550.x  (run: nvidia-smi)
+#   CUDA:    12.x  (bundled with Isaac Sim — no separate install needed)
+#   Python:  3.11  (bundled inside Isaac Lab conda env)
 #
-#   TL;DR (Linux, pip workflow):
-#     1. Clone Isaac Lab:        git clone https://github.com/isaac-sim/IsaacLab.git
-#     2. Create the venv:        cd IsaacLab && python3.11 -m venv .venv311
-#     3. Activate it:            source .venv311/bin/activate
-#     4. Run the installer:      ./isaaclab.sh --install   # installs isaacsim + isaaclab + extensions
+#   System packages:
+#     sudo apt-get update && sudo apt-get install -y \
+#         git git-lfs build-essential cmake \
+#         libgl1 libglib2.0-0 libsm6 libxrender1 libxext6 \
+#         vulkan-tools libvulkan1
 #
-#   This gives you: isaaclab, isaaclab_rl, isaaclab_tasks, isaaclab_assets, isaacsim,
-#   torch, numpy, gymnasium — all pre-configured for GPU simulation.
+# ── STEP 1: Install Isaac Lab 2.3.2 ─────────────────────────────────────────
 #
-# STEP 2: Install this project's extension (inside the same venv)
+#   git clone https://github.com/isaac-sim/IsaacLab.git ~/IsaacLab
+#   cd ~/IsaacLab
+#   git checkout v2.3.2
 #
-#     cd <this-repo>/source/go1_ball_balance
-#     pip install -e .
+#   # Create conda env (Python 3.11) and install Isaac Sim + Isaac Lab:
+#   conda create -n isaaclab python=3.11 -y
+#   conda activate isaaclab
+#   ./isaaclab.sh --install
 #
-# STEP 3: Install remaining pip dependencies
+#   This installs: isaacsim 5.1.0, isaaclab, isaaclab_rl, isaaclab_tasks,
+#   isaaclab_assets, torch, numpy, gymnasium — all GPU-configured.
 #
-#     pip install -r requirements.txt
+#   Verify: python -c "import isaaclab; print('OK')"
 #
-# STEP 4: Running training / visualization
+# ── STEP 2: Clone this repo ──────────────────────────────────────────────────
 #
-#   Always use `uv run --active` to ensure the Isaac Lab venv is respected:
-#     uv run --active python scripts/rsl_rl/train.py --task Isaac-BallBalance-Go1-v0 --num_envs 4096 --headless
-#     uv run --active python scripts/rsl_rl/play.py  --task Isaac-BallBalance-Go1-Play-v0 --num_envs 16
+#   git clone https://github.com/<your-fork>/QuadruJuggle.git
+#   cd QuadruJuggle
+#   export REPO=$(pwd)
+#   export ISAACLAB_PATH=~/IsaacLab    # adjust if cloned elsewhere
 #
-#   If you don't have uv, plain `python` works as long as the .venv311 venv is activated.
+# ── STEP 3: Install this project's extension ────────────────────────────────
+#
+#   conda activate isaaclab
+#   pip install -e source/go1_ball_balance
+#
+# ── STEP 4: Install remaining pip dependencies ──────────────────────────────
+#
+#   pip install -r requirements.txt
+#
+# ── STEP 5: Verify ──────────────────────────────────────────────────────────
+#
+#   python -c "import go1_ball_balance; print('extension OK')"
+#
+# ── RUNNING SCRIPTS ─────────────────────────────────────────────────────────
+#
+#   Always prepend PYTHONPATH so Isaac Lab's rsl_rl CLI helpers are found:
+#
+#   export PYTHONPATH=$ISAACLAB_PATH/scripts/reinforcement_learning/rsl_rl:$PYTHONPATH
+#
+#   Then run any script normally:
+#     python scripts/play_mirror_law.py --pi2_checkpoint <path> --num_envs 4
 #
 # =============================================================================
 
-# Core (already installed by Isaac Lab, listed here for completeness)
-torch
-numpy
-gymnasium
+# ── Core (managed by Isaac Lab — listed for reference) ──────────────────────
+# torch        ≥2.0   (installed by isaaclab.sh with CUDA 12 bindings)
+# numpy        1.x    (1.24.4 tested)
+# gymnasium    ≥0.29
 
-# RL training
-rsl_rl
+# ── RL training ─────────────────────────────────────────────────────────────
+rsl-rl==1.0.2
 
-# Visualization & utilities
-tensorboard
-matplotlib
-fpdf
-psutil
-toml
-packaging
+# ── Monitoring & utilities ──────────────────────────────────────────────────
+tensorboard>=2.14.0
+matplotlib>=3.7
+psutil>=5.9
+toml>=0.10
+packaging>=23.0
+
+# ── Optional: export to ONNX for sim-to-real deployment ─────────────────────
+# onnx>=1.15
+# onnxruntime-gpu>=1.17

@@ -107,3 +107,31 @@ def ball_below_paddle(
     paddle_z = paddle_pos_w[:, 2]
 
     return ball_z < (paddle_z + min_height_offset)
+
+
+def robot_tilt(
+    env: ManagerBasedRLEnv,
+    max_tilt: float = 0.5,
+    grace_steps: int = 50,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Terminate when trunk tilts beyond max_tilt radians from upright.
+
+    Uses the projected gravity XY magnitude — 0 when level, 1 when sideways.
+    sin(max_tilt) converts the angle threshold to this space.
+
+    Args:
+        max_tilt:    Maximum allowed tilt angle in radians.
+        grace_steps: Steps to skip after reset before arming.
+        asset_cfg:   Scene entity config for the robot.
+
+    Returns:
+        Bool tensor of shape (num_envs,).
+    """
+    import math
+    robot: Articulation = env.scene[asset_cfg.name]
+    gravity_b = robot.data.projected_gravity_b          # (N, 3)
+    tilt_sin = torch.norm(gravity_b[:, :2], dim=-1)     # 0=level, 1=sideways
+    too_tilted = tilt_sin > math.sin(max_tilt)
+    past_grace = env.episode_length_buf >= grace_steps
+    return too_tilted & past_grace

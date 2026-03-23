@@ -29,6 +29,11 @@ def target_apex_height_obs(
     Returns:
         Tensor of shape (num_envs, 1) — normalised target height.
     """
+    # Per-env target (set by randomize_apex_height event) takes priority
+    if hasattr(env, "_apex_target_h"):
+        norm = env._apex_target_h / max(max_target_height, 1e-6)   # (N,)
+        return norm.unsqueeze(1)                                     # (N, 1)
+
     target_h = 0.10  # default (Stage A)
     if hasattr(env, "reward_manager"):
         for i, name in enumerate(env.reward_manager._term_names):

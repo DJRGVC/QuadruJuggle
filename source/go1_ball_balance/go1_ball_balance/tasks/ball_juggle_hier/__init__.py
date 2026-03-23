@@ -33,3 +33,13 @@ gym.register(
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:BallJuggleHierPPORunnerCfg",
     },
 )
+
+gym.register(
+    id="Isaac-BallJugglePi1-Go1-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.ball_juggle_pi1_env_cfg:BallJugglePi1EnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:BallJuggleHierPPORunnerCfg",
+    },
+)

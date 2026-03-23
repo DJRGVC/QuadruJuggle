@@ -1,202 +1,134 @@
 # QuadruJuggle — Operation Manual
 
-> Go1 ball juggling via hierarchical RL + mirror-law control in Isaac Lab / Isaac Sim 5.1.0
+> Go1 ball juggling via hierarchical RL + mirror-law control in Isaac Lab 2.3.2 / Isaac Sim 5.1.0
+> Ubuntu 24.04 | Python 3.11 | NVIDIA ≥ 550.x driver | ≥ 8 GB VRAM
+
+> **All commands assume:**
+> ```bash
+> export REPO=<path-to-this-repo>
+> export ISAACLAB_PATH=~/IsaacLab   # adjust if different
+> export PYTHONPATH=$ISAACLAB_PATH/scripts/reinforcement_learning/rsl_rl:$PYTHONPATH
+> cd $REPO
+> conda activate isaaclab
+> ```
 
 ---
 
 ## System Architecture
 
 ```
-pi1  (mirror-law, closed-form)
-  │  1-D input: normalised apex height [0, 1]
-  │  6-D output: [h, h_dot, roll, pitch, ω_roll, ω_pitch]  (physical → normalised)
+pi1  (high-level juggling controller)
+  │  6-D normalized torso command
+  │  [h_norm, ḣ_norm, roll_norm, pitch_norm, ω_roll_norm, ω_pitch_norm]
   ▼
 TorsoCommandAction  (frozen pi2, loaded from .pt checkpoint)
-  │  12-D output: joint position targets
+  │  scales + offsets command → physical units
+  │  runs inference on frozen pi2 MLP
+  │  12-D joint position targets
   ▼
-Go1 robot + kinematic paddle
+Go1 robot  +  kinematic disc paddle  +  ping-pong ball
 ```
 
-### Pi2 — Torso Tracking (RL policy)
+Physical command mapping (from `TorsoCommandAction._CMD_SCALES / _OFFSETS`):
 
-- **Task**: track a 6-D command `[trunk_height, height_vel, roll, pitch, ω_roll, ω_pitch]`
-- **Obs**: proprioception (joint pos/vel, foot contacts, IMU) + 6-D command
-- **Network**: 2 hidden layers `[256, 128]`, ELU activation
-- **Training**: PPO, 20 000 iterations, ~45 min on RTX 4090
-- **Best checkpoint**: `logs/rsl_rl/go1_torso_tracking/2026-03-13_03-02-24/model_best.pt`
-  - `model_best.pt` > `model_19999.pt`: final checkpoint over-converged to minimise motion
-    penalties (action_rate, joint_torques), becoming too passive for juggling
-
-### Pi1 — Mirror-Law Controller (closed-form)
-
-Mirror law: choose paddle normal that reflects ball to target apex height.
-
-```
-n = normalize(v_out - v_in)
-v_out_z  = sqrt(2 * g * apex_height)          # upward speed for target apex
-v_out_xy = -K * ball_xy_rel_paddle            # lateral centering correction
-pitch = atan2( nx_body, nz_body)
-roll  = atan2(-ny_body, nz_body)
-```
-
-Energy sustaining strategy (h_dot impulse):
-```
-v_paddle_target = (v_out_z + e * |v_in_z|) / (1 + e)
-h_dot_impulse   = 2 * v_paddle_target    # 2× to compensate tracking lag
-```
-The impulse fires when ball is descending and within 0.50 m above paddle.
-A baseline `h_dot = 0.15` prevents body droop on springy legs between impacts.
-
-### Kinematic Paddle
-
-- Separate `RigidObjectCfg` with `kinematic_enabled=True`
-- Teleported every 5 ms via `update_paddle_pose` event: `pos = robot_base + [0, 0, 0.07]`
-- This gives zero spring/damping coupling to body — the "floating" look is by design
-- Paddle shape: disc, scale `(1.8, 1.8, 1.0)` → effective radius ≈ 0.153 m
-
-### Ball Physics
-
-| Parameter | Value |
-|-----------|-------|
-| `linear_damping` | 0.01 (low — preserves energy) |
-| `angular_damping` | 0.01 |
-| `restitution` | 0.99 (near-elastic) |
-| Reset `vel_z_mean` | 1.2 m/s upward (sustains juggling from step 0) |
+| Dimension | Normalized | Physical range |
+|-----------|-----------|----------------|
+| `h` | [-1, 1] | [0.25, 0.50] m |
+| `ḣ` | [-1, 1] | [-1, 1] m/s |
+| `roll` | [-1, 1] | [-0.4, 0.4] rad |
+| `pitch` | [-1, 1] | [-0.4, 0.4] rad |
+| `ω_roll` | [-1, 1] | [-3, 3] rad/s |
+| `ω_pitch` | [-1, 1] | [-3, 3] rad/s |
 
 ---
 
-## Training Pi2
+## Checkpoints
+
+| Model | Path | Notes |
+|-------|------|-------|
+| Pi2 (best) | `logs/rsl_rl/go1_torso_tracking/2026-03-13_03-02-24/model_best.pt` | Use this, not `model_19999.pt` (over-trained) |
+| Pi1 learned (best) | `logs/rsl_rl/go1_ball_juggle_hier/2026-03-20_20-25-22/model_best.pt` | Trained at fixed 0.20 m apex; 1741 iterations |
+
+---
+
+## Pi2 — Torso Tracking
+
+### Training
 
 ```bash
-cd /home/frank/berkeley_mde/QuadruJuggle
 python scripts/rsl_rl/train_torso_tracking.py \
     --task Isaac-TorsoTracking-Go1-v0 \
     --num_envs 4096 \
     --headless
 ```
 
-Checkpoints saved to `logs/rsl_rl/go1_torso_tracking/<TIMESTAMP>/`.
-TensorBoard: `tensorboard --logdir logs/rsl_rl/go1_torso_tracking/`.
+Checkpoints → `logs/rsl_rl/go1_torso_tracking/<TIMESTAMP>/`
+Monitor → `tensorboard --logdir logs/rsl_rl/go1_torso_tracking`
 
-Training converges around iteration 5 000–8 000; `model_best.pt` is saved whenever
-mean episode reward exceeds the previous best.
+Converges around iteration 5 000–8 000. `model_best.pt` is saved when mean episode reward beats previous best.
+
+### Reward Terms (Pi2)
+
+| Term | Weight | Description |
+|------|--------|-------------|
+| `height_tracking` | +10.0 | Gaussian reward on trunk Z matching h_target |
+| `height_vel_tracking` | +5.0 | Gaussian on ż matching ḣ_target |
+| `roll_tracking` | +10.0 | Gaussian on roll matching roll_target |
+| `pitch_tracking` | +10.0 | Gaussian on pitch matching pitch_target |
+| `roll_rate_tracking` | +3.0 | Gaussian on ω_roll |
+| `pitch_rate_tracking` | +3.0 | Gaussian on ω_pitch |
+
+### Known Limitation
+
+Pi2 h_dot bandwidth is ~0.125 Hz vs ball bounce ~4 Hz — pi2 cannot synchronise its upward stroke to ball impact timing. Juggling is sustained via near-elastic restitution (0.99) rather than active energy injection.
 
 ---
 
-## Playing Mirror-Law Juggling
+## Pi1 Variant A — Mirror Law (analytic, no training)
 
-### Basic (ground-truth ball state)
+**File**: `source/go1_ball_balance/go1_ball_balance/tasks/torso_tracking/mirror_law_action.py`
+
+### Math
+
+```
+n = normalize(v_out - v_in)
+v_out_z  = sqrt(2 * g * apex_height)       # speed for target apex
+v_out_xy = -K * ball_xy_rel_paddle         # lateral centering correction
+
+pitch = atan2( nx_body, nz_body)
+roll  = atan2(-ny_body, nz_body)
+```
+
+Energy sustaining (h_dot impulse):
+```
+v_paddle_target = (v_out_z + e * |v_in_z|) / (1 + e)
+h_dot_impulse   = 2 * v_paddle_target      # 2× compensates tracking lag
+```
+Impulse fires when ball is descending and within 0.50 m above paddle.
+Baseline `h_dot = 0.15` prevents body droop between impacts.
+
+### Play Command
 
 ```bash
-cd /home/frank/berkeley_mde/QuadruJuggle
-PYTHONPATH=/home/frank/IsaacLab/scripts/reinforcement_learning/rsl_rl:$PYTHONPATH \
 python scripts/play_mirror_law.py \
-    --pi2_checkpoint logs/rsl_rl/go1_torso_tracking/2026-03-13_03-02-24/model_best.pt \
+    --pi2_checkpoint logs/rsl_rl/go1_torso_tracking/<TIMESTAMP>/model_best.pt \
     --apex_height 0.20 \
     --num_envs 4
 ```
 
-Expected: all 4 envs should sustain juggling for the full 1500-step episode (~30 s).
+Optional flags:
 
-### With Perception Noise (no Kalman)
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--apex_height` | 0.20 | Target ball apex above paddle [m] |
+| `--h_nominal` | 0.38 | Trunk height command [m] |
+| `--centering_gain` | 2.0 | Lateral correction gain |
+| `--ball_pos_noise` | 0.0 | Gaussian std added to ball position [m] |
+| `--ball_vel_noise` | 0.0 | Gaussian std added to ball velocity [m/s] |
+| `--cmd_smooth_alpha` | 1.0 | EMA alpha for roll/pitch/ḣ (1=off, 0.25=strong smoothing) |
 
-```bash
-python scripts/play_mirror_law.py \
-    --pi2_checkpoint logs/rsl_rl/go1_torso_tracking/2026-03-13_03-02-24/model_best.pt \
-    --ball_pos_noise 0.01 \
-    --ball_vel_noise 0.10 \
-    --num_envs 4
-```
+### Recommended Noise-Robust Config
 
-Typical degradation at `pos_noise=0.01 m, vel_noise=0.10 m/s`:
-- Episode reward drops from ~+100 to −6 to −19
-- Episode length drops from 1500 to 120–525 steps
-
-### With Kalman Filter (position-only noise)
-
-Enable Kalman by setting `use_kalman=True` (default) and providing only `ball_pos_noise`:
-
-```bash
-python scripts/play_mirror_law.py \
-    --pi2_checkpoint logs/rsl_rl/go1_torso_tracking/2026-03-13_03-02-24/model_best.pt \
-    --ball_pos_noise 0.01 \
-    --num_envs 4
-```
-
-`ball_vel_noise` is ignored when Kalman is active — velocity is estimated from
-position tracking + gravity model, not provided directly.
-
----
-
-## Kalman Filter Design
-
-**File**: `source/go1_ball_balance/go1_ball_balance/tasks/torso_tracking/ball_kalman_filter.py`
-
-| Property | Detail |
-|----------|--------|
-| State | `[px, py, pz, vx, vy, vz]` — 6D per environment |
-| Transition model | Free flight under constant gravity (`b[2] = -½g·dt²`, `b[5] = -g·dt`) |
-| Observations | Noisy position only (`[px, py, pz]`) — mimics a depth/stereo camera |
-| Process noise `Q` | `pos_std=0.001 m`, `vel_std=3.0 m/s` (large to absorb contact discontinuities) |
-| Measurement noise `R` | `pos_noise_std²` diagonal — matched to actual sensor noise |
-| Batching | Fully vectorised over N environments; no Python loops |
-
-### Key Design Choices
-
-- **KF provides position smoothing only** — velocity is taken from the direct
-  measurement (`ball_vel_noise_std` applied if > 0), not from KF estimation.
-  Reason: KF-derived velocity (differencing noisy positions) is far noisier than
-  a direct measurement. Using GT velocity alongside KF position is the correct
-  separation of concerns. For a real robot with no velocity sensor, switch to
-  using KF velocity explicitly.
-- **High `process_vel_std`**: Contact events flip ball velocity discontinuously.
-  A large Q on velocity lets the filter recover in 1–2 steps rather than diverging.
-- **Auto-initialization**: On the first `step()` call, any uninitialized environment
-  is seeded from the noisy measurement (zero velocity assumption) rather than zeros.
-  This prevents the huge innovations that would occur if the filter started at world origin.
-
-### Kalman Filter Tuning
-
-| Parameter | Config field | Effect |
-|-----------|-------------|--------|
-| Measurement noise | `ball_pos_noise_std` | Match to actual sensor σ |
-| Velocity process noise | `kalman_process_vel_std` | Higher → faster recovery after contact; lower → smoother estimates |
-| Enable/disable | `use_kalman` | `True` by default when `ball_pos_noise_std > 0` |
-
----
-
-## Configuration Reference
-
-### `MirrorLawTorsoActionCfg`
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `pi2_checkpoint` | MISSING | Path to frozen pi2 `.pt` file |
-| `ball_cfg` | `SceneEntityCfg("ball")` | Ball scene entity |
-| `paddle_offset_b` | `(0, 0, 0.07)` | Paddle centre in body frame [m] |
-| `apex_height_min` | `0.05` | Min bounce height [m] |
-| `apex_height_max` | `0.40` | Max bounce height [m] |
-| `h_nominal` | `0.38` | Trunk height command [m] |
-| `centering_gain` | `2.0` | Lateral correction gain [1/s] |
-| `restitution` | `0.85` | Ball–paddle restitution (should match scene physics) |
-| `ball_pos_noise_std` | `0.0` | Perception noise on ball position [m] |
-| `ball_vel_noise_std` | `0.0` | Perception noise on ball velocity [m/s] |
-| `use_kalman` | `True` | Enable KF when `ball_pos_noise_std > 0` |
-| `kalman_process_vel_std` | `3.0` | KF velocity process noise [m/s/step] |
-| `cmd_smooth_alpha` | `1.0` | EMA alpha for roll/pitch/h_dot (1=off, 0.25=strong). Use 0.25–0.4 with noisy velocity to reduce shaking. |
-
----
-
-## Current Results (as of 2026-03-13)
-
-| Condition | Flags | ep_len (steps / 1500 max) | ep_rew |
-|-----------|-------|--------------------------|--------|
-| Ground truth state | (default) | 1500 all 4 envs | ~+100 |
-| `pos_noise=0.01 m, vel_noise=0.10 m/s`, no KF | — | 120–525 | −6 to −19 |
-| `pos_noise=0.01 m, vel_noise=0.30 m/s`, no smoothing | — | 38–150 | −5 to −13 |
-| `pos_noise=0.01 m, vel_noise=0.30 m/s` + KF + EMA 0.25 | `h_nominal=0.41` | **up to 1500** (1 env hit timeout); 400–900 typical | +50 to +273 |
-
-**Best noise-robust config** (confirmed working 2026-03-13):
 ```bash
 python scripts/play_mirror_law.py \
     --pi2_checkpoint logs/rsl_rl/go1_torso_tracking/2026-03-13_03-02-24/model_best.pt \
@@ -205,22 +137,151 @@ python scripts/play_mirror_law.py \
     --num_envs 4
 ```
 
-**How the perception stack works**:
-- `ball_pos_noise > 0` → position is noisy → KF smooths position
-- `ball_vel_noise = 0` → GT velocity used directly (no noise, more accurate than KF)
-- `ball_vel_noise > 0` → noisy velocity injected; KF velocity used (physics model smoother than raw noise)
-- `cmd_smooth_alpha < 1` → EMA on roll/pitch/h_dot commands prevents step-to-step oscillation from reaching pi2
+---
 
-### Known Limitations
+## Kalman Filter
 
-1. **Pi2 h_dot bandwidth**: Body oscillates at ~0.125 Hz vs ball bounce at ~4 Hz.
-   Pi2 cannot synchronise its upward stroke to impact timing. Juggling is sustained
-   via near-elastic restitution (0.99) rather than active energy injection.
-2. **Kinematic paddle coupling**: Compliant legs create phase lag between commanded
-   and actual paddle height. The 0.50 m impact window and 2× h_dot amplification
-   compensate for this.
-3. **Restitution mismatch**: `MirrorLawTorsoActionCfg.restitution` and the scene
-   physics `restitution` must be kept in sync manually.
+**File**: `source/go1_ball_balance/go1_ball_balance/tasks/torso_tracking/ball_kalman_filter.py`
+
+| Property | Value |
+|----------|-------|
+| State | `[px, py, pz, vx, vy, vz]` — 6D per env |
+| Transition | Free flight under constant gravity |
+| Observations | Noisy position only (mimics stereo camera) |
+| Process noise Q | `pos_std=0.001 m`, `vel_std=3.0 m/s` (large for contact recovery) |
+| Measurement noise R | `pos_noise_std²` diagonal |
+
+KF is active when `ball_pos_noise_std > 0`. High `vel_std` lets the filter recover in 1–2 steps after ball bounce (velocity discontinuity). The EMA smoothing (`cmd_smooth_alpha=0.25`) is the main fix for robot shaking with noisy velocity; KF handles position estimation.
+
+---
+
+## Pi1 Variant B — Learned RL
+
+**Files**:
+- Action term: `ball_juggle_hier/pi1_learned_action.py`
+- Env config: `ball_juggle_hier/ball_juggle_pi1_env_cfg.py`
+- Train script: `scripts/rsl_rl/train_pi1.py`
+- Play script: `scripts/play_pi1.py`
+
+Pi1 is a PPO policy (MLP `[256, 128, 64]`, ELU) that directly outputs the 6-D normalized torso command. No mirror-law math. The frozen pi2 converts it to joint targets.
+
+### Observations (46-D)
+
+| Term | Dim | Description |
+|------|-----|-------------|
+| `ball_pos` | 3 | Ball position in paddle frame |
+| `ball_vel` | 3 | Ball velocity in paddle frame |
+| `base_lin_vel` | 3 | Robot base linear velocity |
+| `base_ang_vel` | 3 | Robot base angular velocity |
+| `projected_gravity` | 3 | Gravity vector in body frame |
+| `joint_pos` | 12 | Joint positions (relative to default) |
+| `joint_vel` | 12 | Joint velocities |
+| `target_apex_height` | 1 | Normalized target apex height [0, 1] |
+| `last_action` | 6 | Previous pi1 output (temporal context) |
+| **Total** | **46** | |
+
+### Reward Terms (Pi1 Training)
+
+| Term | Weight | Description |
+|------|--------|-------------|
+| `alive` | +1.0 | Per-step survival bonus |
+| `ball_apex_height` | +8.0 | Gaussian reward: ball reaches target apex height |
+| `ball_bouncing` | +2.0 | Half-Gaussian on \|ball_vz\|: penalises cradling |
+| `ball_xy_dist` | **-5.0** | Penalise ball lateral drift from paddle centre |
+| `trunk_tilt` | **-5.0** | Penalise roll/pitch away from level |
+| `trunk_contact` | **-5.0** | Penalise ball hitting robot body (not paddle) |
+| `base_height` | -5.0 | Penalise trunk below 0.34 m |
+| `base_height_max` | -8.0 | Penalise trunk above 0.43 m |
+| `body_lin_vel` | -0.10 | Penalise lateral body drift |
+| `body_ang_vel` | -0.05 | Penalise yaw/angular motion |
+| `action_rate` | -0.005 | Penalise rapid pi1 command changes |
+| `joint_torques` | -2e-4 | Energy penalty |
+| `foot_contact` | -3.0 | Penalise airborne feet |
+| `early_termination` | -10.0 | One-time penalty on non-timeout episode end |
+
+> **Note**: Weights were reduced in v3 to prevent value-function explosion. The earlier values (`ball_apex_height=25`, `early_termination=-200`) caused `value_loss → inf` at ~6k iterations.
+
+### Termination Conditions (Pi1)
+
+| Term | Condition |
+|------|-----------|
+| `time_out` | Episode length ≥ 1500 steps (30 s) |
+| `robot_tilt` | Trunk tilt > 0.5 rad (after 50 grace steps) |
+| `ball_off` | Ball XY distance from paddle > 0.25 m |
+| `ball_below` | Ball Z below paddle − 0.05 m |
+
+### Variable Apex Height
+
+Each episode, `randomize_apex_height` assigns a random target height per env from **[0.10, 0.60] m**. The policy observes the normalized target via `target_apex_height_obs` and learns to condition on it.
+
+Gaussian std is automatically tightened at higher targets (harder) and loosened at lower targets (easier): `std ∈ [0.08, 0.12] m`.
+
+### Training
+
+```bash
+python scripts/rsl_rl/train_pi1.py \
+    --pi2_checkpoint logs/rsl_rl/go1_torso_tracking/<TIMESTAMP>/model_best.pt \
+    --num_envs 1024 \
+    --headless
+```
+
+Monitor: `tensorboard --logdir logs/rsl_rl/go1_ball_juggle_hier`
+
+Key metrics to watch:
+- `Episode/time_out` → should approach 1.0 (robot survives full episode)
+- `Episode/alive` → should be > 0.95
+- `Reward/ball_apex_height` → target ~0.8–1.0
+- `Reward/ball_bouncing` → target > 2.0 (active bouncing, not cradling)
+- `Reward/trunk_contact` → should approach 0.0 (no body cheating)
+
+### Play
+
+```bash
+python scripts/play_pi1.py \
+    --pi1_checkpoint logs/rsl_rl/go1_ball_juggle_hier/<TIMESTAMP>/model_best.pt \
+    --pi2_checkpoint logs/rsl_rl/go1_torso_tracking/<TIMESTAMP>/model_best.pt \
+    --apex_height 0.20 \
+    --num_envs 4
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--pi1_checkpoint` | required | Path to trained pi1 `.pt` |
+| `--pi2_checkpoint` | required | Path to frozen pi2 `.pt` |
+| `--num_envs` | 4 | Parallel environments |
+| `--apex_height` | None | Fix apex height [m]. If omitted, randomises 0.10–0.60 m per episode |
+
+---
+
+## Scene Setup
+
+### Kinematic Paddle
+
+- Separate `RigidObjectCfg` with `kinematic_enabled=True`, `disable_gravity=True`
+- Teleported every 5 ms via `update_paddle_pose` event: `pos = robot_base + quat_apply(rot, [0, 0, 0.07])`
+- No spring/damping coupling to body — the "floating" look is by design
+- Disc scale `(1.8, 1.8, 1.0)` → effective radius ≈ 0.153 m
+
+### Ball Physics
+
+| Parameter | Value | Reason |
+|-----------|-------|--------|
+| `restitution` | 0.99 | Near-elastic — preserves energy across bounces |
+| `linear_damping` | 0.01 | Low — preserves energy |
+| `mass` | 0.0027 kg | Ping-pong ball mass |
+| `radius` | 0.020 m | Ping-pong ball radius |
+| Reset `vel_z_mean` | 1.2 m/s | Starts ball airborne immediately |
+
+---
+
+## Results Summary
+
+| Date | Controller | Apex | ep_len | ep_rew | Notes |
+|------|-----------|------|--------|--------|-------|
+| 2026-03-13 | Mirror law (GT) | 0.20 m | 1500 (4/4) | ~+100 | Baseline |
+| 2026-03-13 | Mirror law + noise + KF + EMA | 0.20 m | 400–1500 | +50 to +273 | `vel_noise=0.3, alpha=0.25, h_nom=0.41` |
+| 2026-03-20 | Learned pi1 (1741 iters) | 0.20 m fixed | 1500 (3/4) | ~+670 | Active bouncing (ball_vz ±2 m/s) |
+| In training | Learned pi1 v2 | 0.10–0.60 m | — | — | + tilt termination, trunk contact penalty |
 
 ---
 
@@ -228,35 +289,64 @@ python scripts/play_mirror_law.py \
 
 ```
 scripts/
-  play_mirror_law.py          Mirror-law play + noise testing
-  rsl_rl/train_torso_tracking.py   Pi2 training
-  rsl_rl/train.py             Generic training launcher
+  play_mirror_law.py               Mirror-law play (analytic pi1)
+  play_pi1.py                      Learned pi1 play
+  rsl_rl/
+    train_torso_tracking.py        Train pi2
+    train_pi1.py                   Train learned pi1
 
 source/go1_ball_balance/go1_ball_balance/tasks/
   torso_tracking/
-    mirror_law_action.py        Pi1 mirror-law controller
-    ball_kalman_filter.py       Batched Kalman filter for ball state
-    action_term.py              TorsoCommandAction (pi2 wrapper)
-    agents/rsl_rl_ppo_cfg.py    PPO hyperparameters
+    action_term.py                 TorsoCommandAction: loads + runs frozen pi2
+    mirror_law_action.py           Mirror-law pi1 (analytic)
+    ball_kalman_filter.py          Batched 6-state Kalman filter
+    agents/rsl_rl_ppo_cfg.py       PPO config for pi2
+    mdp/rewards.py                 Pi2 tracking rewards
   ball_juggle_hier/
-    ball_juggle_mirror_env_cfg.py   Full env config (ball + paddle + robot)
+    ball_juggle_mirror_env_cfg.py  Mirror-law env (for play_mirror_law.py)
+    ball_juggle_pi1_env_cfg.py     Learned pi1 training env
+    pi1_learned_action.py          Pi1 action term (wraps TorsoCommandAction)
+    mdp/
+      __init__.py                  Re-exports all MDP terms
+      events.py                    randomize_apex_height (per-env reset)
+  ball_juggle/mdp/
+    rewards.py                     ball_apex_height_reward, ball_bouncing_reward
+    observations.py                target_apex_height_obs
   ball_balance/mdp/
-    events.py                   Ball reset functions (vel_z_mean)
+    events.py                      Ball + robot reset
+    rewards.py                     trunk_tilt, foot_contact, trunk_contact_penalty
+    terminations.py                robot_tilt, trunk_height_collapsed, ball_off/below
 
-logs/rsl_rl/go1_torso_tracking/
-  2026-03-13_03-02-24/
-    model_best.pt               Best checkpoint (use this, not model_19999.pt)
+logs/rsl_rl/
+  go1_torso_tracking/
+    2026-03-13_03-02-24/           Pi2 best checkpoint
+  go1_ball_juggle_hier/
+    2026-03-20_20-25-22/           Pi1 v1 checkpoint (fixed 0.20 m apex)
 ```
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Likely Cause | Fix |
-|---------|-------------|-----|
-| Ball sits on paddle, no bounce | `restitution` too low or `linear_damping` too high | Set `restitution=0.99`, `linear_damping=0.01` |
-| Ball bounces but decays in ~4 s | `restitution` < 0.99 | Increase restitution |
-| Robot too passive, barely tilts | Using `model_19999.pt` (over-trained) | Use `model_best.pt` instead |
-| FileNotFoundError `'...'` | Literal `...` passed as checkpoint path | Pass actual path to `.pt` file |
-| Kalman filter giving wrong estimates | KF not initialized before first step | Fixed: `step()` now auto-inits from measurement |
-| Play script crashes on import | Missing PYTHONPATH for rsl_rl | Prepend `PYTHONPATH=/home/frank/IsaacLab/scripts/reinforcement_learning/rsl_rl:$PYTHONPATH` |
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Ball sits on paddle, no bounce | Restitution too low | Set `restitution=0.99` in scene |
+| Robot too passive | Used `model_19999.pt` (over-trained) | Use `model_best.pt` |
+| `FileNotFoundError: .../TIMESTAMP/...` | Literal "TIMESTAMP" in path | Use actual timestamp directory |
+| `IndexError: tuple index out of range` on `action.shape[1]` | Policy received wrong obs type | Pass plain dict `{"policy": tensor}` to policy, not TensorDict |
+| Robot shaking with noisy velocity | Raw noisy velocity fed to mirror law | Use `--cmd_smooth_alpha 0.25` |
+| Robot raises head to hit ball (cheating) | No trunk contact penalty | Train with `trunk_contact_penalty` weight=-20 |
+| Robot falls over after a while | No tilt termination during training | Train with `robot_tilt` termination (max_tilt=0.5 rad) |
+| CUDA OOM during training | Too many envs for 8 GB VRAM | Reduce `--num_envs` to 1024 |
+| Ball cradles instead of bouncing | No velocity reward | Ensure `ball_bouncing` reward is active (weight=5.0) |
+| Play crashes with carb warnings | Normal Isaac Sim shutdown noise | Ignore — look for Python traceback above these lines |
+
+---
+
+## Known Limitations
+
+1. **Pi2 bandwidth**: Body oscillates at ~0.125 Hz vs ball bounce at ~4 Hz. Juggling relies on near-elastic restitution, not active energy injection per bounce.
+2. **Kinematic paddle lag**: Compliant legs create phase lag between commanded and actual paddle height. The 2× h_dot amplification in mirror law compensates.
+3. **No velocity sensor sim-to-real**: Current system uses ground-truth `base_lin_vel`. On hardware, replace with state estimator output.
+4. **Sim-to-real gap**: No domain randomization for mass, friction, or motor dynamics yet. Required before hardware deployment.
+5. **Pi1 v1 trained at fixed 0.20 m**: The checkpoint in `2026-03-20_20-25-22` only generalizes to heights near 0.20 m. Retrain with `randomize_apex_height` for variable-height control.

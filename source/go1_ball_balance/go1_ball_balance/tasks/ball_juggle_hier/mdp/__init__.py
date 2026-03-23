@@ -16,3 +16,4 @@ from go1_ball_balance.tasks.ball_balance.mdp.rewards import *       # noqa: F401
 # Juggling-specific additions
 from go1_ball_balance.tasks.ball_juggle.mdp.rewards import *       # noqa: F401, F403
 from go1_ball_balance.tasks.ball_juggle.mdp.observations import *  # noqa: F401, F403
+from go1_ball_balance.tasks.ball_juggle_hier.mdp.events import *   # noqa: F401, F403

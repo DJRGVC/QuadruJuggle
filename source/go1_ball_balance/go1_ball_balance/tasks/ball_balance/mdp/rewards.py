@@ -430,3 +430,23 @@ def feet_off_ground_penalty(
     force_mags = torch.norm(sensor.data.net_forces_w, dim=-1)  # (N, 4)
     airborne   = (force_mags < min_force).float()               # (N, 4)
     return airborne.sum(dim=-1)                                  # (N,)
+
+
+def trunk_contact_penalty(
+    env: ManagerBasedRLEnv,
+    contact_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
+    force_threshold: float = 1.0,
+) -> torch.Tensor:
+    """Penalise any contact force on the robot trunk.
+
+    The trunk should never be hit by the ball — only the paddle (a separate
+    kinematic object) should contact the ball.  This discourages the policy
+    from 'cheating' by pitching up to intercept the ball with its back or head.
+
+    Returns:
+        Tensor of shape (num_envs,) — 1.0 when trunk contact exceeds threshold,
+        0.0 otherwise.  Apply with a negative weight.
+    """
+    sensor: ContactSensor = env.scene[contact_cfg.name]
+    force_mag = torch.norm(sensor.data.net_forces_w[:, 0, :], dim=-1)  # (N,)
+    return (force_mag > force_threshold).float()
