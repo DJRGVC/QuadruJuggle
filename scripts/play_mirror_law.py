@@ -42,6 +42,9 @@ parser.add_argument("--ball_vel_noise", type=float, default=0.0,
 parser.add_argument("--cmd_smooth_alpha", type=float, default=1.0,
                     help="EMA alpha for roll/pitch/h_dot commands [0.3–1.0]. "
                          "Use 0.3–0.5 with noisy velocity to reduce body shaking.")
+parser.add_argument("--impact_tilt_gain", type=float, default=1.0,
+                    help="Multiply roll/pitch during impact for stronger bounce. "
+                         "1.0=mirror law only, 1.5-2.5=diagonal energy injection.")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 
@@ -73,6 +76,7 @@ env_cfg.actions.torso_cmd.centering_gain     = args.centering_gain
 env_cfg.actions.torso_cmd.ball_pos_noise_std = args.ball_pos_noise
 env_cfg.actions.torso_cmd.ball_vel_noise_std = args.ball_vel_noise
 env_cfg.actions.torso_cmd.cmd_smooth_alpha   = args.cmd_smooth_alpha
+env_cfg.actions.torso_cmd.impact_tilt_gain  = args.impact_tilt_gain
 
 env_cfg.observations.policy.enable_corruption = False
 
@@ -85,6 +89,7 @@ device = env.unwrapped.device
 # Mirror law is deterministic — feed a fixed apex height (normalised 1.0 = max)
 # Changing this to a value in [0, 1] scales the apex toward apex_height_min.
 apex_action = torch.ones(args.num_envs, 1, device=device)
+print("I am trying to take a look at apex action:", apex_action)
 
 print(f"\n[play_mirror_law] pi2 checkpoint : {args.pi2_checkpoint}")
 print(f"[play_mirror_law] apex_height    : {args.apex_height:.3f} m")

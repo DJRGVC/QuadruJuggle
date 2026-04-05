@@ -31,6 +31,15 @@ Go1 robot  +  kinematic disc paddle  +  ping-pong ball
 
 Physical command mapping (from `TorsoCommandAction._CMD_SCALES / _OFFSETS`):
 
+**Critical architecture clarification**
+
+The system uses a hierarchical control architecture where a high-level controller (π1) outputs a 6D torso command, and a low-level controller (π2) tracks this command.
+
+The π1→π2 interface is:
+`[h, h_dot, roll, pitch, omega_roll, omega_pitch]`
+
+π2 is a **torso pose tracking** policy, not a velocity controller. This distinction is critical: π1 directly specifies paddle orientation and vertical motion, enabling physically grounded control via reflection geometry.
+
 | Dimension | Normalized | Physical range |
 |-----------|-----------|----------------|
 | `h` | [-1, 1] | [0.25, 0.50] m |
@@ -165,6 +174,8 @@ KF is active when `ball_pos_noise_std > 0`. High `vel_std` lets the filter recov
 
 Pi1 is a PPO policy (MLP `[256, 128, 64]`, ELU) that directly outputs the 6-D normalized torso command. No mirror-law math. The frozen pi2 converts it to joint targets.
 
+In addition to the analytic controller, we trained a learned π1 using PPO on top of the frozen π2, enabling a direct comparison between model-based and learned high-level control.
+
 ### Observations (46-D)
 
 | Term | Dim | Description |
@@ -179,6 +190,8 @@ Pi1 is a PPO policy (MLP `[256, 128, 64]`, ELU) that directly outputs the 6-D no
 | `target_apex_height` | 1 | Normalized target apex height [0, 1] |
 | `last_action` | 6 | Previous pi1 output (temporal context) |
 | **Total** | **46** | |
+
+π2 observes the 6D torso command produced by π1, not a desired base position.
 
 ### Reward Terms (Pi1 Training)
 
@@ -284,6 +297,74 @@ python scripts/play_pi1.py \
 | In training | Learned pi1 v2 | 0.10–0.60 m | — | — | + tilt termination, trunk contact penalty |
 
 ---
+
+## Key Contributions (for report framing)
+
+1. **Hybrid analytic + learned control architecture**  
+   Combines a physics-based mirror law controller (π1) with a learned torso tracking policy (π2).  
+   Enables interpretable control while retaining learned locomotion robustness.
+
+2. **Direct comparison: analytic vs. learned high-level control**  
+   Trained a PPO-based π1 on top of frozen π2.  
+   Trade-off: RL π1 gives higher peak performance; mirror-law π1 gives stronger robustness and generalization.
+
+3. **Noise-aware control pipeline**  
+   Explicitly studies velocity-noise impact on control and shows learned-policy fragility outside training distribution.
+
+4. **End-to-end perception → control pipeline**  
+   Position-only observation + Kalman filtering to bridge toward real-world stereo deployment.
+
+## Figure Interpretation Notes (for report text)
+
+### Fig 1 — Noise Sensitivity
+Observation: Learned π1 degrades sharply once velocity noise exceeds its training distribution (σ ≈ 0.1 m/s), while mirror law degrades approximately linearly.
+
+Interpretation: Mirror law is grounded in reflection physics and does not rely on interpolation from training data; learned π1 fails to extrapolate reliably out-of-distribution.
+
+Implication: Under noisy velocity estimation, analytic control is more robust for deployment.
+
+### Fig 2 — Sample Efficiency
+Training learned π1 requires an additional ~568M environment steps (~74% increase) versus mirror-law π1.
+
+Since π2 is shared in both settings, this additional cost is entirely due to learning the high-level controller.
+
+### Fig 3 — Mirror Law Geometry
+Mirror law computes paddle normal from reflection consistency:
+- Incoming and outgoing velocities define desired surface normal.
+- This maps directly to roll/pitch commands.
+
+The mapping is deterministic, interpretable, and distribution-invariant.
+
+### Fig 5 — Command Stability
+Raw velocity noise causes high-frequency pitch oscillations (RMSE ≈ 11°), destabilizing control.
+
+Exponential smoothing reduces RMSE to ≈4.7° (43% of raw), showing instability is mainly estimation-noise-driven and can be mitigated with lightweight filtering.
+
+### Fig 6 — Kalman Filter (correct interpretation)
+While Kalman filtering improves position estimation smoothness, velocity estimation remains difficult around contact discontinuities.
+
+In this setup, finite differences can yield lower velocity RMSE, while Kalman filtering provides smoother trajectories and robustness to missing data.
+
+Therefore KF is retained for stability and real-world compatibility, not because it always wins on velocity RMSE.
+
+## High-Level Comparison (for Results section)
+
+| Method | Strength | Weakness |
+|---|---|---|
+| Mirror law π1 | Robust, interpretable, zero training cost | Slightly lower peak performance |
+| Learned π1 | Higher in-distribution performance | Poorer OOD generalization, high training cost |
+
+**Key takeaway**: Learned π1 improves in-distribution performance; mirror-law π1 provides stronger out-of-distribution robustness and eliminates high-level training cost.
+
+## Core Insight (thesis-level)
+
+The control structure should match task physics.
+
+Ball bouncing follows reflection geometry, which is low-dimensional and analytically solvable.
+
+Learning this mapping with RL introduces unnecessary sample complexity and can reduce robustness.
+
+Learning is best reserved for π2, where dynamics are high-dimensional and difficult to model analytically.
 
 ## File Map
 

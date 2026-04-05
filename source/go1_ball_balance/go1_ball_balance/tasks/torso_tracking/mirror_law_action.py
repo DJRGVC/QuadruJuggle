@@ -103,6 +103,9 @@ class MirrorLawTorsoAction(TorsoCommandAction):
                 process_vel_std=cfg.kalman_process_vel_std,
             )
 
+        # Impact tilt gain (>1 amplifies roll/pitch during impact for stronger bounce)
+        self._impact_tilt_gain = cfg.impact_tilt_gain
+
         # Command EMA smoothing (reduces shaking from noisy velocity inputs).
         # alpha=1.0 → no smoothing (default); alpha<1 → exponential moving average.
         self._cmd_alpha = cfg.cmd_smooth_alpha
@@ -215,6 +218,18 @@ class MirrorLawTorsoAction(TorsoCommandAction):
         pitch_tgt = pitch_tgt.clamp(-0.4, 0.4)
         roll_tgt  = roll_tgt.clamp(-0.4, 0.4)
 
+        # ── Impact tilt boost: amplify roll/pitch during impact phase ──
+        # The mirror law computes the *correct direction* for the normal but
+        # the resulting tilt angle is often small (ball nearly overhead).
+        # Amplifying it during impact makes the paddle surface move diagonally,
+        # injecting more energy into the ball — the same mechanism learned pi1
+        # discovers through RL.  impact_tilt_gain=1.0 = no change (default).
+        if self._impact_tilt_gain > 1.0:
+            impact_phase = (ball_vel_w[:, 2] < 0.0).float() * (p_rel_w[:, 2] < 0.50).float()
+            gain = 1.0 + (self._impact_tilt_gain - 1.0) * impact_phase
+            pitch_tgt = (pitch_tgt * gain).clamp(-0.4, 0.4)
+            roll_tgt  = (roll_tgt  * gain).clamp(-0.4, 0.4)
+
         # ── EMA smoothing on roll / pitch ──────────────────────────────
         if self._cmd_alpha < 1.0:
             self._ema_roll  = self._cmd_alpha * roll_tgt  + (1.0 - self._cmd_alpha) * self._ema_roll
@@ -239,8 +254,13 @@ class MirrorLawTorsoAction(TorsoCommandAction):
         near_impact     = (ball_rel_z < 0.50).float()   # within 50 cm above paddle
         v_in_z_abs = ball_vel_w[:, 2].abs()
         v_paddle_target = (v_out_z + self._restitution * v_in_z_abs) / (1.0 + self._restitution)
-        # Impact impulse: 2× to compensate for tracking lag, clamped to training range max.
-        h_dot_impulse = (2.0 * v_paddle_target * ball_descending * near_impact).clamp(0.0, 1.0)
+        # Clamp to physical max first, then apply 2× tracking-lag boost.
+        # Clamping *before* the boost preserves proportionality across apex heights
+        # (previously: 2× caused saturation at apex > ~0.05 m, making all heights identical).
+        _H_DOT_PHYS_MAX = 1.0  # m/s — training range max
+        _TRACKING_RATIO = 0.5  # pi2 achieves ~50% of commanded h_dot
+        v_paddle_cmd = (v_paddle_target / _TRACKING_RATIO).clamp(0.0, _H_DOT_PHYS_MAX)
+        h_dot_impulse = (v_paddle_cmd * ball_descending * near_impact).clamp(0.0, 1.0)
         # Small baseline when NOT in impact phase keeps body from drooping on springy legs.
         not_impacting = 1.0 - (ball_descending * near_impact).clamp(0.0, 1.0)
         h_dot_cmd = (h_dot_impulse + 0.15 * not_impacting).clamp(0.0, 1.0)
@@ -335,3 +355,9 @@ class MirrorLawTorsoActionCfg(TorsoCommandActionCfg):
     # 0.3 = strong smoothing (~3 step lag, ~2.4× noise reduction).
     # Use 0.3–0.5 when ball_vel_noise_std > 0 to prevent body shaking.
     cmd_smooth_alpha: float = 1.0
+
+    # Impact tilt gain: multiply computed roll/pitch by this factor during impact.
+    # 1.0 = mirror law only (default). 1.5–2.5 = diagonal energy injection.
+    # Start at 1.5, increase until ball reaches target apex height.
+    # Beyond ~2.5 the robot may become unstable.
+    impact_tilt_gain: float = 1.0

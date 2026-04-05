@@ -43,3 +43,14 @@ gym.register(
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:BallJuggleHierPPORunnerCfg",
     },
 )
+
+# V4: Launcher pi1 — precision launcher trained to hand off cleanly to mirror law
+gym.register(
+    id="Isaac-BallJuggleLauncher-Go1-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.ball_juggle_launcher_env_cfg:BallJuggleLauncherEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:BallJuggleLauncherPPORunnerCfg",
+    },
+)

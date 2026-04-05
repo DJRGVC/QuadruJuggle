@@ -141,6 +141,7 @@ class BallKalmanFilter:
 
         # ── Update ────────────────────────────────────────────────────────────
         # Innovation: y = z - H @ x_pred
+       
         y = ball_pos_noisy - (H @ x_pred.unsqueeze(-1)).squeeze(-1)  # (N, 3)
         # Innovation covariance: S = H @ P_pred @ Ht + R
         S = H @ P_pred @ Ht + self.R                                  # (N, 3, 3)

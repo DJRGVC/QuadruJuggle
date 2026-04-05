@@ -89,6 +89,13 @@ if args.apex_height is not None:
         (args.num_envs,), 0.10, device=device
     )
 step = 0
+
+def _fix_apex(dones_mask: torch.Tensor) -> None:
+    """Re-apply fixed apex height after episode resets (overrides randomize_apex_height event)."""
+    if args.apex_height is not None and dones_mask.any():
+        env_ids = dones_mask.nonzero(as_tuple=False).squeeze(-1)
+        env.unwrapped._apex_target_h[env_ids] = args.apex_height
+        env.unwrapped._apex_target_std[env_ids] = 0.10
 episode_rewards = torch.zeros(args.num_envs, device=device)
 episode_lengths = torch.zeros(args.num_envs, device=device)
 
@@ -100,6 +107,7 @@ try:
             obs_raw, rew, terminated, truncated, _ = env.step(actions)
             dones = (terminated | truncated).long()
 
+        _fix_apex(terminated | truncated)
         episode_rewards += rew
         episode_lengths += 1
 
