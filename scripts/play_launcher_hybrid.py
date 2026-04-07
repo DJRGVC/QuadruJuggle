@@ -34,8 +34,8 @@ parser.add_argument("--pi2_checkpoint",      type=str, required=True,
 parser.add_argument("--num_envs",            type=int,   default=4)
 parser.add_argument("--apex_height",         type=float, default=0.30,
                     help="Target apex height [m] (default 0.30)")
-parser.add_argument("--switch_window",       type=float, default=0.05,
-                    help="Pi1→mirror-law when |last_apex - target| < window [m] (default 0.05)")
+parser.add_argument("--switch_window",       type=float, default=0.10,
+                    help="Pi1→mirror-law when |last_apex - target| < window [m] (default 0.10)")
 parser.add_argument("--fallback_threshold",  type=float, default=0.50,
                     help="Mirror-law→pi1 when apex < fallback_threshold * target (default 0.50)")
 parser.add_argument("--centering_gain",      type=float, default=2.0)
@@ -151,7 +151,7 @@ using_mirror     = torch.zeros(args.num_envs, dtype=torch.bool, device=device)
 prev_ball_vz     = torch.zeros(args.num_envs, device=device)
 last_bounce_apex = torch.zeros(args.num_envs, device=device)
 mode_steps       = torch.zeros(args.num_envs, device=device)
-MIN_MODE_STEPS   = 50   # shorter than V3 — launcher handoffs are cleaner
+MIN_MODE_STEPS   = 20   # switch quickly — mirror law is more robust
 
 print(f"\n[play_launcher_hybrid] launcher : {args.launcher_checkpoint}")
 print(f"[play_launcher_hybrid] pi2      : {args.pi2_checkpoint}")

@@ -120,7 +120,7 @@ class LauncherRewardsCfg:
     # aggressive energy building that made V3 pi1 useless for mirror law handoff.
     apex_overshoot = RewTerm(
         func=mdp.ball_apex_overshoot_penalty,
-        weight=-3.0,
+        weight=-10.0,
         params={
             "window": _LAUNCH_WINDOW,       # penalty starts at target + 0.05 m
             "ball_cfg": SceneEntityCfg("ball"),
@@ -246,3 +246,5 @@ class BallJuggleLauncherEnvCfg_PLAY(BallJuggleLauncherEnvCfg):
         self.scene.env_spacing = 3.5
         self.observations.policy.enable_corruption = False
         self.episode_length_s = 30.0   # longer for demo
+        # Disable training-only termination — don't end episode when apex hits window
+        self.terminations.launcher_success = None
