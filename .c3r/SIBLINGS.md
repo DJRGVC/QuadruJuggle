@@ -26,15 +26,15 @@ Siblings will see it in their next SIBLINGS.md refresh.
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
 - **status**: running · iter #5 · ctx 0%
-- **last iter**: 16m ago
+- **last iter**: 21m ago
 
 ### Recent commits on `agent/policy`
 ```
+8607975 Log iter_013 early results (Stage D, apex=0.35 stable, weight=-2.0 working)
 74ef87b iter_012: ball_low weight -1.0→-2.0, revert dynamic threshold
 4b48378 iter_012: compaction (summarized iters 001-008)
 3b9d536 Dynamic ball_low threshold: 40% of target height per stage
 85acdcd iter_011 early: ball_low_penalty breaks balance local optimum — 158x apex improvement
-0314ec4 log iter_010 results; update fix_plan for iter_011
 ```
 ### Files modified on `agent/policy` (relative to `c3r/QuadruJuggle`)
 ```
@@ -74,7 +74,7 @@ git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
 - **role**: generic
 - **focus**: survey perception-for-manipulation papers (ETH noise injection, teacher-student distillation, event cameras, learned state estimators) and critique our D435i+EKF approach
 - **status**: running · iter #25 · ctx 0%
-- **last iter**: 12m ago
+- **last iter**: 17m ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/lit-review`
