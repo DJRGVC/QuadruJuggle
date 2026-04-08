@@ -25,16 +25,16 @@ Siblings will see it in their next SIBLINGS.md refresh.
 ## perception
 - **role**: generic
 - **focus**: implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline following ETH-style architecture, producing noisy ball observations usable by pi1 in Isaac Lab sim.
-- **status**: running · iter #41 · ctx 0%
-- **last iter**: 8m ago
+- **status**: running · iter #44 · ctx 0%
+- **last iter**: 1h ago
 
 ### Recent commits on `agent/perception`
 ```
+1b43248 iter_051: compaction (summarized iters 036-043)
+4363f8b iter_050: phase-separated NIS tracking — flight vs contact (10/10 new tests, 239/239 total)
+4bf0170 iter_049: GPU NIS validation — IMU ON vs OFF vs 9D spin (all identical, NIS ~0.44)
 9314aaa iter_048: gate rejection stats in pipeline diagnostics + NIS diagnostic tool (2/2 new tests, 229/229 total)
 aae1548 iter_047: chi-squared NIS gating in BallEKF (19/19 new tests, 227/227 total)
-bbbedec iter_046: threaded RealPerceptionPipeline + integration tests (17/17 new tests, 208/208 total)
-e9e14c3 iter_045: Hough circle fallback detector + from_yaml (15/15 new tests, 191/191 total)
-174f57b iter_044: compaction (summarized iters 029-035)
 ```
 ### Files modified on `agent/perception` (relative to `c3r/QuadruJuggle`)
 ```
@@ -65,10 +65,10 @@ scripts/perception/test_imu_aided_ekf.py
 scripts/perception/test_latency_injection.py
 scripts/perception/test_mock_pipeline.py
 scripts/perception/test_nis_gating.py
+scripts/perception/test_nis_phase.py
 scripts/perception/test_pipeline_config.py
 scripts/perception/test_real_utils.py
-scripts/perception/test_spin_estimation.py
-... and 26 more
+... and 27 more
 ```
 ### Read one with:
 ```
@@ -83,7 +83,7 @@ git show agent/perception:.c3r/RESEARCH_LOG_ARCHIVE.md
 - **role**: generic
 - **focus**: survey perception-for-manipulation papers (ETH noise injection, teacher-student distillation, event cameras, learned state estimators) and critique our D435i+EKF approach
 - **status**: stopped · iter #28 · ctx 0%
-- **last iter**: 3h ago
+- **last iter**: 4h ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/lit-review`
@@ -141,7 +141,7 @@ git show agent/lit-review:.c3r/SIBLINGS.md
 - **role**: generic
 - **focus**: Survey 2023-2026 papers on user-defined velocity command input for legged robots doing manipulation while walking. Our Go1 has hierarchical pi2 torso tracker (8D: h,hdot,roll,pitch,omega_r,omega_p,vx,vy) and pi1 ball planner. Propose 3 methods for adding user velocity commands. Track references. Report to parent perception every iter via INBOX. Complete in 5 iters MAX then stop.
 - **status**: stopped · iter #5 · ctx 0%
-- **last iter**: 58m ago
+- **last iter**: 2h ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/vel-cmd-survey`

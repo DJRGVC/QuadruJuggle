@@ -313,3 +313,58 @@ Decision:   Juggling is sustained through curriculum advancement. Next prioritie
             (2) If curriculum stalls (apex plateaus, no more stage advances): reduce sigma_ratio
                 or adjust curriculum targets.
             (3) User command interface (WASD+P/L) queued in fix_plan for later implementation.
+
+## iter_016 — continue training 1500 iters from step 5748 (d435i)  (2026-04-08T10:36Z)
+Hypothesis: Continued training from model_5748.pt will push through additional curriculum stages
+            while maintaining stable juggling.
+Change:     No config changes. Resumed from iter_015 model_5748.pt with same settings
+            (_BJ_THRESHOLD=0.30, ball_release_vel=+3.0, ball_low=-1.0, sigma_ratio=3.5, d435i noise).
+Command:    gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+              --task Isaac-BallJuggleHier-Go1-v0 \
+              --pi2-checkpoint .../2026-03-12_09-04-32/model_best.pt \
+              --num_envs 12288 --max_iterations 1500 --headless --noise-mode d435i --wandb \
+              --resume --load_run 2026-04-08_09-11-18 --checkpoint model_5748.pt
+            Checkpoint dir: logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_10-36-50/
+Result:     Early stopped at step 7198 (1451 iters, 700-iter ES patience exhausted).
+            Best reward: 360.58 (around step ~6500).
+            
+            Trajectory (key phases):
+              step 5748-5830: apex peaked at 17.4, reward=498, timeout=98% (Stage A peak)
+              step 5830-6050: curriculum ADVANCED (apex 17.4→15.5, adjusting to new stage)
+              step 6050-6200: dip — apex 14.4→11.8, timeout 93%→82% (harder stage adaptation)
+              step 6200-7198: STABLE PLATEAU — apex=10.5-11.0, timeout=68%, reward=300-320
+                              ball_below=28-30%, noise_std=1.09 (healthy)
+            
+            Final metrics (last 5 avg, step ~7198):
+              apex_rew=10.74, release_vel=0.60, alive=0.71, ball_low=-0.038
+              timeout=69.6%, ball_below=28.0%, ball_off=2.5%
+              mean_reward=316, mean_ep_len=1103, noise_std=1.09
+            
+            KEY FINDINGS:
+            (1) Curriculum advanced at least once (visible in apex drop from 17→10.7).
+                Policy adapted to harder stage and stabilized.
+            (2) Plateau at apex≈10.7 for ~1000 iters → early stopped. Policy found a stable
+                equilibrium but didn't advance further.
+            (3) noise_std=1.09 — very stable, well below 1.64 danger threshold.
+            (4) This is cumulative step 7198 (from original step 0) = ~3.6k iters total training
+                across iters 014-016. The policy is genuinely juggling at a harder stage.
+            (5) Compared to iter_015 end (apex=10.46, reward=282), iter_016 end is slightly
+                better (apex=10.74, reward=316) but essentially the same equilibrium.
+            
+            Checkpoints:
+            - model_best.pt: logs/.../2026-04-08_10-36-50/model_best.pt (from peak ~step 5835)
+            - model_early_stop.pt: logs/.../2026-04-08_10-36-50/model_early_stop.pt (step ~7198)
+            - model_7150.pt: logs/.../2026-04-08_10-36-50/model_7150.pt
+Decision:   The policy has plateaued at apex≈10.7 after curriculum advancement. Further training
+            at current settings won't break this plateau (ES triggered).
+            
+            Next priorities (for iter_017):
+            (1) DIAGNOSE PLATEAU: The policy earns apex=10.7 but isn't advancing further through
+                curriculum. Two possible causes:
+                a) Timeout at 69% is above 30% threshold, so curriculum SHOULD advance — but maybe
+                   the next stage's parameters are too hard (big jump in target height/sigma).
+                b) Early stopping triggers before curriculum has time to advance.
+            (2) Check which curriculum stage the policy is actually on — read the curriculum code
+                to determine stage from the metrics.
+            (3) Consider increasing ES patience (700→1500) to give curriculum more time.
+            (4) Oracle comparison at current performance level to measure d435i degradation.
