@@ -21,7 +21,9 @@
 - [ ] Support policy agent with noise curriculum tuning if/when they reach that stage
 
 # Phase 6: User-defined velocity input (Daniel request 2026-04-08)
-- [ ] vel-cmd-survey subagent: 5 iters MAX, then kill. Researching 2023-2026 papers on velocity commands for legged manipulation
+- [x] vel-cmd-survey subagent: 4 iters, final proposal delivered, killed (iter_043)
 - [x] Implement Method 1 (Direct Override): UserVelocityInput + CommandMixer (iter_041)
 - [x] Create play_teleop.py integration script (hooks mixer into play loop) (iter_042)
-- [ ] Decide on Method 2/3 based on subagent findings (for future retraining approach)
+- [x] Implement ResidualMixer for Method 2 (Residual Velocity) — production architecture (iter_043)
+- [ ] Policy agent handoff: Method 2 requires pi1 retraining (obs 40→42D, vel_tracking reward, hot-start from Stage G)
+- [ ] Wire ResidualMixer into play_teleop.py as --mixer residual option (after policy trains M2 checkpoint)

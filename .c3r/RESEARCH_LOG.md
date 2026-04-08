@@ -296,3 +296,28 @@ Result:     **7/7 new teleop flow tests pass.** 28/28 vel_cmd tests total. 160/1
 Decision:   Next: check vel-cmd-survey subagent (should be on iter_004 with final proposal).
             If subagent done, kill it and assess Method 2/3 recommendations.
             GPU NIS validation (IMU on/off comparison) when GPU available.
+
+---
+
+## iter_043 — ResidualMixer (Method 2) + kill vel-cmd-survey (16/16 new tests, 176/176 total)  (2026-04-08T16:30:00Z)
+Hypothesis: Implementing ResidualMixer (Method 2 from vel-cmd-survey) as a separate module
+            provides the production architecture for velocity commands — pi1 outputs residual
+            corrections added to user base velocity, preserving pi1's ability to compensate
+            for ball drift during locomotion.
+Change:     (1) Killed vel-cmd-survey subagent (4 iters, final proposal delivered with
+                Method 1/2/3 comparison, risk analysis, phased impl order).
+            (2) Created `vel_cmd/residual_mixer.py`: ResidualMixer + ResidualMixerCfg.
+                mix() computes cmd[vx] = clamp(pi1_residual + vel_user, -max, +max).
+                Configurable indices, max_total_norm, optional cfg (defaults to standard).
+            (3) Updated `vel_cmd/__init__.py` to export ResidualMixer + ResidualMixerCfg.
+            (4) Added 16 tests in 5 classes: basic arithmetic (7), config (4), vs-override
+                comparison (2), teleop flow integration (3).
+Command:    `pytest scripts/perception/test_vel_cmd.py -v` (44 tests)
+            Full suite (10 test files, CPU-only): 176/176 pass.
+Result:     **16/16 new tests pass.** 44/44 vel_cmd tests total. 176/176 full suite.
+            Key verification: residual mixer adds pi1+user (unlike override which discards pi1),
+            clamps correctly at boundaries, preserves dims 0-5, doesn't mutate input.
+            GPU still locked by policy agent (fail_streak=8 on policy side).
+Decision:   Next: write handoff note to policy agent INBOX about Method 2 requirements
+            (obs 40→42D, vel_tracking reward, hot-start). GPU NIS validation when available.
+            Consider compaction next iter (298 lines → close to 300 threshold).

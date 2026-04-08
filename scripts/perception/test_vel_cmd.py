@@ -28,10 +28,13 @@ def _load(name: str, path: str):
 
 
 _mixer_mod = _load("command_mixer", os.path.join(_VEL_DIR, "command_mixer.py"))
+_res_mod = _load("residual_mixer", os.path.join(_VEL_DIR, "residual_mixer.py"))
 _uvi_mod = _load("user_velocity_input", os.path.join(_VEL_DIR, "user_velocity_input.py"))
 
 CommandMixer = _mixer_mod.CommandMixer
 CommandMixerCfg = _mixer_mod.CommandMixerCfg
+ResidualMixer = _res_mod.ResidualMixer
+ResidualMixerCfg = _res_mod.ResidualMixerCfg
 UserVelocityInput = _uvi_mod.UserVelocityInput
 UserVelocityInputCfg = _uvi_mod.UserVelocityInputCfg
 _VX_SCALE = _uvi_mod._VX_SCALE
@@ -231,6 +234,189 @@ class TestCommandMixerConfig(unittest.TestCase):
         # Original indices 6,7 untouched
         self.assertEqual(out[0, 6].item(), 0.0)
         self.assertEqual(out[0, 7].item(), 0.0)
+
+
+# -----------------------------------------------------------------------
+# ResidualMixer tests (Method 2)
+# -----------------------------------------------------------------------
+
+class TestResidualMixerBasic(unittest.TestCase):
+    """Core residual mixing: cmd_out = clamp(pi1_residual + vel_user, -1, +1)."""
+
+    def setUp(self):
+        self.mixer = ResidualMixer(ResidualMixerCfg())
+        self.N = 4
+
+    def test_zero_user_equals_pi1(self):
+        """With zero user velocity and in-range pi1, output equals pi1."""
+        pi1 = torch.rand(self.N, 8) * 1.6 - 0.8  # uniform in [-0.8, 0.8] — within clamp
+        vel = torch.zeros(self.N, 2)
+        out = self.mixer.mix(pi1, vel)
+        self.assertTrue(torch.allclose(out, pi1))
+
+    def test_zero_residual_equals_user(self):
+        """With zero pi1 residual on vx/vy, output vx/vy = user velocity."""
+        pi1 = torch.zeros(self.N, 8)
+        pi1[:, :6] = torch.randn(self.N, 6)  # set non-vel dims
+        vel = torch.tensor([[0.4, -0.3]]).expand(self.N, -1)
+        out = self.mixer.mix(pi1, vel)
+        self.assertTrue(torch.allclose(out[:, 6], torch.tensor(0.4)))
+        self.assertTrue(torch.allclose(out[:, 7], torch.tensor(-0.3)))
+        # Non-vel dims unchanged
+        self.assertTrue(torch.equal(out[:, :6], pi1[:, :6]))
+
+    def test_additive_combination(self):
+        """pi1_residual + user = sum (within clamp range)."""
+        pi1 = torch.zeros(self.N, 8)
+        pi1[:, 6] = 0.2   # residual forward
+        pi1[:, 7] = -0.1  # residual right
+        vel = torch.tensor([[0.3, 0.4]]).expand(self.N, -1)
+        out = self.mixer.mix(pi1, vel)
+        self.assertAlmostEqual(out[0, 6].item(), 0.5, places=5)
+        self.assertAlmostEqual(out[0, 7].item(), 0.3, places=5)
+
+    def test_clamp_positive(self):
+        """Sum > 1.0 clamped to max_total_norm (default 1.0)."""
+        pi1 = torch.zeros(self.N, 8)
+        pi1[:, 6] = 0.8
+        vel = torch.tensor([[0.5, 0.0]]).expand(self.N, -1)
+        out = self.mixer.mix(pi1, vel)
+        self.assertAlmostEqual(out[0, 6].item(), 1.0, places=5)
+
+    def test_clamp_negative(self):
+        """Sum < -1.0 clamped to -max_total_norm."""
+        pi1 = torch.zeros(self.N, 8)
+        pi1[:, 6] = -0.7
+        vel = torch.tensor([[-0.6, 0.0]]).expand(self.N, -1)
+        out = self.mixer.mix(pi1, vel)
+        self.assertAlmostEqual(out[0, 6].item(), -1.0, places=5)
+
+    def test_preserves_other_dims(self):
+        """Dims 0-5 passed through unchanged."""
+        pi1 = torch.randn(self.N, 8)
+        vel = torch.randn(self.N, 2)
+        out = self.mixer.mix(pi1, vel)
+        self.assertTrue(torch.equal(out[:, :6], pi1[:, :6]))
+
+    def test_does_not_modify_input(self):
+        """mix() must not mutate the input tensor."""
+        pi1 = torch.randn(self.N, 8)
+        pi1_orig = pi1.clone()
+        vel = torch.randn(self.N, 2)
+        self.mixer.mix(pi1, vel)
+        self.assertTrue(torch.equal(pi1, pi1_orig))
+
+
+class TestResidualMixerConfig(unittest.TestCase):
+
+    def test_default_config(self):
+        cfg = ResidualMixerCfg()
+        self.assertEqual(cfg.vx_idx, 6)
+        self.assertEqual(cfg.vy_idx, 7)
+        self.assertEqual(cfg.max_total_norm, 1.0)
+
+    def test_custom_max_total_norm(self):
+        """Lower cap limits total velocity (safety)."""
+        mixer = ResidualMixer(ResidualMixerCfg(max_total_norm=0.6))
+        pi1 = torch.zeros(2, 8)
+        pi1[:, 6] = 0.3
+        vel = torch.tensor([[0.5, 0.0]]).expand(2, -1)
+        out = mixer.mix(pi1, vel)
+        # 0.3 + 0.5 = 0.8 → clamped to 0.6
+        self.assertAlmostEqual(out[0, 6].item(), 0.6, places=5)
+
+    def test_custom_indices(self):
+        mixer = ResidualMixer(ResidualMixerCfg(vx_idx=2, vy_idx=3))
+        pi1 = torch.zeros(1, 8)
+        pi1[:, 2] = 0.1
+        vel = torch.tensor([[0.4, -0.2]])
+        out = mixer.mix(pi1, vel)
+        self.assertAlmostEqual(out[0, 2].item(), 0.5, places=5)
+        self.assertAlmostEqual(out[0, 3].item(), -0.2, places=5)
+        # Original vx/vy indices untouched
+        self.assertEqual(out[0, 6].item(), 0.0)
+
+    def test_none_config_uses_defaults(self):
+        mixer = ResidualMixer(None)
+        self.assertEqual(mixer.cfg.vx_idx, 6)
+
+
+class TestResidualMixerVsOverride(unittest.TestCase):
+    """Verify that ResidualMixer and CommandMixer(override) differ correctly."""
+
+    def test_nonzero_residual_diverges(self):
+        """When pi1 has nonzero vx/vy, override discards it but residual adds it."""
+        N = 2
+        pi1 = torch.zeros(N, 8)
+        pi1[:, 6] = 0.3  # pi1's vx intent
+        vel = torch.tensor([[0.2, 0.0]]).expand(N, -1)
+
+        override = CommandMixer(CommandMixerCfg(mode="override"))
+        residual = ResidualMixer(ResidualMixerCfg())
+
+        out_o = override.mix(pi1, vel)
+        out_r = residual.mix(pi1, vel)
+
+        # Override: vx = 0.2 (user only)
+        self.assertAlmostEqual(out_o[0, 6].item(), 0.2, places=5)
+        # Residual: vx = 0.3 + 0.2 = 0.5 (pi1 + user)
+        self.assertAlmostEqual(out_r[0, 6].item(), 0.5, places=5)
+
+    def test_zero_residual_matches_override(self):
+        """When pi1 vx/vy = 0, residual and override produce same result."""
+        N = 2
+        pi1 = torch.zeros(N, 8)
+        pi1[:, :6] = torch.randn(N, 6)
+        vel = torch.tensor([[0.4, -0.3]]).expand(N, -1)
+
+        override = CommandMixer(CommandMixerCfg(mode="override"))
+        residual = ResidualMixer(ResidualMixerCfg())
+
+        out_o = override.mix(pi1, vel)
+        out_r = residual.mix(pi1, vel)
+
+        self.assertTrue(torch.allclose(out_o[:, 6:8], out_r[:, 6:8]))
+
+
+class TestResidualMixerTeleopFlow(unittest.TestCase):
+    """End-to-end flow: UserVelocityInput → ResidualMixer → mixed actions."""
+
+    def setUp(self):
+        self.uvi = UserVelocityInput(UserVelocityInputCfg(backend="zero"))
+        self.uvi.start()
+        self.mixer = ResidualMixer()
+        self.N = 4
+
+    def tearDown(self):
+        self.uvi.stop()
+
+    def test_zero_user_preserves_pi1(self):
+        """Zero backend user input → residual mixer passes pi1 through (in-range)."""
+        pi1 = torch.rand(self.N, 8) * 1.6 - 0.8  # in [-0.8, 0.8]
+        vel = self.uvi.get_cmd_tensor(self.N, "cpu")
+        out = self.mixer.mix(pi1, vel)
+        self.assertTrue(torch.allclose(out, pi1))
+
+    def test_user_adds_to_residual(self):
+        """User walks forward; pi1 adds lateral correction for ball drift."""
+        self.uvi._vx = 0.20   # user: 0.20 m/s forward → 0.4 normalized
+        self.uvi._vy = 0.0
+        pi1 = torch.zeros(self.N, 8)
+        pi1[:, 6] = 0.1   # pi1 residual: small forward correction
+        pi1[:, 7] = -0.05  # pi1 residual: slight right correction
+        vel = self.uvi.get_cmd_tensor(self.N, "cpu")
+        out = self.mixer.mix(pi1, vel)
+        self.assertAlmostEqual(out[0, 6].item(), 0.1 + 0.4, places=4)
+        self.assertAlmostEqual(out[0, 7].item(), -0.05 + 0.0, places=4)
+
+    def test_headroom_at_max_user_speed(self):
+        """At user max (0.30 m/s = 0.6 norm), pi1 still has ±0.4 headroom."""
+        self.uvi._vx = 0.30
+        vel = self.uvi.get_cmd_tensor(self.N, "cpu")
+        pi1 = torch.zeros(self.N, 8)
+        pi1[:, 6] = 0.4  # pi1 uses full remaining headroom
+        out = self.mixer.mix(pi1, vel)
+        self.assertAlmostEqual(out[0, 6].item(), 1.0, places=4)  # 0.6 + 0.4
 
 
 # -----------------------------------------------------------------------
