@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Sweep q_vel values for EKF tuning under trained policy.
 
-Runs eval_perception_live.py at multiple q_vel values and collects results
-into a summary table. Each q_vel is evaluated in a single env session to
-avoid repeated env creation overhead.
+Runs eval at multiple q_vel values and collects results into a summary table.
+After the coarse sweep, automatically bisects the interval containing NIS=3.0
+to find the optimal q_vel without a second manual run.
 
 Usage:
     $C3R_BIN/gpu_lock.sh uv run --active python scripts/perception/sweep_q_vel.py \
@@ -11,6 +11,7 @@ Usage:
 """
 
 import argparse
+import datetime
 import json
 import os
 import sys
@@ -61,6 +62,10 @@ def main():
                         help="Steps to run before collecting metrics (EKF convergence)")
     parser.add_argument("--no-post-contact", action="store_true",
                         help="Disable post-contact inflation (2-level only)")
+    parser.add_argument("--no-bisect", action="store_true",
+                        help="Skip automatic bisection refinement")
+    parser.add_argument("--bisect-steps", type=int, default=3,
+                        help="Number of bisection iterations (default 3 → 8x finer)")
 
     args = parser.parse_args()
 
@@ -127,7 +132,6 @@ def main():
     torch.backends.cudnn.allow_tf32 = True
 
     # --- Build env ONCE ---
-    # Start with first q_vel; we'll swap the EKF between sweeps
     ekf_cfg = BallEKFConfig()
     ekf_cfg.q_vel = q_vel_list[0]
     ekf_cfg.q_vel_contact = args.q_vel_contact
@@ -209,40 +213,34 @@ def main():
 
     _print(f"Target: {target_h:.2f}m  σ={sigma:.3f}m\n")
 
-    # --- Sweep ---
-    all_results = []
+    # --- Evaluation helper ---
 
-    for q_vel in q_vel_list:
+    def _eval_q_vel(q_vel_val, label=""):
+        """Run one evaluation point and return result dict."""
         _print(f"\n{'='*80}")
-        _print(f"  q_vel = {q_vel}  (q_vel_contact = {args.q_vel_contact})")
+        _print(f"  q_vel = {q_vel_val:.4f}  (q_vel_contact = {args.q_vel_contact}){label}")
         _print(f"{'='*80}")
 
-        # Swap q_vel in the EKF config
         pipeline = getattr(base_env, "_perception_pipeline", None)
         if pipeline is not None and hasattr(pipeline, "ekf"):
-            pipeline.ekf.cfg.q_vel = q_vel
+            pipeline.ekf.cfg.q_vel = q_vel_val
             pipeline.ekf.cfg.q_vel_contact = args.q_vel_contact
             pipeline.ekf.cfg.q_vel_post_contact = args.q_vel_post_contact
             pipeline.ekf.cfg.post_contact_steps = args.post_contact_steps
-            # Reset EKF state with current positions (resets P to initial values)
             all_ids = torch.arange(args.num_envs, device=base_env.device)
             init_pos = pipeline.ekf.pos.clone()
             init_vel = pipeline.ekf.vel.clone()
             pipeline.ekf.reset(all_ids, init_pos, init_vel)
-            # Flush diagnostic accumulators (diagnostics property resets on access)
             _ = pipeline.diagnostics
 
-        # Reset env for clean start
         obs = env_wrapped.get_observations()
 
-        # Warmup: let EKF converge with new q_vel before collecting stats
         if args.warmup_steps > 0:
             _print(f"  warmup: {args.warmup_steps} steps...")
             for _ in range(args.warmup_steps):
                 with torch.inference_mode():
                     actions = policy(obs)
                     obs, _, _, _ = env_wrapped.step(actions)
-            # Flush stale diagnostics accumulated during warmup
             pipeline = getattr(base_env, "_perception_pipeline", None)
             if pipeline is not None:
                 _ = pipeline.diagnostics
@@ -295,7 +293,6 @@ def main():
                 _print(f"  step {step:4d}  NIS={nis:6.2f}  flight={nis_f:6.2f}  "
                        f"contact={nis_c:6.2f}  EKF={ekf_mm:5.1f}mm  raw={raw_mm:5.1f}mm")
 
-        # Aggregate
         mean_nis = sum(nis_vals) / len(nis_vals) if nis_vals else 0
         mean_f = sum(nis_flight_vals) / len(nis_flight_vals) if nis_flight_vals else 0
         mean_c = sum(nis_contact_vals) / len(nis_contact_vals) if nis_contact_vals else 0
@@ -304,7 +301,7 @@ def main():
         impr = (1 - mean_ekf / mean_raw) * 100 if mean_raw > 0 else 0
 
         result = {
-            "q_vel": q_vel,
+            "q_vel": q_vel_val,
             "q_vel_contact": args.q_vel_contact,
             "mean_nis": round(mean_nis, 3),
             "flight_nis": round(mean_f, 3),
@@ -315,39 +312,99 @@ def main():
             "episodes": total_ep,
             "timeout_pct": round(100 * total_to / max(total_ep, 1), 1),
         }
-        all_results.append(result)
 
         _print(f"\n  → NIS: {mean_nis:.2f} (flight={mean_f:.2f}, contact={mean_c:.2f})")
         _print(f"  → RMSE: EKF={mean_ekf:.1f}mm, raw={mean_raw:.1f}mm, impr={impr:.1f}%")
+        return result
+
+    # --- Coarse sweep ---
+    all_results = []
+    for q_vel in q_vel_list:
+        all_results.append(_eval_q_vel(q_vel))
+
+    # --- Bisection refinement ---
+    # Find the interval [q_lo, q_hi] where flight NIS crosses 3.0 and
+    # bisect to narrow down the optimal q_vel. NIS is monotonically
+    # decreasing with q_vel (higher process noise → smaller innovation).
+    TARGET_NIS = 3.0
+
+    if not args.no_bisect:
+        sorted_results = sorted(all_results, key=lambda r: r["q_vel"])
+        q_lo, q_hi = None, None
+        for i in range(len(sorted_results) - 1):
+            f_lo = sorted_results[i]["flight_nis"]
+            f_hi = sorted_results[i + 1]["flight_nis"]
+            if (f_lo - TARGET_NIS) * (f_hi - TARGET_NIS) < 0:
+                q_lo = sorted_results[i]["q_vel"]
+                q_hi = sorted_results[i + 1]["q_vel"]
+                break
+
+        if q_lo is not None and q_hi is not None:
+            _print(f"\n\n{'='*80}")
+            _print(f"  BISECTION REFINEMENT: NIS=3.0 crossing in [{q_lo:.2f}, {q_hi:.2f}]")
+            _print(f"{'='*80}")
+            for bisect_step in range(args.bisect_steps):
+                q_mid = (q_lo + q_hi) / 2.0
+                result = _eval_q_vel(q_mid, label=f"  [bisect {bisect_step+1}/{args.bisect_steps}]")
+                all_results.append(result)
+                if result["flight_nis"] > TARGET_NIS:
+                    q_lo = q_mid
+                else:
+                    q_hi = q_mid
+                _print(f"  → narrowed to [{q_lo:.4f}, {q_hi:.4f}]")
+        else:
+            _print(f"\n  No NIS=3.0 crossing found in sweep range — skipping bisection.")
+            if sorted_results:
+                _print(f"  (flight NIS range: {sorted_results[0]['flight_nis']:.2f} - "
+                       f"{sorted_results[-1]['flight_nis']:.2f})")
 
     # --- Summary table ---
     _print(f"\n\n{'='*100}")
     _print(f"  q_vel SWEEP SUMMARY  (target_height={target_h}m, {args.num_envs} envs × {args.steps} steps)")
     _print(f"{'='*100}")
-    _print(f"  {'q_vel':>8s}  {'NIS':>8s}  {'Flight':>8s}  {'Contact':>8s}  "
+    _print(f"  {'q_vel':>10s}  {'NIS':>8s}  {'Flight':>8s}  {'Contact':>8s}  "
            f"{'EKF mm':>8s}  {'Raw mm':>8s}  {'Impr%':>7s}  {'Eps':>6s}  {'TO%':>6s}")
-    _print(f"  {'-'*8}  {'-'*8}  {'-'*8}  {'-'*8}  "
+    _print(f"  {'-'*10}  {'-'*8}  {'-'*8}  {'-'*8}  "
            f"{'-'*8}  {'-'*8}  {'-'*7}  {'-'*6}  {'-'*6}")
 
     best_q = None
     best_score = float("inf")
-    for r in all_results:
-        _print(f"  {r['q_vel']:8.1f}  {r['mean_nis']:8.3f}  {r['flight_nis']:8.3f}  "
+    for r in sorted(all_results, key=lambda x: x["q_vel"]):
+        _print(f"  {r['q_vel']:10.4f}  {r['mean_nis']:8.3f}  {r['flight_nis']:8.3f}  "
                f"{r['contact_nis']:8.3f}  {r['ekf_rmse_mm']:8.2f}  {r['raw_rmse_mm']:8.2f}  "
                f"{r['improvement_pct']:7.1f}  {r['episodes']:6d}  {r['timeout_pct']:5.1f}%")
-        # Score: distance from target NIS=3.0 for flight phase
-        score = abs(r["flight_nis"] - 3.0)
+        score = abs(r["flight_nis"] - TARGET_NIS)
         if score < best_score:
             best_score = score
             best_q = r["q_vel"]
 
-    _print(f"\n  Best q_vel for flight NIS ≈ 3.0: {best_q}")
-    _print(f"  (closest flight NIS distance from target: {best_score:.2f})")
+    best_r = next(r for r in all_results if r["q_vel"] == best_q)
+    _print(f"\n  Best q_vel for flight NIS ≈ {TARGET_NIS}: {best_q:.4f}")
+    _print(f"  (flight NIS = {best_r['flight_nis']:.3f}, EKF RMSE = {best_r['ekf_rmse_mm']:.1f}mm)")
 
-    if args.output:
-        with open(args.output, "w") as f:
-            json.dump({"sweep": all_results, "best_q_vel": best_q}, f, indent=2)
-        _print(f"\n  Results saved to: {args.output}")
+    # Auto-save results
+    output_path = args.output
+    if output_path is None:
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = f"logs/perception/sweep_q_vel_{ts}.json"
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump({
+            "sweep": sorted(all_results, key=lambda x: x["q_vel"]),
+            "best_q_vel": best_q,
+            "best_result": best_r,
+            "config": {
+                "q_vel_contact": args.q_vel_contact,
+                "q_vel_post_contact": args.q_vel_post_contact,
+                "post_contact_steps": args.post_contact_steps,
+                "target_height": target_h,
+                "num_envs": args.num_envs,
+                "steps": args.steps,
+                "warmup_steps": args.warmup_steps,
+                "bisect_steps": 0 if args.no_bisect else args.bisect_steps,
+            },
+        }, f, indent=2)
+    _print(f"\n  Results saved to: {output_path}")
 
     _print()
     env.close()

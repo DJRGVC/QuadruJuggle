@@ -77,3 +77,17 @@ Command:    No GPU commands.
 Result:     Log shrunk from ~127 → ~60 lines. Archive now has 59 verbatim entries (001-059).
 Decision:   Next iter: GPU q_vel sweep with sweep_q_vel.py when GPU lock frees. Primary goal:
             find flight q_vel where NIS ≈ 3.0 and EKF RMSE < raw RMSE under active policy.
+
+## Iteration 61 — sweep_q_vel.py bisection + auto-save  (2026-04-08T22:30:00Z)
+Hypothesis: Adding automatic bisection refinement to sweep_q_vel.py will find the exact q_vel
+            for NIS≈3.0 in a single GPU run instead of requiring manual follow-up sweeps.
+Change:     Refactored sweep loop into _eval_q_vel() helper. Added bisection pass: after coarse
+            sweep, finds interval where flight NIS crosses 3.0 and runs 3 bisection steps
+            (8x finer resolution). Auto-saves JSON results with timestamp. Added --no-bisect
+            and --bisect-steps flags. GPU was locked by policy agent (training 2000 iters
+            with --noise-mode d435i, started ~42min ago).
+Command:    No GPU commands (lock held by policy agent). CPU tests: 9/9 pass.
+Result:     sweep_q_vel.py enhanced — ready to run next iter when GPU frees. Policy agent is
+            at iter_018 training d435i noise mode, plateau at apex≈10.7.
+Decision:   Next iter: run the GPU q_vel sweep. If GPU still locked, check if policy agent
+            has finished and whether we can coordinate timing.
