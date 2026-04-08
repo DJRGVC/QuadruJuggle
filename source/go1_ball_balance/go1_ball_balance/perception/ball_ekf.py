@@ -44,10 +44,10 @@ class BallEKFConfig:
     q_pos: float = 0.003    # position process noise std (m) per sqrt(s)
     q_vel: float = 7.0      # velocity process noise std (m/s) per sqrt(s)
 
-    # Measurement noise — matched to D435iNoiseModelCfg at ~0.5m nominal distance
+    # Measurement noise — matched to updated D435iNoiseModelCfg at ~0.5m nominal distance
     r_xy: float = 0.002     # measurement noise std, XY (m) — matches sigma_xy_base
-    r_z: float = 0.004      # measurement noise std, Z (m) — 3mm base + 2mm/m × 0.5m
-    r_z_per_metre: float = 0.002  # additional Z noise std per metre of distance
+    r_z: float = 0.0055     # measurement noise std, Z (m) — 3mm base + 5mm/m × 0.5m
+    r_z_per_metre: float = 0.005  # additional Z noise std per metre (matched to D435i quadratic)
     adaptive_r: bool = True  # if True, r_z varies with estimated ball height
 
     # Drag coefficient: F_drag = -drag_coeff * |v| * v

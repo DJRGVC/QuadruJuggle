@@ -36,7 +36,19 @@
 - [x] Implement world-frame EKF option for deployment — `world_frame=True` on BallObsNoiseCfg; body→world measurement transform, world→body output transform. 5 CPU tests pass.
 - [x] Validate world-frame EKF with NIS diagnostic (GPU) — DONE iter_024: NIS=970 with q_vel=0.30, NIS=2.6 with q_vel=10.0. Root cause: ballistic model wrong during contact (not coordinate frame). q_vel=7.0 set as default.
 - [x] NIS sweep: q_vel ∈ {0.30, 1.0, 3.0, 5.0, 10.0}. EKF provides no position benefit at any consistent q_vel — value is velocity estimation + dropout bridging only.
-- [ ] Declare perception pipeline feature-complete for sim training and shift to real hardware integration (D435i ROS driver, YOLO ball detection, camera-to-body calibration)
+- [x] Declare perception pipeline feature-complete for sim training and shift to real hardware integration — DONE iter_025: hardware_pipeline_architecture.md written
+
+# Phase 3: Real Hardware Integration
+# Blocked on physical hardware access — spec is ready, implementation when Go1+D435i available.
+- [x] Update noise_model.py: increase sigma_z_per_metre 2→5mm/m and dropout_prob 0.02→0.10 (lit-review D435i audit found sim values 2.5× and 4-20× too low) — DONE iter_025, also updated EKF r_z to match
+- [ ] Create perception/real/ directory with camera.py, detector.py, calibration.py, pipeline.py, config.py stubs (interfaces per hardware_pipeline_architecture.md)
+- [ ] Implement D435iCamera wrapper (pyrealsense2, depth-only 848×480 @ 90fps, non-blocking poll)
+- [ ] Implement BallDetector (YOLOv8n+P2 TRT FP16 inference + median-depth-in-bbox 3D localisation)
+- [ ] Implement CameraCalibrator (load extrinsics YAML, optional checkerboard routine)
+- [ ] Implement RealPerceptionPipeline (threaded: camera+YOLO at 90Hz, EKF predict at 200Hz, get_observation at 50Hz)
+- [ ] YOLO training data collection on real Go1 (300+ depth frames, auto-label + CVAT verify)
+- [ ] YOLO fine-tune: YOLOv8n+P2, frozen backbone, 150 epochs, export TRT FP16 on Orin NX
+- [ ] End-to-end hardware test: perception pipeline → pi1 policy on real Go1 with ball drop
 - [x] Fix compare_perception_modes.py diagnostic capture — used base_env reference, added flush + warning
 - [x] Noise curriculum support: `noise_scale` field on BallObsNoiseCfg + `update_perception_noise_scale()` for runtime curriculum updates — DONE, 6 unit tests pass
 - [x] Monitor lit-review subagent — 3 iterations complete, all 3 docs committed (perception, noise_curriculum, ekf_tuning). Attempted kill (c3r binary path issue).

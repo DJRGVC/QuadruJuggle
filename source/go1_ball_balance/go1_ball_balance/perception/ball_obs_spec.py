@@ -62,8 +62,8 @@ class D435iNoiseParams:
 
     sigma_xy_base: float = 0.002       # 2mm base XY noise std (metres)
     sigma_z_base: float = 0.003        # 3mm base depth noise std
-    sigma_z_per_metre: float = 0.002   # +2mm per metre of distance
-    dropout_prob: float = 0.02         # 2% chance of missed detection per step
+    sigma_z_per_metre: float = 0.005   # +5mm/m (D435i quadratic; was 2mm — 2.5× too low per lit-review)
+    dropout_prob: float = 0.10         # 10% (white ball IR reflectance; was 2% — 5× too low per lit-review)
     latency_steps: int = 1             # observation delay in policy steps
 
 
