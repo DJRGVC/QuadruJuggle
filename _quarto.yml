@@ -1,6 +1,11 @@
 project:
   type: website
   output-dir: _site
+  render:
+    - "index.qmd"
+    - "experiments.qmd"
+    - "references.qmd"
+    - "agents/*.qmd"
   resources:
     - "images/**"
     - "videos/**"
