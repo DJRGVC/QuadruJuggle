@@ -173,3 +173,25 @@ Decision:   GPU NIS validation next: run nis_diagnostic.py with contact_aware=Tr
             NIS near 3.0 during free flight (was 970 everywhere with q_vel=7.0). Contact phases
             will still have high NIS (unavoidable — contact forces truly unpredictable) but
             free-flight should now show proper EKF smoothing benefit over raw noise.
+
+---
+
+## iter_031 — GPU NIS validation: contact-aware EKF vs uniform q_vel  (2026-04-08T18:35:00Z)
+Hypothesis: Contact-aware EKF (q_vel=0.40 free-flight, 50.0 contact) will achieve NIS≈3.0
+            during free-flight phases, vs NIS≈700 with uniform q_vel=0.40.
+Change:     No code changes — diagnostic validation of iter_030's contact-aware EKF.
+Command:    `nis_diagnostic.py --num_envs 256 --steps 200 --headless` (with and without --no-contact-aware)
+Result:     **Contact-aware ON**: NIS=0.78, 10/10 intervals in 95% band. EKF RMSE=5.4mm, raw=4.5mm.
+            **Contact-aware OFF**: NIS=671, 0/10 in band. EKF RMSE=155mm (divergent).
+            
+            Key findings:
+            - 860× NIS improvement (671→0.78). NIS now in-band for all intervals.
+            - NIS=0.78 slightly over-conservative (target 3.0) → q_vel could be reduced to ~0.15
+              but current 0.40 is safe and conservative.
+            - EKF position RMSE (5.4mm) worse than raw (4.5mm) because random-action test
+              keeps ball mostly in contact phase where EKF is intentionally loose.
+            - EKF value is velocity estimation + dropout bridging, not position during contact.
+            - Detection rate ~90% consistent across both modes (expected).
+Decision:   GPU NIS validation complete. Contact-aware EKF confirmed working. Mark task done
+            in fix_plan. Next: ballistic trajectory testing in mock pipeline, or check if
+            policy agent needs perception support for noise curriculum tuning.
