@@ -1,51 +1,27 @@
 # fix_plan.md — experiment queue for policy
 #
-# Replace this preamble with 3-5 concrete starting tasks (one per line,
-# as a markdown bullet). Lines starting with # are kept as comments.
-# Agents read the TOP of this file at the start of every iteration.
-#
-# Example format:
-#   - [ ] Task one — one full sentence, no line breaks
-#   - [ ] Task two
-#
-# Save and exit your editor when done. Empty file = agent picks its own direction.
+# Active tasks and forward-looking work only. Completed tasks archived.
 
-- [x] Run the current pi1+pi2 ball juggle baseline with oracle ball observations for 500 iterations to capture a clean reference metric (mean episode length, paddle-catch rate, final target height reached); log to RESEARCH_LOG.md with the exact command and tbdump output
-  # DONE iter_001: Stage D reached, mean_len=1470, timeout=92.4%, apex=3.11, checkpoint logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_19-11-34/model_best.pt
-- [x] Read agent/perception:source/go1_ball_balance/perception/ball_obs_spec.py via git show as soon as perception publishes the stub; integrate the function as an observation term in the pi1 env, falling back to oracle behavior while the stub is zero-noise
-  # DONE iter_004: Integrated ball_obs_spec.py into pi1 env config. --noise-mode oracle|d435i CLI flag added. Both modes smoke-tested OK.
-- [x] Run full d435i noise training (500 iters, 12288 envs) and compare to oracle baseline (iter_003: timeout=98.9%, apex=2.92, mean_len=1500)
-  # DONE iter_005: d435i causes ~8% reward degradation, same Stage D plateau. D435i+wandb rerun in progress.
-- [x] Set up a degradation-comparison infrastructure: a script scripts/rsl_rl/compare_pi1.py that runs two checkpoints against each other on a fixed eval protocol and outputs relative metrics to stdout; commit to your branch
-  # DONE iter_007a: compare_pi1.py created + --noise-mode added to eval_juggle_hier.py
-- [x] Review the existing sigma curriculum in train_juggle_hier.py stages A-G from memory and propose how noise scheduling would interact with it; write the design to docs/noise_curriculum_plan.md without implementing yet
-  # DONE iter_006: wrote docs/noise_curriculum_plan.md — 3-phase approach (oracle→scaled d435i→ekf). Stage D plateau is the blocker.
-- [x] BLOCKER: Break Stage D apex plateau — warm-start from iter_003 oracle checkpoint for 1000+ more iters to see if longer training helps
-  # DONE iter_007: _BJ_APEX_THRESHOLD lowered to 2.0; curriculum advanced D→E→F; stuck at Stage F apex_rew≈1.1
-  # Checkpoint: logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_21-56-16/model_best.pt
-- [x] Implement noise_scale parameter in ball_obs_spec.py and integrate into _BJ_STAGES curriculum
-  # DONE iter_008a: noise_scale column added to _BJ_STAGES (A-C=0, D=0.25, E=0.50, F=0.75, G+=1.0)
-  #                 BallObsNoiseCfg.noise_scale scales all noise params; blended on stage transition.
-- [x] Run full noise-curriculum training: fresh run with --noise-mode d435i + noise_scale curriculum
-  # DONE iter_008: ran to 1199 iters. apex_rew=1.87 (needs 2.0), timeout=95.8%. Outperforms oracle iter_007 (apex 1.87 vs 1.1).
-  # Checkpoint: logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_23-20-25/model_1199.pt
-  # KEY FINDING: Noise-curriculum acts as implicit regularizer → better apex performance than pure oracle
-- [x] ACTIVE (iter_009): Fresh d435i 1500-iter run with threshold=1.5 → same Stage F plateau apex_rew≈1.09
-  # ROOT CAUSE FOUND: sigma_ratio=2.5 → ball-at-rest earns 4.4% max apex reward per step (1650/ep guaranteed).
-  # Policy never learns to juggle — balancing earns more than risky throwing.
-  # FIX: sigma_ratio=3.5 in all stages → ball-at-rest earns only 0.2% (82/ep). APPLIED.
-- [x] iter_010: Fresh run sigma_ratio=3.5 → SAME balance local optimum (apex=0.07 at iter 524)
-  # sigma_ratio alone insufficient: alive=1.0/step dominates. Policy earns 1500/ep alive regardless.
-  # ROOT CAUSE 2: alive reward too dominant vs near-zero apex reward at balancing.
-  # FIX: ball_low_penalty=-1.0/step when ball h≤0.03m → cancels alive during balancing.
-  # With this fix: balance earns alive-low_penalty ≈ 0/step; juggle earns alive+apex > 0/step.
-- [x] iter_011: Fresh run with sigma_ratio=3.5 + ball_low_penalty=-1.0 to break balance-not-bounce
-  # IN PROGRESS: iter=167, apex_rew=10.6 (vs 0.067 in iter_010 — 158x!), timeout=69%, mean_len=1350
-  # Balance local optimum BROKEN. Policy actively juggling. Checkpoint: logs/.../2026-04-08_04-04-38/
-- [ ] iter_011 follow-up: Monitor curriculum advancement from Stage A through C-D; compare apex/timeout trajectory vs oracle baseline (iter_003: timeout=98.9%, apex=2.92)
-- [x] Add wandb logging to train_juggle_hier.py (entity: d-grant-uc-berkeley) + video recording for play visualization
-  # DONE iter_007b/008: wandb entity + descriptive run naming added; video upload at end of training added.
-- [x] BUG: action_term.py builds 41D pi2 obs (missing last_action=12D) but pi2 checkpoints from 2026-03-12_14-31-45 onward have 53D input; fix action_term.py to include last joint targets then retrain pi2 and pi1 from scratch
-  # DONE iter_002: action_term.py now auto-detects pi2 input dim (41 or 53) and conditionally appends last_action. 53D pi2 baseline ran but underperformed 41D pi2 (Stage C vs Stage D at 500 iters).
-  # iter_003: Confirmed — 41D pi2 + 12288 envs gives best oracle baseline (mean_len=1500 maxed, timeout=98.9%). Oracle checkpoint: logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_20-18-34/model_best.pt
+## ACTIVE — Break balance-not-bounce local optimum
 
+- [ ] iter_012: Increase ball_low_penalty weight from -1.0 to -2.0 (lit-review says passive earns 0/step at -1.0; needs net -1/step → weight -2.0). Warm-start from iter_011 model_best.pt (peak juggling at iter ~200).
+- [ ] If -2.0 insufficient: add ball_release_velocity_reward=+3.0 at paddle-ball separation (DribbleBot + JuggleRL pattern). See git show agent/lit-review:docs/lit_review_passive_optimum_anti_balance.md
+- [ ] If still stuck: gate apex_height_reward on is_airborne (PBRS Φ=0 at contact) — architectural fix
+
+## NEXT — Noise robustness validation
+
+- [ ] Once juggling works: re-run oracle vs d435i comparison at Stage F+ to measure noise degradation on active juggling (not just passive balance)
+- [ ] Full noise-curriculum run to Stage G with working juggling reward
+- [ ] Evaluate noise-trained policy with oracle obs and vice versa (cross-eval matrix)
+
+## INFRASTRUCTURE
+
+- [ ] iter_011 follow-up: compare model_best.pt (peak juggling) vs model_450.pt (passive) via compare_pi1.py
+- [ ] Run play.py with model_best.pt from iter_011 peak — capture video to confirm juggling visually
+
+## COMPLETED (archived in RESEARCH_LOG_ARCHIVE.md)
+# iters 001-003: oracle baseline established (41D pi2, 12288 envs, Stage D, timeout=98.9%)
+# iters 004-005: perception noise integrated, d435i comparison done (~8% degradation)
+# iters 006-008: noise curriculum implemented, Stage D plateau broken, noise outperforms oracle
+# iters 009-010: root cause chain (sigma_ratio + alive dominance) identified
+# iter_011: ball_low_penalty breaks balance (apex 13.7 peak) but policy collapses back
