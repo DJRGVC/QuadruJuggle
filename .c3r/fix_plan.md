@@ -26,10 +26,14 @@
 - [x] Implement noise_scale parameter in ball_obs_spec.py and integrate into _BJ_STAGES curriculum
   # DONE iter_008a: noise_scale column added to _BJ_STAGES (A-C=0, D=0.25, E=0.50, F=0.75, G+=1.0)
   #                 BallObsNoiseCfg.noise_scale scales all noise params; blended on stage transition.
-- [ ] Run full noise-curriculum training: fresh run with --noise-mode d435i + noise_scale curriculum
-  # Hypothesis: noise_scale ramp (oracle→d435i as stages advance) will let policy learn robustly
-  # without the hard domain-gap shock of full d435i from iter_001.
-- [ ] Add wandb logging to train_juggle_hier.py (entity: d-grant-uc-berkeley) + video recording for play visualization
+- [x] Run full noise-curriculum training: fresh run with --noise-mode d435i + noise_scale curriculum
+  # DONE iter_008: ran to 1199 iters. apex_rew=1.87 (needs 2.0), timeout=95.8%. Outperforms oracle iter_007 (apex 1.87 vs 1.1).
+  # Checkpoint: logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_23-20-25/model_1199.pt
+  # KEY FINDING: Noise-curriculum acts as implicit regularizer → better apex performance than pure oracle
+- [ ] ACTIVE (iter_009): Resume noise-curriculum from model_1199 for 1000 more iters — apex_rew=1.87 needs ~200-400 more iters to reach 2.0 threshold and advance Stage F→G
+  # Command: --resume --load_run 2026-04-07_23-20-25 --checkpoint model_1199.pt --start-stage 5 --noise-mode d435i
+- [x] Add wandb logging to train_juggle_hier.py (entity: d-grant-uc-berkeley) + video recording for play visualization
+  # DONE iter_007b/008: wandb entity + descriptive run naming added; video upload at end of training added.
 - [x] BUG: action_term.py builds 41D pi2 obs (missing last_action=12D) but pi2 checkpoints from 2026-03-12_14-31-45 onward have 53D input; fix action_term.py to include last joint targets then retrain pi2 and pi1 from scratch
   # DONE iter_002: action_term.py now auto-detects pi2 input dim (41 or 53) and conditionally appends last_action. 53D pi2 baseline ran but underperformed 41D pi2 (Stage C vs Stage D at 500 iters).
   # iter_003: Confirmed — 41D pi2 + 12288 envs gives best oracle baseline (mean_len=1500 maxed, timeout=98.9%). Oracle checkpoint: logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_20-18-34/model_best.pt

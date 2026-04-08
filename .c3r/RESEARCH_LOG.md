@@ -245,9 +245,12 @@ Result:     1036 iterations completed in ~62 min before process killed (iteratio
             preventing the policy from over-exploiting oracle observation precision.
             Same Stage F plateau (apex < 2.0) but closer to threshold.
             
-            Checkpoint: logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_23-20-25/model_1000.pt
+            Checkpoint: logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_23-20-25/model_1199.pt (latest)
             Log dir: logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_23-20-25/
-Decision:   Resume from model_1000.pt for another ~1000 iters to see if the apex continues
-            improving toward the 2.0 threshold. The noise-curriculum policy is showing better
-            generalization than pure oracle — important finding for sim-to-real transfer.
-            Next iter: --resume --load_run 2026-04-07_23-20-25 --checkpoint model_1000.pt --start-stage 5
+            NOTE: Run actually continued to iter 1199 (not 1036 as initially logged).
+            Final state at iter 1199:
+              mean_episode_length: 1485, timeout: 95.8%, apex_rew: 1.875, ball_below: 4.2%, noise_std: 0.283
+            apex_rew trend at 1180-1199: stable ~1.81-1.88, not yet reaching 2.0 threshold.
+Decision:   Queued iter_009: resume from model_1199.pt for 1000 more iters to push apex_rew to 2.0.
+            With apex_rew=1.87 and rising slowly, ~200-400 more iters may be sufficient.
+            Noise_scale at Stage F = 0.75 (75% d435i) — full noise at Stage G.
