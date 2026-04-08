@@ -8,6 +8,8 @@
 
 # Phase 5: Sim perception refinements
 - [ ] GPU phase-separated NIS validation: verify free-flight NIS closer to 3.0 (blocked: GPU held by policy training)
+- [x] eval_perception_live.py: EKF accuracy eval with trained pi1 (not random actions)
+- [ ] GPU eval_perception_live.py run: test EKF accuracy during actual juggling (needs pi1 checkpoint + GPU)
 - [ ] Support policy agent with noise curriculum tuning if/when they reach that stage
 
 # Phase 7: Project Report (report-writer subagent)

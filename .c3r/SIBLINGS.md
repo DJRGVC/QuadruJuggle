@@ -26,7 +26,7 @@ Siblings will see it in their next SIBLINGS.md refresh.
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
 - **status**: running · iter #8 · ctx 0%
-- **last iter**: 25m ago
+- **last iter**: 34m ago
 
 ### Recent commits on `agent/policy`
 ```
@@ -171,17 +171,17 @@ git show agent/vel-cmd-survey:.c3r/SIBLINGS.md
 ## report-writer
 - **role**: generic
 - **focus**: Create a nicely formatted project report (HTML or Markdown with embedded images/graphs) covering the QuadruJuggle project: perception pipeline, policy training, architecture, and results. Max 10 iterations.
-- **status**: idle · iter #1 · ctx 0%
-- **last iter**: 3s ago
+- **status**: running · iter #3 · ctx 0%
+- **last iter**: 1m ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/report-writer`
 ```
+f547f3c iter_003: scene constants card + ball_release callout + pi2 curriculum table A→H
+25c3245 iter_002: dual-line training chart (apex+timeout%) + NIS validation table from GPU iter_049
 d8ed014 iter_001: initial HTML project report — architecture, training, perception, results, sim2real
 aab3845 torso tracking edit
 9c4793a pi_2 with v trackign works
-3841f54 working on pi_1 + pi_2
-085e457 frank-proofed requirements.txt
 ```
 ### Files modified on `agent/report-writer` (relative to `c3r/QuadruJuggle`)
 ```

@@ -217,3 +217,22 @@ Result:     nis_sweep.py improved. GPU still locked by policy (iter_016 training
             sustained juggling (apex ~10, curriculum advancing through stages).
 Decision:   GPU NIS phase-separated validation FIRST PRIORITY next iter. Policy run should finish
             within ~55 min. If GPU still busy, run nis_sweep with reduced q_vel values once free.
+
+---
+
+## iter_053 — eval_perception_live.py: EKF accuracy under trained policy  (2026-04-08T19:30:00Z)
+Hypothesis: EKF accuracy measured under random actions (iter_049) may differ from accuracy
+            during actual juggling behavior. A trained-policy evaluation script is needed.
+Change:     Wrote scripts/perception/eval_perception_live.py — loads trained pi1 checkpoint
+            via rsl_rl OnPolicyRunner, runs env with EKF mode, logs phase-separated NIS,
+            position RMSE, gate rejections, timeout%, and episode stats. Supports all EKF
+            tuning overrides (q_vel, q_vel_contact, etc.) and target height specification.
+            GPU blocked by policy training (iter_016, step ~6350/7248, ~50 min remaining).
+            Report-writer at iter_003 (1014 lines), progressing well.
+Command:    AST parse verification only (no GPU). Syntax clean, 276 lines.
+Result:     Script ready. Cannot GPU-validate until policy training completes.
+            Policy agent actively training with our d435i noise model — curriculum advancing
+            through stages with noise_scale ramping 0→1.0.
+Decision:   GPU phase-separated NIS validation FIRST when GPU frees up. Then run
+            eval_perception_live.py with policy's best checkpoint to compare NIS under
+            realistic vs random trajectories.
