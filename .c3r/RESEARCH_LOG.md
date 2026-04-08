@@ -56,3 +56,12 @@ Change:     (1) Fixed debug_d435i_capture.py — `gym.make()` needs `cfg=env_cfg
 Command:    No GPU workload (policy agent holding lock for 500-iter training). Debug capture still queued in background.
 Result:     REFERENCES.md committed. gym.make fix committed. Debug capture smoke test deferred — background task will complete when GPU frees.
 Decision:   Next iter: check if debug capture completed (background task). If not, begin ball_ekf.py implementation (pure PyTorch, no GPU needed for writing).
+
+---
+
+## iter_007 — ball_ekf.py: batched 6-state Kalman filter  (2026-04-07T20:00:00Z)
+Hypothesis: A 6-state EKF with ballistic+drag dynamics can track ball position and velocity from noisy D435i measurements, batched across all envs on GPU.
+Change:     Created `perception/ball_ekf.py` — `BallEKF` class with predict (ballistic+quadratic drag), update (measurement with dropout mask), step (combined), and reset (per-env). Uses Joseph-form covariance update for numerical stability. Drag coefficient computed from ping-pong ball aerodynamics (Cd=0.4, r=20mm, m=2.7g → c=0.112). Updated `__init__.py` to export `BallEKF` and `BallEKFConfig`.
+Command:    CPU unit tests via direct module import (no Isaac Lab deps required).
+Result:     All 5 tests pass: (1) gravity prediction z=-0.115 after 0.2s (analytic: -0.116), (2) measurement update blends correctly, (3) dropout → predict-only, (4) stationary convergence holds XY within 2cm, (5) free-fall tracking error 3.4cm at 1.0s. Debug camera capture still waiting for GPU lock (policy 500-iter training).
+Decision:   Next iter: implement noise_model.py (structured D435i noise sampling as a standalone module) OR wire the EKF into ball_obs_spec.py's "ekf" mode. The latter is more impactful — it completes the full GT→noise→EKF→obs pipeline.

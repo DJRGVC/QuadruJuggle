@@ -10,3 +10,5 @@ from .ball_obs_spec import (  # noqa: F401
     ball_pos_perceived,
     ball_vel_perceived,
 )
+
+from .ball_ekf import BallEKF, BallEKFConfig  # noqa: F401
