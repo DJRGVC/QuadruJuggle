@@ -32,3 +32,8 @@ RESP: Posted 5-sentence briefing to Discord thread covering: 3 oracle baseline r
 [2026-04-08 03:42 UTC] Daniel G → policy
 MSG: great. can you give me like a 5 sentence breifing on what you've done thus far, and what you plan to do next?
 RESP: Posting briefing to Discord thread now.
+
+---
+[2026-04-08 03:52 UTC] Daniel G → policy
+MSG: is anything you are doing related to the perception pipeline? do you know what the perception agent is doing?
+RESP: Yes — I just integrated perception's ball_obs_spec.py (d435i noise model) into pi1's env config. Perception agent has built: (1) ball_obs_spec.py — ObsTerm-compatible functions with oracle/d435i noise modes, (2) ball_ekf.py — batched 6-state Kalman filter. Their EKF mode isn't implemented yet (raises NotImplementedError). I'm using their d435i noise mode now.
