@@ -92,3 +92,12 @@ Change:     Created `scripts/perception/test_ekf_integration.py` — standalone 
 Command:    (1) Smoke test: 4 envs, 2 iters, 30s timeout — PASS. (2) Full test: 4096 envs, 50 iters — PASS.
 Result:     EKF mode works end-to-end in Isaac Lab. 50-iter metrics: mean_ep_len grew from 21→123 (learning curve normal for Stage A). Termination breakdown: 99.95% ball_below, 0.05% ball_off, 0% timeout. Rewards accumulating normally (alive=0.094, apex=0.632). No NaN, no dimension mismatch, no EKF divergence. Oracle comparison deferred — GPU queue blocked by policy agent's 500-iter training runs (2 jobs ahead in lock queue).
 Decision:   Next iter: handoff to policy agent — write PERCEPTION_HANDOFF.md documenting how to enable EKF mode (config diff, reset event, sys.path note). Then pursue oracle vs EKF comparison when GPU frees.
+
+---
+
+## iter_011 — PERCEPTION_HANDOFF.md for policy agent  (2026-04-08T04:30:00Z)
+Hypothesis: A clear handoff document will let the policy agent integrate EKF mode without needing to reverse-engineer the perception pipeline code.
+Change:     Created `perception/PERCEPTION_HANDOFF.md` with: (1) runtime patching example code, (2) env_cfg.py integration example, (3) worktree isolation sys.path note, (4) full parameter table (D435iNoiseModelCfg, BallEKFConfig), (5) integration test results summary, (6) specific changes needed in policy agent's train_juggle_hier.py (add "ekf" to --noise-mode choices, add reset_perception_pipeline EventTerm). Processed inbox from Daniel ("you still running?").
+Command:    No GPU workload — documentation-only iteration.
+Result:     PERCEPTION_HANDOFF.md committed. Key finding from reviewing policy agent's code: their train_juggle_hier.py only supports oracle/d435i, and doesn't add the reset event for EKF mode. Both gaps documented in handoff.
+Decision:   Next iter: oracle vs EKF comparison test. Run test_ekf_integration.py with --perception-mode oracle and --perception-mode ekf back-to-back (50 iters each, 4096 envs) to quantify the EKF filtering benefit vs raw d435i noise. Then begin EKF parameter tuning.

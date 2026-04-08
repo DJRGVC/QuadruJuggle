@@ -22,5 +22,5 @@
 - [x] Wire EKF mode into ball_obs_spec.py — PerceptionPipeline class (noise→EKF→filtered obs), lazy init on env, reset event, idempotent step dedup
 - [x] Integration test: swap ball_juggle_hier obs to mode="ekf", run short training (50 iters) — PASSED, mean_len=123 at iter 50, pipeline stable
 - [ ] Oracle baseline comparison: run same test with mode="oracle" for apples-to-apples (deferred — GPU contention from policy agent training)
-- [ ] Handoff to policy agent: document how to enable EKF mode in env_cfg (swap noise_cfg, add reset event), provide example config diff
+- [x] Handoff to policy agent: document how to enable EKF mode in env_cfg (swap noise_cfg, add reset event), provide example config diff — PERCEPTION_HANDOFF.md committed
 - [ ] Tune EKF parameters (process noise Q, measurement noise R) based on training performance gap vs oracle

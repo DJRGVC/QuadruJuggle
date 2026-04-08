@@ -25,20 +25,21 @@ Siblings will see it in their next SIBLINGS.md refresh.
 ## policy
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
-- **status**: running · iter #1 · ctx 0%
-- **last iter**: 29m ago
+- **status**: running · iter #3 · ctx 0%
+- **last iter**: 17m ago
 
 ### Recent commits on `agent/policy`
 ```
-20cc01f iter_002: fix pi2 obs dim (41→53D auto-detect) + 500-iter oracle baseline
-b0c014c iter_001: oracle pi1 baseline (500 iter, Stage D, mean_len=1470)
-aab3845 torso tracking edit
-9c4793a pi_2 with v trackign works
-3841f54 working on pi_1 + pi_2
+7f921b6 iter_006: noise curriculum plan + Stage D plateau analysis
+e61f255 chore: gitignore wandb local files
+82fe30e iter_005: d435i noise comparison — moderate degradation, same Stage D plateau
+e0e479a iter_004: integrate perception ball_obs_spec.py + d435i noise mode
+c789729 iter_004: add --wandb flag + perception d435i noise integration; iter_004 smoke tests passed
 ```
 ### Files modified on `agent/policy` (relative to `c3r/QuadruJuggle`)
 ```
 .c3r/INBOX.md
+.c3r/INBOX_ARCHIVE.md
 .c3r/PROMPT.md
 .c3r/RESEARCH_LOG.md
 .c3r/SIBLINGS.md
@@ -46,14 +47,21 @@ aab3845 torso tracking edit
 .c3r/env.sh
 .c3r/fix_plan.md
 .claude/settings.json
+.gitignore
+docs/noise_curriculum_plan.md
+scripts/rsl_rl/train_juggle_hier.py
+source/go1_ball_balance/go1_ball_balance/perception/__init__.py
+source/go1_ball_balance/go1_ball_balance/perception/ball_ekf.py
+source/go1_ball_balance/go1_ball_balance/perception/ball_obs_spec.py
+source/go1_ball_balance/go1_ball_balance/tasks/ball_juggle_hier/ball_juggle_hier_env_cfg.py
 source/go1_ball_balance/go1_ball_balance/tasks/torso_tracking/action_term.py
 ```
 ### Read one with:
 ```
 git show agent/policy:.c3r/INBOX.md
+git show agent/policy:.c3r/INBOX_ARCHIVE.md
 git show agent/policy:.c3r/PROMPT.md
 git show agent/policy:.c3r/RESEARCH_LOG.md
 git show agent/policy:.c3r/SIBLINGS.md
-git show agent/policy:.c3r/agent.conf
 ```
 
