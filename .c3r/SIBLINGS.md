@@ -74,7 +74,7 @@ git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
 - **role**: generic
 - **focus**: survey perception-for-manipulation papers (ETH noise injection, teacher-student distillation, event cameras, learned state estimators) and critique our D435i+EKF approach
 - **status**: stopped · iter #28 · ctx 0%
-- **last iter**: 1h ago
+- **last iter**: 2h ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/lit-review`
@@ -127,4 +127,21 @@ git show agent/lit-review:.c3r/PROMPT.md
 git show agent/lit-review:.c3r/RESEARCH_LOG.md
 git show agent/lit-review:.c3r/SIBLINGS.md
 ```
+
+## vel-cmd-survey
+- **role**: generic
+- **focus**: Survey 2023-2026 papers on user-defined velocity command input for legged robots doing manipulation while walking. Our Go1 has hierarchical pi2 torso tracker (8D: h,hdot,roll,pitch,omega_r,omega_p,vx,vy) and pi1 ball planner. Propose 3 methods for adding user velocity commands. Track references. Report to parent perception every iter via INBOX. Complete in 5 iters MAX then stop.
+- **status**: running · iter #0 · ctx 0%
+- **parent**: perception (this is a sub-agent)
+
+### Recent commits on `agent/vel-cmd-survey`
+```
+aab3845 torso tracking edit
+9c4793a pi_2 with v trackign works
+3841f54 working on pi_1 + pi_2
+085e457 frank-proofed requirements.txt
+7256612 added req + install explainer
+```
+### Files modified on `agent/vel-cmd-survey` (relative to `c3r/QuadruJuggle`)
+_(none)_
 

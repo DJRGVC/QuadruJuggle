@@ -114,6 +114,15 @@ class BallObsNoiseCfg:
     On real hardware, this comes from the IMU — natural architecture.
     """
 
+    enable_imu: bool = True
+    """Pass robot angular velocity to EKF for Coriolis + centrifugal corrections.
+
+    When True (default), ``robot.data.root_ang_vel_b`` is forwarded to the
+    EKF predict step, enabling IMU-aided pseudo-force compensation in
+    body-frame mode. Set to False for ablation / comparison studies.
+    Ignored when ``world_frame=True`` (world-frame EKF doesn't need it).
+    """
+
     enable_spin: bool = False
     """Enable 9D EKF with spin estimation (Magnus effect).
 
@@ -707,11 +716,11 @@ def ball_pos_perceived(
             # Body-frame EKF: pass gravity + velocity for pseudo-force comp
             gravity_b_vec = robot.data.projected_gravity_b * 9.81  # (N, 3)
             robot_vel_b = robot.data.root_lin_vel_b  # (N, 3)
-            robot_ang_vel_b = robot.data.root_ang_vel_b  # (N, 3)
+            ang_vel = robot.data.root_ang_vel_b if noise_cfg.enable_imu else None
             pipeline.step(
                 pos_b, env.common_step_counter,
                 gravity_b=gravity_b_vec, robot_vel_b=robot_vel_b,
-                robot_ang_vel_b=robot_ang_vel_b,
+                robot_ang_vel_b=ang_vel,
             )
 
         out = pipeline.pos.clone()
@@ -769,14 +778,14 @@ def ball_vel_perceived(
             # Body-frame EKF: pass gravity + velocity + angular velocity
             gravity_b_vec = robot.data.projected_gravity_b * 9.81  # (N, 3)
             robot_vel_b_lin = robot.data.root_lin_vel_b  # (N, 3)
-            robot_ang_vel_b = robot.data.root_ang_vel_b  # (N, 3)
+            ang_vel = robot.data.root_ang_vel_b if noise_cfg.enable_imu else None
             pipeline.step(
                 _ball_pos_paddle_frame_gt(env, ball_cfg, robot_cfg, paddle_offset_b),
                 env.common_step_counter,
                 gt_vel_b=vel_b if pipeline._diagnostics_enabled else None,
                 gravity_b=gravity_b_vec,
                 robot_vel_b=robot_vel_b_lin,
-                robot_ang_vel_b=robot_ang_vel_b,
+                robot_ang_vel_b=ang_vel,
             )
 
         out = pipeline.vel.clone()

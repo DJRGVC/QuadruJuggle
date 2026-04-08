@@ -139,6 +139,52 @@ class TestEnableSpinWiring(unittest.TestCase):
         self.assertEqual(spin_final.shape, (2, 3))
 
 
+class TestEnableImuWiring(unittest.TestCase):
+    """Verify enable_imu flag on BallObsNoiseCfg."""
+
+    def test_imu_enabled_by_default(self):
+        cfg = BallObsNoiseCfg(mode="ekf")
+        self.assertTrue(cfg.enable_imu)
+
+    def test_imu_can_be_disabled(self):
+        cfg = BallObsNoiseCfg(mode="ekf", enable_imu=False)
+        self.assertFalse(cfg.enable_imu)
+
+    def test_imu_flag_independent_of_world_frame(self):
+        """enable_imu should be independent of world_frame flag."""
+        cfg = BallObsNoiseCfg(mode="ekf", world_frame=True, enable_imu=False)
+        self.assertFalse(cfg.enable_imu)
+        self.assertTrue(cfg.world_frame)
+
+    def test_pipeline_step_without_imu(self):
+        """Pipeline step should work without IMU (robot_ang_vel_b=None)."""
+        cfg = BallObsNoiseCfg(mode="ekf", enable_imu=False)
+        pipeline = PerceptionPipeline(num_envs=2, device="cpu", noise_cfg=cfg)
+        pos = torch.tensor([[0.0, 0.0, 0.05], [0.01, 0.0, 0.04]])
+        detected = torch.ones(2, dtype=torch.bool)
+        # Step without angular velocity — should not raise
+        pipeline.ekf.step(
+            pos, detected, dt=0.02,
+            gravity_b=torch.tensor([[0.0, 0.0, -9.81]] * 2),
+            robot_ang_vel_b=None,
+        )
+        self.assertEqual(pipeline.pos.shape, (2, 3))
+
+    def test_pipeline_step_with_imu(self):
+        """Pipeline step should accept IMU angular velocity."""
+        cfg = BallObsNoiseCfg(mode="ekf", enable_imu=True)
+        pipeline = PerceptionPipeline(num_envs=2, device="cpu", noise_cfg=cfg)
+        pos = torch.tensor([[0.0, 0.0, 0.05], [0.01, 0.0, 0.04]])
+        detected = torch.ones(2, dtype=torch.bool)
+        omega = torch.tensor([[0.0, 0.5, 0.0], [0.0, -0.3, 0.1]])
+        pipeline.ekf.step(
+            pos, detected, dt=0.02,
+            gravity_b=torch.tensor([[0.0, 0.0, -9.81]] * 2),
+            robot_ang_vel_b=omega,
+        )
+        self.assertEqual(pipeline.pos.shape, (2, 3))
+
+
 class TestWorldFrameFlag(unittest.TestCase):
     """Verify world_frame flag creates correct pipeline state."""
 

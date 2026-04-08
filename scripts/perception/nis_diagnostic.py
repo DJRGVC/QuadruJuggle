@@ -41,6 +41,10 @@ def main():
                         help="Run EKF in world frame (transforms meas body→world)")
     parser.add_argument("--no-contact-aware", action="store_true",
                         help="Disable contact-aware adaptive process noise (use uniform q_vel)")
+    parser.add_argument("--no-imu", action="store_true",
+                        help="Disable IMU-aided Coriolis/centrifugal corrections")
+    parser.add_argument("--enable-spin", action="store_true",
+                        help="Enable 9D spin estimation (Magnus effect)")
     args = parser.parse_args()
 
     # Isaac Lab AppLauncher
@@ -100,12 +104,18 @@ def main():
         ekf_cfg.contact_aware = False
 
     world_frame = getattr(args, "world_frame", False)
+    enable_imu = not getattr(args, "no_imu", False)
+    enable_spin = getattr(args, "enable_spin", False)
     _print(f"\nEKF config: q_pos={ekf_cfg.q_pos}, q_vel={ekf_cfg.q_vel}, "
            f"r_xy={ekf_cfg.r_xy}, r_z={ekf_cfg.r_z}, r_z_per_m={ekf_cfg.r_z_per_metre}, "
-           f"contact_aware={ekf_cfg.contact_aware}, world_frame={world_frame}")
+           f"contact_aware={ekf_cfg.contact_aware}, world_frame={world_frame}, "
+           f"enable_imu={enable_imu}, enable_spin={enable_spin}")
 
     # Build env config
-    noise_cfg = BallObsNoiseCfg(mode="ekf", ekf_cfg=ekf_cfg, world_frame=world_frame)
+    noise_cfg = BallObsNoiseCfg(
+        mode="ekf", ekf_cfg=ekf_cfg, world_frame=world_frame,
+        enable_imu=enable_imu, enable_spin=enable_spin,
+    )
 
     env_cfg = BallJuggleHierEnvCfg()
     env_cfg.scene.num_envs = args.num_envs

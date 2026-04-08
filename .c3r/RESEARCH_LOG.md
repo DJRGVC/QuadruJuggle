@@ -229,3 +229,22 @@ Result:     **127/127 tests pass** (12 new config tests + 115 existing). No regr
 Decision:   Next: monitor vel-cmd-survey subagent (kill after 5 iters or findings).
             GPU NIS validation of body-frame+IMU vs world-frame when GPU available.
             Check vel-cmd-survey progress and policy agent status.
+
+---
+
+## iter_040 — enable_imu flag + NIS diagnostic --no-imu/--enable-spin flags (5 new tests, 132/132 total)  (2026-04-08T08:10:00Z)
+Hypothesis: Adding an `enable_imu` toggle to BallObsNoiseCfg allows ablation of IMU-aided
+            Coriolis/centrifugal corrections, enabling GPU NIS comparison of IMU vs no-IMU.
+Change:     (1) Added `enable_imu: bool = True` to BallObsNoiseCfg. Default True (backward-compat).
+            (2) `ball_pos_perceived` and `ball_vel_perceived` conditionally pass `robot_ang_vel_b`
+                as None when `enable_imu=False`, disabling Coriolis/centrifugal corrections.
+            (3) Added `--no-imu` and `--enable-spin` flags to nis_diagnostic.py.
+            (4) Added 5 tests to test_pipeline_config.py: default=True, can disable, independent
+                of world_frame, step-without-IMU works, step-with-IMU works.
+Command:    `pytest scripts/perception/test_*.py` (excluding test_ekf_integration.py)
+Result:     **132/132 tests pass** (5 new + 127 existing). GPU NIS validation blocked — policy
+            agent training holds GPU lock (train_juggle_hier.py with d435i noise mode).
+            vel-cmd-survey subagent running (iter_0, first iteration in progress).
+Decision:   Next: GPU NIS comparison (IMU ON vs OFF) when GPU available.
+            Monitor vel-cmd-survey subagent progress. If GPU still blocked next iter,
+            do world-frame NIS comparison preparation or other CPU-only work.
