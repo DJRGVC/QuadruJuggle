@@ -25,16 +25,16 @@ Siblings will see it in their next SIBLINGS.md refresh.
 ## policy
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
-- **status**: running · iter #6 · ctx 0%
-- **last iter**: 3h ago
+- **status**: running · iter #7 · ctx 0%
+- **last iter**: 2m ago
 
 ### Recent commits on `agent/policy`
 ```
+f77d50e iter_014: ball_release_velocity_reward SUSTAINS JUGGLING (apex 9.7 stable, 1500 iters)
 dc7bb6f iter_014: add ball_release_velocity_reward (+3.0)
 eefbf31 iter_013: ball_low -2.0 death spiral; fix curriculum sustain-during-blend bug
 8607975 Log iter_013 early results (Stage D, apex=0.35 stable, weight=-2.0 working)
 74ef87b iter_012: ball_low weight -1.0→-2.0, revert dynamic threshold
-4b48378 iter_012: compaction (summarized iters 001-008)
 ```
 ### Files modified on `agent/policy` (relative to `c3r/QuadruJuggle`)
 ```
@@ -132,7 +132,7 @@ git show agent/lit-review:.c3r/SIBLINGS.md
 - **role**: generic
 - **focus**: Survey 2023-2026 papers on user-defined velocity command input for legged robots doing manipulation while walking. Our Go1 has hierarchical pi2 torso tracker (8D: h,hdot,roll,pitch,omega_r,omega_p,vx,vy) and pi1 ball planner. Propose 3 methods for adding user velocity commands. Track references. Report to parent perception every iter via INBOX. Complete in 5 iters MAX then stop.
 - **status**: stopped · iter #5 · ctx 0%
-- **last iter**: 50m ago
+- **last iter**: 1h ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/vel-cmd-survey`

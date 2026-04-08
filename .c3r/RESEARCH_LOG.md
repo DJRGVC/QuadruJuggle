@@ -274,3 +274,28 @@ Decision:   GPU NIS validation complete. IMU and spin features validated as non-
             regression) and ready for real hardware where angular velocities are higher. Next:
             check if policy agent needs perception pipeline changes, or investigate reducing
             q_vel in free-flight to improve NIS (q_vel=0.40 may be too high for sim).
+
+---
+
+## iter_050 — Phase-separated NIS tracking (flight vs contact) (10/10 new tests, 239/239 total)  (2026-04-08T17:00:00Z)
+Hypothesis: The low overall NIS=0.44 (iter_049) is dominated by contact-phase Q inflation
+            (q_vel_contact=50.0). Separating NIS by phase will reveal whether free-flight
+            q_vel=0.40 is well-calibrated independently.
+Change:     Added phase-separated NIS accumulators to BallEKF: _nis_sum_flight/_nis_count_flight
+            and _nis_sum_contact/_nis_count_contact. In update(), NIS is classified by whether
+            ball_z < contact_z_threshold (contact) or >= (flight). When contact_aware=False, all
+            NIS goes to flight bucket. Properties: mean_nis_flight, mean_nis_contact. reset_nis()
+            clears all phase accumulators. PerceptionPipeline.diagnostics now includes
+            mean_nis_flight, mean_nis_contact, nis_count_flight, nis_count_contact.
+            nis_diagnostic.py displays Flight and Contact NIS columns in the per-interval table.
+Command:    `uv run --active python scripts/perception/test_nis_phase.py -v` → 10/10
+            Full suite (14 test files): 239/239 pass.
+Result:     **10/10 new tests pass.** 7 test classes: properties, separation (flight-only,
+            contact-only, mixed, contact<flight ordering), reset, no-contact-aware fallback,
+            undetected exclusion, diagnostics keys. Zero regressions.
+            CPU test confirms hypothesis: contact NIS << flight NIS because q_vel_contact=50.0
+            inflates Q massively. GPU validation next iter will give exact numbers.
+Decision:   GPU NIS phase-separated validation next: run nis_diagnostic.py and verify
+            free-flight NIS is closer to 3.0 than the 0.44 overall. If flight NIS is still
+            far from 3.0, q_vel=0.40 needs adjustment. If contact NIS is near 0 (expected),
+            confirms contact-aware Q is working as designed.

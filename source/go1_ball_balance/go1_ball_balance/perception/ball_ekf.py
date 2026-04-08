@@ -197,6 +197,11 @@ class BallEKF:
         # Target: mean NIS ∈ [0.35, 7.81] for 3D measurements (95% χ²(3) band)
         self._nis_sum = 0.0
         self._nis_count = 0
+        # Phase-separated NIS: free-flight vs contact (iter_050)
+        self._nis_sum_flight = 0.0
+        self._nis_count_flight = 0
+        self._nis_sum_contact = 0.0
+        self._nis_count_contact = 0
 
         # NIS gate rejection counter (for diagnostics)
         self._gate_reject_count = 0
@@ -247,11 +252,29 @@ class BallEKF:
             return 0.0
         return self._nis_sum / self._nis_count
 
+    @property
+    def mean_nis_flight(self) -> float:
+        """Mean NIS during free-flight phase only."""
+        if self._nis_count_flight == 0:
+            return 0.0
+        return self._nis_sum_flight / self._nis_count_flight
+
+    @property
+    def mean_nis_contact(self) -> float:
+        """Mean NIS during paddle-contact phase only."""
+        if self._nis_count_contact == 0:
+            return 0.0
+        return self._nis_sum_contact / self._nis_count_contact
+
     def reset_nis(self) -> float:
-        """Return current mean NIS and reset accumulators."""
+        """Return current mean NIS and reset all NIS accumulators."""
         val = self.mean_nis
         self._nis_sum = 0.0
         self._nis_count = 0
+        self._nis_sum_flight = 0.0
+        self._nis_count_flight = 0
+        self._nis_sum_contact = 0.0
+        self._nis_count_contact = 0
         return val
 
     @property
@@ -471,6 +494,24 @@ class BallEKF:
             nis_det = nis[detected]
             self._nis_sum += nis_det.sum().item()
             self._nis_count += nis_det.numel()
+
+            # Phase-separated NIS: split by contact state
+            if self.cfg.contact_aware:
+                ball_z_det = self._x[detected, 2]
+                in_contact_det = ball_z_det < self.cfg.contact_z_threshold
+                in_flight_det = ~in_contact_det
+                if in_flight_det.any():
+                    nis_flight = nis_det[in_flight_det]
+                    self._nis_sum_flight += nis_flight.sum().item()
+                    self._nis_count_flight += nis_flight.numel()
+                if in_contact_det.any():
+                    nis_contact = nis_det[in_contact_det]
+                    self._nis_sum_contact += nis_contact.sum().item()
+                    self._nis_count_contact += nis_contact.numel()
+            else:
+                # No contact awareness — all measurements are "flight"
+                self._nis_sum_flight += nis_det.sum().item()
+                self._nis_count_flight += nis_det.numel()
 
         # NIS gating: reject measurements where NIS > threshold (outlier).
         # Per-env warm-up: skip gating until env has had enough successful

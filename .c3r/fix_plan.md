@@ -21,6 +21,8 @@
 - [x] Gate rejection stats in pipeline diagnostics + NIS diagnostic tool
 - [x] GPU NIS validation: IMU ON vs OFF comparison — negligible difference with random actions (NIS 0.445 vs 0.444)
 - [x] GPU NIS validation: 9D spin mode — NIS 0.442, 2 gate rejections, functionally identical
+- [x] Phase-separated NIS tracking (flight vs contact) — 10/10 tests, 239/239 total
+- [ ] GPU phase-separated NIS validation: verify free-flight NIS closer to 3.0
 - [ ] Support policy agent with noise curriculum tuning if/when they reach that stage
 
 # Phase 6: User-defined velocity commands

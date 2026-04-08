@@ -474,7 +474,12 @@ class PerceptionPipeline:
         if self._diag is None:
             return None
         result = self._diag.summary_and_reset()
-        # Add EKF ANEES diagnostic (resets accumulator)
+        # Phase-separated NIS (read before reset clears them)
+        result["mean_nis_flight"] = round(self.ekf.mean_nis_flight, 3)
+        result["mean_nis_contact"] = round(self.ekf.mean_nis_contact, 3)
+        result["nis_count_flight"] = self.ekf._nis_count_flight
+        result["nis_count_contact"] = self.ekf._nis_count_contact
+        # Add EKF ANEES diagnostic (resets all NIS accumulators including phase)
         result["mean_nis"] = round(self.ekf.reset_nis(), 3)
         # Add NIS gate rejection stats (resets counters)
         rejected, total = self.ekf.reset_gate_stats()

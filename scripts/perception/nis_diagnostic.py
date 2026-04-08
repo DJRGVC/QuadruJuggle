@@ -166,11 +166,11 @@ def main():
     action_dim = env.action_space.shape[-1]
 
     _print(f"\nRunning NIS diagnostic: {args.num_envs} envs × {args.steps} steps")
-    _print(f"{'='*70}")
-    _print(f"  {'Step':>6s}  {'NIS':>8s}  {'Band':>12s}  "
+    _print(f"{'='*90}")
+    _print(f"  {'Step':>6s}  {'NIS':>8s}  {'Flight':>8s}  {'Contact':>8s}  {'Band':>12s}  "
            f"{'EKF mm':>8s}  {'Raw mm':>8s}  {'Impr%':>7s}  {'Det%':>6s}  "
            f"{'Gate%':>6s}  {'Gated':>6s}")
-    _print(f"  {'-'*6}  {'-'*8}  {'-'*12}  {'-'*8}  {'-'*8}  {'-'*7}  {'-'*6}  "
+    _print(f"  {'-'*6}  {'-'*8}  {'-'*8}  {'-'*8}  {'-'*12}  {'-'*8}  {'-'*8}  {'-'*7}  {'-'*6}  "
            f"{'-'*6}  {'-'*6}")
 
     all_nis = []
@@ -204,11 +204,13 @@ def main():
             else:
                 band = "⚠ HIGH (overconfident)"
 
+            nis_flight = diag.get("mean_nis_flight", 0.0)
+            nis_contact = diag.get("mean_nis_contact", 0.0)
             gate_rate = diag.get("gate_rejection_rate", 0.0)
             gate_count = diag.get("gate_rejected", 0)
             total_gate_rejected += gate_count
             total_gate_total += diag.get("gate_total", 0)
-            _print(f"  {step:6d}  {nis:8.3f}  {band:>12s}  "
+            _print(f"  {step:6d}  {nis:8.3f}  {nis_flight:8.3f}  {nis_contact:8.3f}  {band:>12s}  "
                    f"{diag.get('pos_rmse_ekf_mm', 0):8.2f}  "
                    f"{diag.get('pos_rmse_raw_mm', 0):8.2f}  "
                    f"{diag.get('ekf_improvement_pct', 0):7.1f}  "
@@ -216,7 +218,7 @@ def main():
                    f"{gate_rate*100:6.2f}  "
                    f"{gate_count:6d}")
 
-    _print(f"{'='*70}")
+    _print(f"{'='*90}")
     if all_nis:
         mean_nis = sum(all_nis) / len(all_nis)
         in_band = sum(1 for n in all_nis if 0.35 <= n <= 7.81)
