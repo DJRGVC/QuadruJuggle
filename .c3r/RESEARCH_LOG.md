@@ -164,3 +164,27 @@ Result:     Log shrunk from 340→~130 lines. Archive preserved verbatim.
               model_best.pt likely from peak period; model_450.pt is passive.
 Decision:   Next iteration (iter_013): increase ball_low weight to -2.0, warm-start from
             iter_011 model_best.pt to preserve the juggling behavior from the peak.
+
+## iter_013 — ball_low weight=-2.0 + warm-start from iter_011 peak  (2026-04-08T05:07Z)
+Hypothesis: weight=-2.0 makes passive balance earn alive(1)-penalty(2)=-1/step (negative),
+            making even a failed juggling attempt better than passive balance (-1500/ep).
+            Warm-start from iter_011 model_best.pt preserves learned bouncing behavior.
+Change:     ball_low weight: -1.0 → -2.0 in ball_juggle_hier_env_cfg.py.
+            Reverted dynamic threshold back to static 0.03m.
+Command:    gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+              --task Isaac-BallJuggleHier-Go1-v0 \
+              --pi2-checkpoint .../2026-03-12_09-04-32/model_best.pt \
+              --num_envs 12288 --max_iterations 1500 --headless --noise-mode d435i --wandb \
+              --resume --load_run 2026-04-08_04-04-38 --checkpoint model_best.pt
+            Checkpoint dir: logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_05-07-31/
+Result (Stage D, iter 621, IN PROGRESS):
+              apex_rew: 0.34-0.36/step (STABLE — not declining!)
+              timeout: 97%, ball_low: -0.96/step (ball below threshold 48% of time, was 96%)
+              alive: 0.955, ES=68/700, Total mean_reward: -33 (improving)
+            KEY FINDINGS:
+            - weight=-2.0 + warm-start working: apex stable (not collapsing), 52% time bouncing
+            - Ball below threshold only 48% of time (was 96% in iter_011 passive plateau)
+            - Total reward improving → ES not exhausted
+            BLOCKER: apex=0.35 < threshold 0.5; ball bouncing to h≈0.03-0.05m, not 0.20m target.
+Decision:   Let run continue; monitor for apex trend. If stalled at 0.35 for 100+ iters:
+            lower _BJ_APEX_THRESHOLD to 0.3 or add ball_release_velocity_reward (+3.0/launch).
