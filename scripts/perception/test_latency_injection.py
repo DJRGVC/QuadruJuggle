@@ -92,8 +92,8 @@ class TestLatencyBuffer(unittest.TestCase):
     def test_zero_latency_passthrough(self):
         """latency_steps=0 should return current-step observation."""
         cfg = D435iNoiseModelCfg(
-            sigma_xy_base=0.0, sigma_z_base=0.0, sigma_z_per_metre=0.0,
-            dropout_prob=0.0, latency_steps=0,
+            sigma_xy_per_metre=0.0, sigma_xy_floor=0.0, sigma_z_base=0.0, sigma_z_quadratic=0.0,
+            dropout_base=0.0, dropout_range=0.0, latency_steps=0,
         )
         noise = D435iNoiseModel(num_envs=4, cfg=cfg)
         gt = torch.tensor([[0.01, 0.02, 0.05]] * 4)
@@ -104,8 +104,8 @@ class TestLatencyBuffer(unittest.TestCase):
     def test_one_step_delay(self):
         """latency_steps=1: output at step T is the measurement from step T-1."""
         cfg = D435iNoiseModelCfg(
-            sigma_xy_base=0.0, sigma_z_base=0.0, sigma_z_per_metre=0.0,
-            dropout_prob=0.0, latency_steps=1,
+            sigma_xy_per_metre=0.0, sigma_xy_floor=0.0, sigma_z_base=0.0, sigma_z_quadratic=0.0,
+            dropout_base=0.0, dropout_range=0.0, latency_steps=1,
         )
         noise = D435iNoiseModel(num_envs=1, cfg=cfg)
 
@@ -121,8 +121,8 @@ class TestLatencyBuffer(unittest.TestCase):
     def test_two_step_delay(self):
         """latency_steps=2: output at step T is from step T-2."""
         cfg = D435iNoiseModelCfg(
-            sigma_xy_base=0.0, sigma_z_base=0.0, sigma_z_per_metre=0.0,
-            dropout_prob=0.0, latency_steps=2,
+            sigma_xy_per_metre=0.0, sigma_xy_floor=0.0, sigma_z_base=0.0, sigma_z_quadratic=0.0,
+            dropout_base=0.0, dropout_range=0.0, latency_steps=2,
         )
         noise = D435iNoiseModel(num_envs=1, cfg=cfg)
 
@@ -138,8 +138,8 @@ class TestLatencyBuffer(unittest.TestCase):
     def test_three_step_delay(self):
         """latency_steps=3: output at step T is from step T-3."""
         cfg = D435iNoiseModelCfg(
-            sigma_xy_base=0.0, sigma_z_base=0.0, sigma_z_per_metre=0.0,
-            dropout_prob=0.0, latency_steps=3,
+            sigma_xy_per_metre=0.0, sigma_xy_floor=0.0, sigma_z_base=0.0, sigma_z_quadratic=0.0,
+            dropout_base=0.0, dropout_range=0.0, latency_steps=3,
         )
         noise = D435iNoiseModel(num_envs=1, cfg=cfg)
 
@@ -159,8 +159,8 @@ class TestLatencyBuffer(unittest.TestCase):
     def test_reset_clears_buffer(self):
         """After reset, latency buffer should contain the init position."""
         cfg = D435iNoiseModelCfg(
-            sigma_xy_base=0.0, sigma_z_base=0.0, sigma_z_per_metre=0.0,
-            dropout_prob=0.0, latency_steps=2,
+            sigma_xy_per_metre=0.0, sigma_xy_floor=0.0, sigma_z_base=0.0, sigma_z_quadratic=0.0,
+            dropout_base=0.0, dropout_range=0.0, latency_steps=2,
         )
         noise = D435iNoiseModel(num_envs=2, cfg=cfg)
 
@@ -182,8 +182,8 @@ class TestLatencyBuffer(unittest.TestCase):
     def test_latency_with_dropout(self):
         """Latency + dropout: delayed dropout events propagate correctly."""
         cfg = D435iNoiseModelCfg(
-            sigma_xy_base=0.0, sigma_z_base=0.0, sigma_z_per_metre=0.0,
-            dropout_prob=1.0,  # 100% dropout — always hold last
+            sigma_xy_per_metre=0.0, sigma_xy_floor=0.0, sigma_z_base=0.0, sigma_z_quadratic=0.0,
+            dropout_base=1.0, dropout_range=0.0,  # 100% dropout — always hold last
             latency_steps=1,
         )
         noise = D435iNoiseModel(num_envs=1, cfg=cfg)
@@ -225,10 +225,12 @@ class TestLatencyEKFDegradation(unittest.TestCase):
 
         # Noise model with specified latency
         noise_cfg = D435iNoiseModelCfg(
-            sigma_xy_base=noise_std,
+            sigma_xy_per_metre=0.0,
+            sigma_xy_floor=noise_std,
             sigma_z_base=noise_std,
-            sigma_z_per_metre=0.0,
-            dropout_prob=dropout_prob,
+            sigma_z_quadratic=0.0,
+            dropout_base=dropout_prob,
+            dropout_range=0.0,
             latency_steps=latency_steps,
         )
         noise = D435iNoiseModel(num_envs=1, cfg=noise_cfg)
@@ -329,8 +331,8 @@ class TestLatencyEKFDegradation(unittest.TestCase):
     def test_latency_multi_env_independence(self):
         """Different envs with different trajectories should not cross-talk through latency buffer."""
         cfg = D435iNoiseModelCfg(
-            sigma_xy_base=0.0, sigma_z_base=0.0, sigma_z_per_metre=0.0,
-            dropout_prob=0.0, latency_steps=2,
+            sigma_xy_per_metre=0.0, sigma_xy_floor=0.0, sigma_z_base=0.0, sigma_z_quadratic=0.0,
+            dropout_base=0.0, dropout_range=0.0, latency_steps=2,
         )
         noise = D435iNoiseModel(num_envs=3, cfg=cfg)
 
@@ -372,8 +374,8 @@ class TestLatencyPolicyImpact(unittest.TestCase):
 
         # Run with 3-frame latency
         noise_cfg = D435iNoiseModelCfg(
-            sigma_xy_base=0.0, sigma_z_base=0.0, sigma_z_per_metre=0.0,
-            dropout_prob=0.0, latency_steps=3,
+            sigma_xy_per_metre=0.0, sigma_xy_floor=0.0, sigma_z_base=0.0, sigma_z_quadratic=0.0,
+            dropout_base=0.0, dropout_range=0.0, latency_steps=3,
         )
         noise = D435iNoiseModel(num_envs=1, cfg=noise_cfg)
         ekf = BallEKF(num_envs=1, cfg=BallEKFConfig(contact_aware=True))

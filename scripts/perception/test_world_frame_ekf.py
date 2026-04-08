@@ -156,8 +156,8 @@ def test_world_frame_stationary_ball():
     cfg = BallObsNoiseCfg(
         mode="ekf", world_frame=True, ekf_cfg=ekf_cfg,
         noise_model_cfg=D435iNoiseModelCfg(
-            sigma_xy_base=0.0, sigma_z_base=0.0,
-            dropout_prob=0.0,
+            sigma_xy_per_metre=0.0, sigma_xy_floor=0.0, sigma_z_base=0.0, sigma_z_quadratic=0.0,
+            dropout_base=0.0, dropout_range=0.0,
         ),
     )
     pipe = PerceptionPipeline(N, "cpu", cfg, enable_diagnostics=True)
@@ -203,7 +203,7 @@ def test_world_frame_tilted_robot():
     cfg = BallObsNoiseCfg(
         mode="ekf", world_frame=True, ekf_cfg=ekf_cfg,
         noise_model_cfg=D435iNoiseModelCfg(
-            sigma_xy_base=0.0, sigma_z_base=0.0, dropout_prob=0.0,
+            sigma_xy_per_metre=0.0, sigma_xy_floor=0.0, sigma_z_base=0.0, sigma_z_quadratic=0.0, dropout_base=0.0, dropout_range=0.0,
         ),
     )
     pipe = PerceptionPipeline(N, "cpu", cfg)
@@ -266,7 +266,7 @@ def test_reset_world_frame():
     cfg = BallObsNoiseCfg(
         mode="ekf", world_frame=True, ekf_cfg=ekf_cfg,
         noise_model_cfg=D435iNoiseModelCfg(
-            sigma_xy_base=0.0, sigma_z_base=0.0, dropout_prob=0.0,
+            sigma_xy_per_metre=0.0, sigma_xy_floor=0.0, sigma_z_base=0.0, sigma_z_quadratic=0.0, dropout_base=0.0, dropout_range=0.0,
         ),
     )
     pipe = PerceptionPipeline(N, "cpu", cfg)
@@ -296,7 +296,7 @@ def test_reset_with_robot_pose_args():
     cfg = BallObsNoiseCfg(
         mode="ekf", world_frame=True, ekf_cfg=ekf_cfg,
         noise_model_cfg=D435iNoiseModelCfg(
-            sigma_xy_base=0.0, sigma_z_base=0.0, dropout_prob=0.0,
+            sigma_xy_per_metre=0.0, sigma_xy_floor=0.0, sigma_z_base=0.0, sigma_z_quadratic=0.0, dropout_base=0.0, dropout_range=0.0,
         ),
     )
     pipe = PerceptionPipeline(N, "cpu", cfg)

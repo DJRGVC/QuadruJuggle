@@ -252,3 +252,26 @@ Decision:   Latency injection validated. All sim-side fix_plan items complete ex
             reward), not yet back to noise robustness. Next: either propose new sim-side work
             (e.g. observation noise during contact phases, or spin estimation) or wait for
             policy to reach noise curriculum stage and provide support then.
+
+---
+
+## iter_034 — Ahn 2019-calibrated noise model  (2026-04-08T22:00:00Z)
+Hypothesis: Physics-based noise model (σ_xy∝z linear, σ_z∝z² quadratic, distance-dependent
+            dropout) better matches real D435i characteristics than constant/linear model.
+Change:     Rewrote D435iNoiseParams and D435iNoiseModelCfg with calibrated parameters from
+            Ahn et al. 2019 (IEEE UR) + Intel BKM whitepaper + lit-review iter_023:
+            - σ_xy: constant 2mm → 0.0025·z (1mm floor). At z=0.5m: 1.25mm vs old 2mm.
+            - σ_z: 3mm + 5mm/m → 1mm + 0.005·z². At z=0.5m: 2.25mm vs old 5.5mm.
+            - Dropout: constant 10% → 20% base + 30%·(1-exp(-(z-0.5)/0.8)). 20% at 0.5m, ~35% at 1m.
+            - EKF R matched: r_xy=0.00125, r_z=0.00225 at z=0.5m nominal.
+            Updated all tests (field name changes: sigma_xy_base→sigma_xy_per_metre, etc.).
+Command:    `pytest scripts/perception/test_*.py` (excluding GPU-dependent test_ekf_integration.py)
+Result:     **74/74 pass** (2.53s). All test suites green:
+            - 7/7 contact-aware EKF, 6/6 world-frame, 15/15 mock pipeline
+            - 13/13 ballistic trajectory, 16/16 latency injection, 17/17 real utils
+            Noise is now tighter at close range (where ball mostly lives during balance/low juggle)
+            and realistically worse at high altitudes (Stage G, 1m+).
+Decision:   GPU NIS re-validation with calibrated model would confirm EKF R values still
+            produce in-band NIS. However, policy agent (iter_014) still working on reward
+            shaping — not yet at noise robustness. Next: either do GPU NIS re-validation
+            or IMU-aided EKF (platform motion compensation during predict step).

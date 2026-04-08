@@ -52,9 +52,9 @@ class BallEKFConfig:
     # Ball radius = 0.020m, resting on paddle → centre at ~0.020m.
     # Threshold 0.025m gives 5mm margin for measurement noise.
 
-    # Measurement noise — matched to updated D435iNoiseModelCfg at ~0.5m nominal distance
-    r_xy: float = 0.002     # measurement noise std, XY (m) — matches sigma_xy_base
-    r_z: float = 0.0055     # measurement noise std, Z (m) — 3mm base + 5mm/m × 0.5m
+    # Measurement noise — matched to D435iNoiseModelCfg (Ahn 2019 calibration)
+    r_xy: float = 0.00125   # measurement noise std, XY (m) — 0.0025·z at z=0.5m
+    r_z: float = 0.00225    # measurement noise std, Z (m) — 0.001 + 0.005·0.5² at z=0.5m
     r_z_per_metre: float = 0.005  # additional Z noise std per metre (matched to D435i quadratic)
     adaptive_r: bool = True  # if True, r_z varies with estimated ball height
 

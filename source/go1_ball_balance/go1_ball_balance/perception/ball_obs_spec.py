@@ -54,17 +54,21 @@ if TYPE_CHECKING:
 class D435iNoiseParams:
     """D435i depth-camera noise model parameters.
 
-    Defaults from Intel D435i datasheet + empirical measurements:
-    - Depth accuracy ~2% of distance at 1m (structured IR stereo)
-    - XY accuracy ~1-2mm at 1m (640×480, ~60° HFOV)
-    - Dropout probability increases at close range / specular surfaces
+    Calibrated from Ahn et al. 2019 (IEEE UR), Intel BKM whitepaper,
+    and lit-review iter_023 D435i noise characterisation.
+    - σ_z ∝ z² (stereo disparity error)
+    - σ_xy ∝ z (pixel projection)
+    - Dropout: 20% baseline (white ball specular surface) + distance rise
     """
 
-    sigma_xy_base: float = 0.002       # 2mm base XY noise std (metres)
-    sigma_z_base: float = 0.003        # 3mm base depth noise std
-    sigma_z_per_metre: float = 0.005   # +5mm/m (D435i quadratic; was 2mm — 2.5× too low per lit-review)
-    dropout_prob: float = 0.10         # 10% (white ball IR reflectance; was 2% — 5× too low per lit-review)
-    latency_steps: int = 1             # observation delay in policy steps
+    sigma_xy_per_metre: float = 0.0025  # σ_xy = 0.0025·z (linear; Ahn 2019)
+    sigma_xy_floor: float = 0.001       # 1mm floor at close range
+    sigma_z_base: float = 0.001         # 1mm constant floor
+    sigma_z_quadratic: float = 0.005    # 0.005·z² (Ahn 2019 + ball-geometry margin)
+    dropout_base: float = 0.20          # 20% baseline (curved white surface)
+    dropout_range: float = 0.30         # additional 30% rising with distance
+    dropout_scale: float = 0.80         # exponential scale (metres)
+    latency_steps: int = 1              # observation delay in policy steps
 
 
 @dataclass
@@ -81,9 +85,9 @@ class BallObsNoiseCfg:
     noise_scale: float = 1.0
     """Multiplier for noise amplitudes (0.0 = oracle-equivalent, 1.0 = full noise).
 
-    Scales sigma_xy_base, sigma_z_base, sigma_z_per_metre, and dropout_prob
-    in both d435i and ekf modes. Useful for gradual noise introduction across
-    curriculum stages (e.g. 0.25 → 0.50 → 0.75 → 1.0).
+    Scales noise amplitudes (sigma_xy, sigma_z, dropout) in both d435i and
+    ekf modes. Useful for gradual noise introduction across curriculum stages
+    (e.g. 0.25 → 0.50 → 0.75 → 1.0).
     """
 
     d435i: D435iNoiseParams = field(default_factory=D435iNoiseParams)
@@ -395,10 +399,13 @@ class PerceptionPipeline:
             old_scale = self.cfg.noise_scale
             if old_scale > 0:
                 self._base_noise_model_cfg = D435iNoiseModelCfg(
-                    sigma_xy_base=base.sigma_xy_base / old_scale,
+                    sigma_xy_per_metre=base.sigma_xy_per_metre / old_scale,
+                    sigma_xy_floor=base.sigma_xy_floor / old_scale,
                     sigma_z_base=base.sigma_z_base / old_scale,
-                    sigma_z_per_metre=base.sigma_z_per_metre / old_scale,
-                    dropout_prob=base.dropout_prob / old_scale,
+                    sigma_z_quadratic=base.sigma_z_quadratic / old_scale,
+                    dropout_base=base.dropout_base / old_scale,
+                    dropout_range=base.dropout_range / old_scale,
+                    dropout_scale=base.dropout_scale,
                     latency_steps=base.latency_steps,
                     camera_hz=base.camera_hz,
                 )
@@ -406,10 +413,12 @@ class PerceptionPipeline:
                 self._base_noise_model_cfg = D435iNoiseModelCfg()
 
         bm = self._base_noise_model_cfg
-        self.noise_model.cfg.sigma_xy_base = bm.sigma_xy_base * scale
+        self.noise_model.cfg.sigma_xy_per_metre = bm.sigma_xy_per_metre * scale
+        self.noise_model.cfg.sigma_xy_floor = bm.sigma_xy_floor * scale
         self.noise_model.cfg.sigma_z_base = bm.sigma_z_base * scale
-        self.noise_model.cfg.sigma_z_per_metre = bm.sigma_z_per_metre * scale
-        self.noise_model.cfg.dropout_prob = bm.dropout_prob * scale
+        self.noise_model.cfg.sigma_z_quadratic = bm.sigma_z_quadratic * scale
+        self.noise_model.cfg.dropout_base = bm.dropout_base * scale
+        self.noise_model.cfg.dropout_range = bm.dropout_range * scale
         self.cfg.noise_scale = scale
 
     @property
@@ -506,10 +515,13 @@ def _scaled_d435i_params(
     if scale == 1.0:
         return params
     return D435iNoiseParams(
-        sigma_xy_base=params.sigma_xy_base * scale,
+        sigma_xy_per_metre=params.sigma_xy_per_metre * scale,
+        sigma_xy_floor=params.sigma_xy_floor * scale,
         sigma_z_base=params.sigma_z_base * scale,
-        sigma_z_per_metre=params.sigma_z_per_metre * scale,
-        dropout_prob=params.dropout_prob * scale,
+        sigma_z_quadratic=params.sigma_z_quadratic * scale,
+        dropout_base=params.dropout_base * scale,
+        dropout_range=params.dropout_range * scale,
+        dropout_scale=params.dropout_scale,  # scale length not scaled
         latency_steps=params.latency_steps,  # latency is not scaled
     )
 
@@ -521,10 +533,13 @@ def _scaled_noise_model_cfg(
     if scale == 1.0:
         return cfg
     return D435iNoiseModelCfg(
-        sigma_xy_base=cfg.sigma_xy_base * scale,
+        sigma_xy_per_metre=cfg.sigma_xy_per_metre * scale,
+        sigma_xy_floor=cfg.sigma_xy_floor * scale,
         sigma_z_base=cfg.sigma_z_base * scale,
-        sigma_z_per_metre=cfg.sigma_z_per_metre * scale,
-        dropout_prob=cfg.dropout_prob * scale,
+        sigma_z_quadratic=cfg.sigma_z_quadratic * scale,
+        dropout_base=cfg.dropout_base * scale,
+        dropout_range=cfg.dropout_range * scale,
+        dropout_scale=cfg.dropout_scale,  # scale length not scaled
         latency_steps=cfg.latency_steps,  # latency is not scaled
         camera_hz=cfg.camera_hz,
     )
@@ -733,31 +748,33 @@ def _apply_d435i_pos_noise(
 ) -> torch.Tensor:
     """Apply D435i-style structured noise to ball position in paddle frame.
 
-    Noise model:
-    - XY noise: Gaussian with std = sigma_xy_base (lateral pixel noise)
-    - Z noise: Gaussian with std = sigma_z_base + sigma_z_per_metre * |z|
-      (depth accuracy degrades with distance — D435i stereo baseline effect)
-    - Dropout: with probability dropout_prob, return last known position
-      (simulated as zeroing the update — full dropout buffer added with EKF)
+    Noise model (calibrated from Ahn et al. 2019, Intel BKM whitepaper):
+    - XY noise: σ_xy = max(floor, 0.0025·z) — linear in depth
+    - Z noise: σ_z = base + 0.005·z² — quadratic (stereo disparity)
+    - Dropout: distance-dependent (20% base + 30% range for white ball)
     """
     device = pos_b.device
     N = pos_b.shape[0]
+    z_dist = pos_b[:, 2].abs()
 
-    # XY noise (lateral, from pixel quantisation + IR pattern matching)
-    xy_noise = torch.randn(N, 2, device=device) * params.sigma_xy_base
+    # XY noise: linear in z with floor
+    sigma_xy = torch.clamp(params.sigma_xy_per_metre * z_dist, min=params.sigma_xy_floor)
+    xy_noise = torch.randn(N, 2, device=device) * sigma_xy.unsqueeze(-1)
 
-    # Z noise (depth, distance-dependent)
-    z_dist = pos_b[:, 2].abs()  # distance along z in paddle frame
-    sigma_z = params.sigma_z_base + params.sigma_z_per_metre * z_dist
+    # Z noise: quadratic in z
+    sigma_z = params.sigma_z_base + params.sigma_z_quadratic * z_dist * z_dist
     z_noise = torch.randn(N, device=device) * sigma_z
 
     noise = torch.stack([xy_noise[:, 0], xy_noise[:, 1], z_noise], dim=-1)
 
-    # Dropout: zero the noise for dropped frames (position freezes at GT
-    # for now; proper hold-last-value requires EKF state buffer)
-    if params.dropout_prob > 0:
+    # Distance-dependent dropout
+    z_excess = torch.clamp(z_dist - 0.5, min=0.0)
+    p_dropout = params.dropout_base + params.dropout_range * (
+        1.0 - torch.exp(-z_excess / params.dropout_scale)
+    )
+    if params.dropout_base > 0 or params.dropout_range > 0:
         dropout_mask = (
-            torch.rand(N, device=device) < params.dropout_prob
+            torch.rand(N, device=device) < p_dropout
         ).unsqueeze(-1)
         # On dropout, return GT (no noise) — conservative stub.
         # Full pipeline will hold last EKF estimate instead.
@@ -777,25 +794,29 @@ def _apply_d435i_vel_noise(
     Gaussian noise scaled by the position noise parameters and a typical
     frame-to-frame dt (~33ms at 30Hz).
 
-    The velocity noise std is approximately sigma_pos / dt, which at
-    30Hz gives ~3x amplification of position noise.
+    Velocity noise std ≈ sqrt(2) * sigma_pos / dt.
+    Uses nominal z=0.5m for the distance-dependent noise parameters.
     """
     device = vel_b.device
     N = vel_b.shape[0]
 
-    # Approximate velocity noise from finite-differenced position noise
-    # at 30Hz camera rate: sigma_vel ≈ sqrt(2) * sigma_pos / dt
+    # Use nominal z=0.5m for velocity noise estimate (mid-range)
+    z_nominal = 0.5
     dt_camera = 1.0 / 30.0  # 30Hz D435i frame rate
-    sigma_vel_xy = (2 ** 0.5) * params.sigma_xy_base / dt_camera
-    sigma_vel_z = (2 ** 0.5) * params.sigma_z_base / dt_camera
+    sigma_xy_nominal = max(params.sigma_xy_floor, params.sigma_xy_per_metre * z_nominal)
+    sigma_z_nominal = params.sigma_z_base + params.sigma_z_quadratic * z_nominal * z_nominal
+    sigma_vel_xy = (2 ** 0.5) * sigma_xy_nominal / dt_camera
+    sigma_vel_z = (2 ** 0.5) * sigma_z_nominal / dt_camera
 
     noise = torch.zeros_like(vel_b)
     noise[:, :2] = torch.randn(N, 2, device=device) * sigma_vel_xy
     noise[:, 2] = torch.randn(N, device=device) * sigma_vel_z
 
-    if params.dropout_prob > 0:
+    # Dropout at nominal distance
+    p_dropout_nominal = params.dropout_base
+    if p_dropout_nominal > 0:
         dropout_mask = (
-            torch.rand(N, device=device) < params.dropout_prob
+            torch.rand(N, device=device) < p_dropout_nominal
         ).unsqueeze(-1)
         noise = noise * (~dropout_mask).float()
 
