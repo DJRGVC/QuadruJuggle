@@ -155,3 +155,21 @@ Decision:   Next iter: check policy agent status (iter_013, training with ball_l
             If policy needs perception support, prioritise that. If not, consider contact-aware
             EKF (Phase 4) — detecting paddle contact and switching to zero-accel dynamics
             would fix the NIS=970 root cause and make EKF useful during training too.
+
+---
+
+## iter_030 — Contact-aware EKF: adaptive process noise during paddle contact  (2026-04-08T17:15:00Z)
+Hypothesis: Inflating q_vel during contact (ball Z < 25mm) lets EKF use low q_vel=0.40 for
+            free-flight smoothing while trusting measurements during contact (q_vel=50.0),
+            fixing the NIS=970 root cause without permanently degrading accuracy.
+Change:     BallEKFConfig: q_vel 7.0→0.40 (free-flight CWNA), added contact_aware=True,
+            q_vel_contact=50.0, contact_z_threshold=0.025m. predict() builds per-env Q
+            matrix based on ball Z position. Added --no-contact-aware flag to nis_diagnostic.py.
+Command:    test_contact_aware_ekf.py (7 tests), test_world_frame_ekf.py (6), test_mock_pipeline.py (15).
+Result:     **28/28 tests pass.** Free-flight P growth ~6.4e-5 (low noise → good smoothing).
+            Contact P growth >0.5 (high noise → trust measurements). Mixed-env contact/flight
+            ratio >100×. Bounce trajectory tracked without divergence. Backward compat OK.
+Decision:   GPU NIS validation next: run nis_diagnostic.py with contact_aware=True. Expected:
+            NIS near 3.0 during free flight (was 970 everywhere with q_vel=7.0). Contact phases
+            will still have high NIS (unavoidable — contact forces truly unpredictable) but
+            free-flight should now show proper EKF smoothing benefit over raw noise.

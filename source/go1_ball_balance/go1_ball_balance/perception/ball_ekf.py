@@ -34,15 +34,23 @@ import torch
 class BallEKFConfig:
     """EKF tuning parameters."""
 
-    # Process noise — must cover unmodeled contact forces (~9.81 m/s² during
-    # paddle contact). CWNA q_vel=0.30 was tuned for free-flight only; NIS=970
-    # in sim (iter_024). q_vel=7.0 gives NIS≈3.5 (consistent) because it
-    # honestly represents the ~10 m/s² uncertainty from contact normal force.
-    # Trade-off: high q_vel → EKF mostly follows measurements for position
-    # (no smoothing benefit), but provides useful velocity estimation.
-    # Ref: iter_024 NIS sweep; Bar-Shalom Ch. 6
+    # Process noise — free-flight values (CWNA prescription at ~0.5m).
+    # During contact, q_vel is inflated to q_vel_contact so the EKF trusts
+    # measurements over its (wrong) ballistic prediction. This fixes NIS=970
+    # (iter_024) without permanently degrading free-flight smoothing.
+    # Ref: iter_024 NIS sweep; Bar-Shalom Ch. 6; IMM literature (Li & Jilkov 2005)
     q_pos: float = 0.003    # position process noise std (m) per sqrt(s)
-    q_vel: float = 7.0      # velocity process noise std (m/s) per sqrt(s)
+    q_vel: float = 0.40     # velocity process noise std, FREE-FLIGHT (m/s) per sqrt(s)
+    # ^^^ CWNA prescription for ballistic flight: σ_a * sqrt(dt) ≈ 0.40
+    # Previously 7.0 to cover contact forces — now contact-aware mode handles that.
+
+    # Contact-aware process noise: inflated q_vel during paddle contact
+    contact_aware: bool = True  # enable contact detection + adaptive Q
+    q_vel_contact: float = 50.0  # velocity process noise during contact (m/s/√s)
+    # Contact normal force ≈ 10-100 m/s² → q_vel ≈ 50 covers worst case
+    contact_z_threshold: float = 0.025  # ball Z < this → contact phase (m)
+    # Ball radius = 0.020m, resting on paddle → centre at ~0.020m.
+    # Threshold 0.025m gives 5mm margin for measurement noise.
 
     # Measurement noise — matched to updated D435iNoiseModelCfg at ~0.5m nominal distance
     r_xy: float = 0.002     # measurement noise std, XY (m) — matches sigma_xy_base
@@ -215,13 +223,32 @@ class BallEKF:
         self._x[:, :3] += vel * dt + 0.5 * a * dt**2
         self._x[:, 3:] += a * dt
 
-        # Process noise Q
-        Q = torch.zeros(6, 6, device=self.device)
-        Q[:3, :3] = torch.eye(3, device=self.device) * (self.cfg.q_pos * dt)**2
-        Q[3:, 3:] = torch.eye(3, device=self.device) * (self.cfg.q_vel * dt)**2
+        # Process noise Q — contact-aware: per-env q_vel depends on ball Z
+        q_pos_sq = (self.cfg.q_pos * dt) ** 2
+        if self.cfg.contact_aware:
+            # Detect contact: ball Z (in current frame) near paddle surface
+            ball_z = self._x[:, 2]  # (N,) — Z position (post-prediction)
+            in_contact = ball_z < self.cfg.contact_z_threshold  # (N,) bool
+            # Per-env q_vel: free-flight or contact
+            q_vel_val = torch.where(
+                in_contact,
+                torch.tensor(self.cfg.q_vel_contact, device=self.device),
+                torch.tensor(self.cfg.q_vel, device=self.device),
+            )  # (N,)
+            q_vel_sq = (q_vel_val * dt) ** 2  # (N,)
+            # Build per-env Q: (N, 6, 6)
+            Q = torch.zeros(self.num_envs, 6, 6, device=self.device)
+            I3 = torch.eye(3, device=self.device)
+            Q[:, :3, :3] = I3.unsqueeze(0) * q_pos_sq
+            Q[:, 3:, 3:] = I3.unsqueeze(0) * q_vel_sq.view(-1, 1, 1)
+        else:
+            Q = torch.zeros(6, 6, device=self.device)
+            Q[:3, :3] = torch.eye(3, device=self.device) * q_pos_sq
+            Q[3:, 3:] = torch.eye(3, device=self.device) * (self.cfg.q_vel * dt) ** 2
+            Q = Q.unsqueeze(0)  # (1, 6, 6) broadcasts
 
         # Covariance prediction: P = F @ P @ F^T + Q
-        self._P = torch.bmm(torch.bmm(F, self._P), F.transpose(-1, -2)) + Q.unsqueeze(0)
+        self._P = torch.bmm(torch.bmm(F, self._P), F.transpose(-1, -2)) + Q
         # Enforce symmetry to prevent numerical drift
         self._P = 0.5 * (self._P + self._P.transpose(-1, -2))
         # State clamping — physically, ball can't be >5m away or >20m/s

@@ -14,7 +14,8 @@
 - [ ] End-to-end hardware test: perception pipeline → pi1 policy on real Go1 with ball drop
 
 # Phase 4: Sim-side improvements (if policy agent needs or hardware wait is long)
-- [ ] Contact-aware EKF: detect contact phase (ball on paddle) and switch dynamics model (zero-accel instead of freefall)
+- [x] Contact-aware EKF: detect contact phase (ball on paddle) and inflate q_vel (0.40→50.0) — DONE iter_030
+- [ ] GPU NIS validation: run nis_diagnostic.py with contact_aware=True vs --no-contact-aware to measure NIS improvement
 - [ ] Ballistic trajectory simulation in mock pipeline (parabolic arcs, not just stationary/linear)
 - [ ] Latency injection testing: verify policy robustness to 1-3 frame observation delays
 - [ ] Check if policy agent needs perception support (noise curriculum tuning, new obs features)

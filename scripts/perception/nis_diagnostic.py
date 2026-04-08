@@ -39,6 +39,8 @@ def main():
     parser.add_argument("--r_z", type=float, default=None, help="Override EKF r_z")
     parser.add_argument("--world-frame", action="store_true",
                         help="Run EKF in world frame (transforms meas body→world)")
+    parser.add_argument("--no-contact-aware", action="store_true",
+                        help="Disable contact-aware adaptive process noise (use uniform q_vel)")
     args = parser.parse_args()
 
     # Isaac Lab AppLauncher
@@ -94,11 +96,13 @@ def main():
         ekf_cfg.r_xy = args.r_xy
     if args.r_z is not None:
         ekf_cfg.r_z = args.r_z
+    if getattr(args, "no_contact_aware", False):
+        ekf_cfg.contact_aware = False
 
     world_frame = getattr(args, "world_frame", False)
     _print(f"\nEKF config: q_pos={ekf_cfg.q_pos}, q_vel={ekf_cfg.q_vel}, "
            f"r_xy={ekf_cfg.r_xy}, r_z={ekf_cfg.r_z}, r_z_per_m={ekf_cfg.r_z_per_metre}, "
-           f"world_frame={world_frame}")
+           f"contact_aware={ekf_cfg.contact_aware}, world_frame={world_frame}")
 
     # Build env config
     noise_cfg = BallObsNoiseCfg(mode="ekf", ekf_cfg=ekf_cfg, world_frame=world_frame)
