@@ -68,7 +68,8 @@ def main():
         if args.headless:
             cmd.append("--headless")
 
-        proc = subprocess.run(cmd, timeout=1800)  # 30 min per mode max
+        # stdout/stderr flow to parent — diagnostics are visible in terminal
+        proc = subprocess.run(cmd, timeout=1800)
         if proc.returncode != 0:
             print(f"  [ERROR] Mode {mode} failed with return code {proc.returncode}")
             all_results[mode] = {"mode": mode, "error": f"exit code {proc.returncode}"}
@@ -187,9 +188,10 @@ def _run_single_mode(args):
         )
 
     env = gym.make("Isaac-BallJuggleHier-Go1-v0", cfg=env_cfg)
+    base_env = env.unwrapped  # direct reference to ManagerBasedRLEnv
 
     if mode == "ekf":
-        env.unwrapped._perception_diagnostics_enabled = True
+        base_env._perception_diagnostics_enabled = True
 
     agent_cfg = BallJuggleHierPPORunnerCfg()
     agent_cfg.max_iterations = args.max_iterations
@@ -238,7 +240,7 @@ def _run_single_mode(args):
                         timeout_pcts.append(sum(vals) / len(vals))
 
         if mode == "ekf" and iteration_count[0] % DIAG_LOG_INTERVAL == 0:
-            pipeline = getattr(env.unwrapped, "_perception_pipeline", None)
+            pipeline = getattr(base_env, "_perception_pipeline", None)
             if pipeline is not None:
                 diag = pipeline.diagnostics
                 if diag:
@@ -249,7 +251,9 @@ def _run_single_mode(args):
                           f"EKF pos RMSE: {diag['pos_rmse_ekf_mm']:.1f}mm, "
                           f"raw: {diag['pos_rmse_raw_mm']:.1f}mm, "
                           f"improvement: {diag['ekf_improvement_pct']:.0f}%"
-                          f"{nis_str}")
+                          f"{nis_str}", flush=True)
+            elif iteration_count[0] == DIAG_LOG_INTERVAL:
+                print(f"  [DIAG] WARNING: _perception_pipeline not found on env", flush=True)
 
     runner.log = _metric_log
 

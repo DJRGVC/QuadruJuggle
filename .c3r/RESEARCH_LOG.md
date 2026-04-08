@@ -176,3 +176,12 @@ Result:     All 3 modes complete (no crashes). 50-iter comparison (2048 envs):
   | ekf    | 208.6          | 7.6            | 0.4%     |
   Oracle leads. EKF trails d435i (raw noise) by ~28% on reward — tuned Q/R may be over-smoothing early training. Diagnostics (NIS) not captured in subprocess output — needs piping fix. Note: iter_016 results are INVALID (ran with old 41D action_term against 53D checkpoint — unclear how it produced results; likely used a different checkpoint).
 Decision:   The pi2 obs dim bug is the key fix this iteration. Next: (1) Run NIS diagnostic standalone to validate tuned Q/R values are in [0.35, 7.81] band. (2) If NIS is too low (over-smoothing), increase q_vel back toward 0.5. (3) Consider longer comparison (200+ iters) to see if EKF converges.
+
+---
+
+## iter_019 — NIS diagnostic script + compare fix  (2026-04-08T13:05:00Z)
+Hypothesis: A standalone NIS diagnostic script (no training loop, just env stepping with random actions) will validate EKF Q/R values faster than the full compare script, and the compare script's diagnostic capture was broken by env wrapper indirection.
+Change:     (1) Created `scripts/perception/nis_diagnostic.py` — runs env with EKF mode for N steps, logs NIS/RMSE/detection_rate every `log_interval` steps, classifies NIS against 95% χ²(3) band [0.35, 7.81], supports `--q_vel`/`--q_pos`/`--r_xy`/`--r_z` overrides for quick parameter sweeps. (2) Fixed `compare_perception_modes.py`: changed `env.unwrapped._perception_pipeline` to `base_env` (direct reference saved after `gym.make`), added `flush=True` to diagnostic prints for subprocess visibility, added warning print when pipeline is None on first diagnostic check.
+Command:    AST parse both files (OK). Smoke test blocked — GPU held by policy agent's 1500-iter d435i training (PID 223622).
+Result:     Both scripts pass AST validation. GPU unavailable — NIS diagnostic deferred to next iteration. Compare script fix addresses the missing diagnostic data from iter_018.
+Decision:   Next iter: run NIS diagnostic (500 steps, 2048 envs, ~2 min GPU time). If GPU still busy, run with smaller num_envs (256) as fallback. Based on NIS result, adjust q_vel if needed.
