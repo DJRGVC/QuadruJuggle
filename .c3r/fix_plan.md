@@ -22,5 +22,6 @@
 
 # Phase 6: User-defined velocity input (Daniel request 2026-04-08)
 - [ ] vel-cmd-survey subagent: 5 iters MAX, then kill. Researching 2023-2026 papers on velocity commands for legged manipulation
-- [ ] Decide on velocity input method based on subagent findings
-- [ ] Implement chosen method (likely pi1 obs extension or pi2 command passthrough)
+- [x] Implement Method 1 (Direct Override): UserVelocityInput + CommandMixer (iter_041)
+- [ ] Create play_teleop.py integration script (hooks mixer into play loop)
+- [ ] Decide on Method 2/3 based on subagent findings (for future retraining approach)

@@ -248,3 +248,27 @@ Result:     **132/132 tests pass** (5 new + 127 existing). GPU NIS validation bl
 Decision:   Next: GPU NIS comparison (IMU ON vs OFF) when GPU available.
             Monitor vel-cmd-survey subagent progress. If GPU still blocked next iter,
             do world-frame NIS comparison preparation or other CPU-only work.
+
+---
+
+## iter_041 — Velocity command modules: UserVelocityInput + CommandMixer (21/21 tests, 153/153 total)  (2026-04-08T09:30:00Z)
+Hypothesis: Implementing the Method 1 (Direct Override) velocity command spec from vel-cmd-survey
+            subagent gives users joystick/keyboard control of robot vx/vy during play, overriding
+            pi1's velocity channels while preserving pi1's height/tilt control.
+Change:     Created `vel_cmd/` package with 3 files:
+            - `user_velocity_input.py`: thread-safe joystick/keyboard reader (pygame, pynput, zero backends).
+              Safety-clamped to ±0.30 m/s (60% of pi2 Stage G training max). Deadband, axis invert.
+              `get_cmd_tensor()` broadcasts to all envs for Isaac Lab batch injection.
+            - `command_mixer.py`: 3 modes (override/blend/passthrough). Override fully replaces
+              pi1 cmd[6], cmd[7] with user input. Blend uses alpha. Passthrough = no-op.
+            - `__init__.py`: re-exports all public classes.
+            Created `test_vel_cmd.py` with 21 tests (8 classes: zero backend, config, manual state,
+            passthrough, override, blend, config customisation).
+Command:    `pytest scripts/perception/test_vel_cmd.py -v` (21 tests)
+            Full suite (excluding GPU test_ekf_integration.py): 153/153 pass.
+Result:     **21/21 new tests pass.** All blend modes verified numerically. Override preserves
+            dims 0-5 and does not modify input tensor. Zero backend returns (0,0) without threads.
+            Normalization constants match action_term._CMD_SCALES[6:8]. 153/153 total — no regressions.
+Decision:   Next: create play_teleop.py integration script (hooks mixer into play loop).
+            Monitor vel-cmd-survey subagent (iter_002 done; Methods 2/3 specs pending).
+            GPU NIS validation still blocked by policy agent training.
