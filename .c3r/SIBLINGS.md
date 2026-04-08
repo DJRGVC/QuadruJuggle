@@ -73,17 +73,17 @@ git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
 ## lit-review
 - **role**: generic
 - **focus**: survey perception-for-manipulation papers (ETH noise injection, teacher-student distillation, event cameras, learned state estimators) and critique our D435i+EKF approach
-- **status**: running · iter #28 · ctx 0%
+- **status**: stopped · iter #28 · ctx 0%
 - **last iter**: 1h ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/lit-review`
 ```
+177405f iter_030: Go1 actuator sim-to-real gap survey — action delay 20ms is #1 gap; PD+DR > ActuatorNet; DR table + DelayedPDActuator rec → docs/lit_review_actuator_dynamics_sim2real.md
 8030cca iter_029: reward phasing survey — stage-aware annealing; ball_low_penalty must taper by Stage C; release_vel keep until Stage D → docs/lit_review_reward_phasing.md
 eb9d385 iter_028: policy collapse/forgetting survey — degenerate attractor root cause; early_termination -200→-1200; adaptive entropy, L2 anchor → docs/lit_review_policy_collapse_forgetting.md
 d11eb83 iter_027: ping-pong CoR survey — COR=0.85 correct at Stage G; bounce_threshold_velocity=0.5→0.10 fix; DR ranges validated → docs/lit_review_ping_pong_cor.md
 390f0f8 iter_026: curriculum advancement criteria survey — timeout_rate wrong for juggling; replace 75%→30% floor + apex_reward threshold → docs/lit_review_curriculum_advancement_criteria.md
-6e45363 iter_025: D435i ROS2 integration guide — pyrealsense2 setup, Hough+median detection, calibration, async pipeline → docs/lit_review_d435i_ros2_integration.md
 ```
 ### Files modified on `agent/lit-review` (relative to `c3r/QuadruJuggle`)
 ```
@@ -99,6 +99,7 @@ d11eb83 iter_027: ping-pong CoR survey — COR=0.85 correct at Stage G; bounce_t
 docs/hardware_deployment_checklist.md
 docs/lit_review_active_throwing_rewards.md
 docs/lit_review_actuator_dynamics.md
+docs/lit_review_actuator_dynamics_sim2real.md
 docs/lit_review_ball_spin.md
 docs/lit_review_bounce_dynamics.md
 docs/lit_review_contact_dynamics_dr.md
@@ -116,8 +117,7 @@ docs/lit_review_learned_state_estimators.md
 docs/lit_review_noise_curriculum.md
 docs/lit_review_noise_outperforms_oracle.md
 docs/lit_review_passive_optimum_anti_balance.md
-docs/lit_review_perception.md
-... and 8 more
+... and 9 more
 ```
 ### Read one with:
 ```

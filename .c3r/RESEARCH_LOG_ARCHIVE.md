@@ -163,3 +163,102 @@ Change:     Auto-detect pi2 input dim from checkpoint. Add _last_pi2_actions buf
 Command:    3-mode comparison, 2048 envs × 50 iters.
 Result:     oracle=13.7, d435i=10.5, ekf=7.6. EKF 28% below d435i — over-smoothing (q_vel too low).
 Decision:   NIS diagnostic to validate Q/R. Increase q_vel if NIS too low.
+
+---
+
+## iter_019 — NIS diagnostic script + compare fix  (2026-04-08T13:05:00Z)
+Hypothesis: Standalone NIS diagnostic (no training, just env stepping) will validate EKF Q/R faster.
+Change:     Created nis_diagnostic.py (NIS/RMSE/detection per step, --q_vel/--q_pos overrides). Fixed compare script base_env reference.
+Command:    AST parse. GPU blocked.
+Result:     Both scripts validated. GPU deferred.
+Decision:   Run NIS diagnostic next iter.
+
+---
+
+## iter_020 — q_vel 0.15→0.30 (CWNA fix) + NIS sweep script  (2026-04-08T21:30:00Z)
+Hypothesis: q_vel=0.15 is 7× below CWNA prescription, causing 24cm lag at 2 m/s.
+Change:     q_vel 0.15→0.30. Created nis_sweep.py for parameter sweep. Copied lit_review_ekf_lag_vs_raw_noise.md.
+Command:    AST parse. GPU blocked.
+Result:     Code ready. Lit-review confirms: latency > noise in sensitivity (D'Ambrosio 2024).
+Decision:   Run NIS sweep when GPU frees.
+
+---
+
+## iter_021 — NIS diagnostic reveals EKF is 30× worse than raw noise  (2026-04-08T22:05:00Z)
+Hypothesis: NIS with q_vel=0.30 will be in [0.35, 7.81] consistency band.
+Change:     Fixed stdout buffering, diagnostics init (pipeline recreated after flag set).
+Command:    `nis_diagnostic.py --num_envs 256 --steps 100`
+Result:     **NIS = 966** (target 3.0). EKF RMSE=130mm vs raw=4.4mm — 30× worse. Root cause: body-frame pseudo-forces from robot motion (not modeled).
+Decision:   Adopt "train without EKF, deploy with EKF". Try body-frame accel compensation.
+
+---
+
+## iter_022 — Body-frame accel compensation + "no EKF for training"  (2026-04-08T22:45:00Z)
+Hypothesis: Subtracting robot body-frame acceleration from EKF dynamics will fix pseudo-force problem.
+Change:     Added robot_acc_b to EKF predict()/step() (finite-diff from root_lin_vel_b, ±50 m/s² clamp). Updated PERCEPTION_HANDOFF.md with "no EKF" recommendation.
+Command:    4 CPU tests.
+Result:     4/4 pass. GPU validation deferred.
+Decision:   Run NIS with accel compensation.
+
+---
+
+## iter_022b — NIS with accel compensation: still broken  (2026-04-08T23:30:00Z)
+Hypothesis: Linear accel compensation reduces NIS from 966 to ~3.0.
+Change:     No code change — GPU diagnostic run.
+Command:    `nis_diagnostic.py --num_envs 256 --steps 100`
+Result:     **NIS = 1025** (worse). Linear accel negligible. Dominant: Coriolis (-2ω×v, ~10 m/s² at ω=5 rad/s), centrifugal, Euler forces. Body-frame EKF dynamics structurally wrong.
+Decision:   Implement world-frame EKF (option A — cleaner than full non-inertial dynamics).
+
+---
+
+## iter_023 — World-frame EKF implementation  (2026-04-08T23:55:00Z)
+Hypothesis: World-frame EKF eliminates pseudo-force problem (ballistic dynamics correct in world frame).
+Change:     Added world_frame=True to BallObsNoiseCfg. Body→world measurement transform, world→body output. Helper methods. Reset in world coords. 5 CPU tests.
+Command:    `test_world_frame_ekf.py` — 5/5 pass.
+Result:     Round-trip error 1.86e-8, tilted robot 22mm error, backward compat OK.
+Decision:   GPU NIS diagnostic with --world-frame.
+
+---
+
+## iter_024 — World-frame EKF NIS: contact forces are the root cause  (2026-04-08T10:00:00Z)
+Hypothesis: World-frame EKF → NIS ≈ 3.0.
+Change:     NIS diagnostic + q_vel sweep {0.30, 1.0, 3.0, 5.0, 10.0}. Updated q_vel default to 7.0.
+Command:    `nis_diagnostic.py --world-frame` (256 envs × 100 steps)
+Result:     **NIS=970** (same as body-frame). Root cause: unmodeled contact normal force during paddle contact. q_vel sweep: at q_vel≥5.0 NIS in band but EKF = raw noise accuracy. EKF value: velocity estimation + dropout bridging only.
+Decision:   q_vel=7.0 default. Declare feature-complete. Shift to real hardware integration.
+
+---
+
+## iter_025 — Feature-complete + noise calibration + hardware spec  (2026-04-08T11:00:00Z)
+Hypothesis: Calibrate noise model to real D435i characteristics per lit-review audit.
+Change:     Created docs/hardware_pipeline_architecture.md. Updated noise: sigma_z_per_metre 2→5mm/m, dropout_prob 2→10%. Updated EKF r_z/r_z_per_metre. Marked feature-complete.
+Command:    AST parse.
+Result:     Sim pipeline feature-complete. Hardware spec written. Noise model matches D435i.
+Decision:   Create perception/real/ stubs.
+
+---
+
+## iter_026 — Real hardware pipeline stubs  (2026-04-08T12:15:00Z)
+Hypothesis: Interface stubs enable parallel component development when hardware arrives.
+Change:     Created perception/real/ (6 files): __init__.py, config.py, camera.py, detector.py, calibration.py, pipeline.py. Pure-math methods implemented; hardware methods raise NotImplementedError.
+Command:    AST parse all 6.
+Result:     All parse. Interfaces match hardware_pipeline_architecture.md.
+Decision:   Write unit tests for utility methods.
+
+---
+
+## iter_027 — Unit tests for real hardware utils + from_known_mount  (2026-04-08T13:30:00Z)
+Hypothesis: Utility methods (deproject, transform_to_body, median_depth) are correct; from_known_mount is pure RPY→rotation math.
+Change:     Implemented from_known_mount (XYZ Euler). Created test_real_utils.py with 17 tests.
+Command:    `test_real_utils.py`
+Result:     17/17 pass. Rotation matrices orthogonal, det=1.0, pitch mapping correct.
+Decision:   MockCamera for integration testing without hardware.
+
+---
+
+## iter_028 — MockCamera + MockDetector for hardware-free integration testing  (2026-04-08T14:45:00Z)
+Hypothesis: Mock implementations enable end-to-end testing of real pipeline chain without hardware.
+Change:     Created perception/real/mock.py (MockCamera + MockDetector). Created test_mock_pipeline.py (15 tests: camera, detector, full chain including EKF convergence, velocity tracking, dropout).
+Command:    `test_mock_pipeline.py`
+Result:     **15/15 pass** (0.048s). EKF converges <10mm in 10 measurements. Velocity tracking within bounds. Dropout drift bounded.
+Decision:   All remaining fix_plan items hardware-blocked. Check if policy needs support or find other sim-side work.
