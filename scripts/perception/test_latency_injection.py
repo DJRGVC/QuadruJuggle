@@ -240,8 +240,8 @@ class TestLatencyEKFDegradation(unittest.TestCase):
         ekf = BallEKF(num_envs=1, cfg=ekf_cfg)
         ekf.reset(
             torch.tensor([0]),
-            torch.tensor([pos0], dtype=torch.float32),
-            torch.tensor([vel0], dtype=torch.float32),
+            torch.from_numpy(pos0.astype("float32")).unsqueeze(0),
+            torch.from_numpy(vel0.astype("float32")).unsqueeze(0),
         )
 
         pos_errors = []
@@ -249,7 +249,7 @@ class TestLatencyEKFDegradation(unittest.TestCase):
 
         # Skip first latency_steps (warmup) for fair comparison
         for i in range(n_steps):
-            gt = torch.tensor([gt_pos[i]], dtype=torch.float32)
+            gt = torch.from_numpy(gt_pos[i].astype("float32")).unsqueeze(0)
             noisy, detected = noise.sample(gt)
             ekf.step(noisy, detected, dt=dt)
 
@@ -381,12 +381,12 @@ class TestLatencyPolicyImpact(unittest.TestCase):
         ekf = BallEKF(num_envs=1, cfg=BallEKFConfig(contact_aware=True))
         ekf.reset(
             torch.tensor([0]),
-            torch.tensor([pos0], dtype=torch.float32),
-            torch.tensor([vel0], dtype=torch.float32),
+            torch.from_numpy(pos0.astype("float32")).unsqueeze(0),
+            torch.from_numpy(vel0.astype("float32")).unsqueeze(0),
         )
 
         for i in range(n_steps):
-            gt = torch.tensor([gt_pos[i]], dtype=torch.float32)
+            gt = torch.from_numpy(gt_pos[i].astype("float32")).unsqueeze(0)
             noisy, det = noise.sample(gt)
             ekf.step(noisy, det, dt=dt)
 
@@ -398,13 +398,13 @@ class TestLatencyPolicyImpact(unittest.TestCase):
         ekf2 = BallEKF(num_envs=1, cfg=BallEKFConfig(contact_aware=True))
         ekf2.reset(
             torch.tensor([0]),
-            torch.tensor([pos0], dtype=torch.float32),
-            torch.tensor([vel0], dtype=torch.float32),
+            torch.from_numpy(pos0.astype("float32")).unsqueeze(0),
+            torch.from_numpy(vel0.astype("float32")).unsqueeze(0),
         )
         noise2 = D435iNoiseModel(num_envs=1, cfg=noise_cfg)
         ekf_z = []
         for i in range(n_steps):
-            gt = torch.tensor([gt_pos[i]], dtype=torch.float32)
+            gt = torch.from_numpy(gt_pos[i].astype("float32")).unsqueeze(0)
             noisy, det = noise2.sample(gt)
             ekf2.step(noisy, det, dt=dt)
             ekf_z.append(ekf2.pos[0, 2].item())

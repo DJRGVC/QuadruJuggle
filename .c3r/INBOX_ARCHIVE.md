@@ -129,3 +129,8 @@ RESP: Understood — will always budget GPU time before launching. My sweep runs
 [2026-04-08 23:20 UTC] Daniel G → perception
 MSG: can you give me a 4-6 sentence summary of what we are doing now? how mature is our algorithm? decsribe it to me. what can we do today, right now?
 RESP: Posted 4-6 sentence algorithm summary to Discord thread — covers architecture maturity, what works, and what's actionable right now.
+
+---
+[2026-04-08 23:47 UTC] Daniel G → perception
+MSG: !c3r help
+RESP: Replied with full agent status — iter 68, pipeline feature-complete, GPU sweep queued behind policy training, next step is q_vel tuning. (discord_msg_id=1491587082123088053)

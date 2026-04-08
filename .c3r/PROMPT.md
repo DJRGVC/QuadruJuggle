@@ -26,18 +26,29 @@ context window. The files on disk are your only persistent memory.
      [2026-04-07 23:45 UTC] Daniel G → reader
      MSG: single-line message text
      ```
-     For EACH entry (there may be multiple):
+     For EACH entry (there may be multiple), do these steps **in this exact order**:
      (a) Decide how you'll act on it. Write a 1-line response.
-     (b) Append the entry to `.c3r/INBOX_ARCHIVE.md` with an added RESP line:
+     (b) **Post the response to Discord FIRST, capturing the message id**:
+         ```
+         msg_id=$($C3R_BIN/notify.py --thread "$C3R_AGENT_THREAD_ID" "↩ Reply: <response text>")
+         echo "posted msg_id=$msg_id"
+         ```
+         The `msg_id` MUST be a non-empty Discord snowflake (numeric, ~19 digits).
+         If it is empty or you see an error from notify.py, **STOP** — do NOT
+         write the RESP archive line. Investigate (check `$C3R_AGENT_THREAD_ID`,
+         check `$DISCORD_BOT_TOKEN`, run notify.py with `2>&1` to see errors)
+         and post a `⚠ Alert:` notify with `--mention` so the human knows
+         you couldn't reach Discord.
+     (c) **Only after a successful post**, append the entry to
+         `.c3r/INBOX_ARCHIVE.md` with the RESP line AND the message id:
          ```
          ---
          [2026-04-07 23:45 UTC] Daniel G → reader
          MSG: single-line message text
-         RESP: will do — <concrete 1-line action you'll take this iter>
+         RESP: <concrete 1-line action you'll take this iter> (discord_msg_id=NNN)
          ```
-     (c) Post the response to your Discord thread WITH THE ↩ Reply: PREFIX
-         so the human visually distinguishes it from status updates:
-         `$C3R_BIN/notify.py --thread "$C3R_AGENT_THREAD_ID" "↩ Reply: <response text>"`
+         The `discord_msg_id=NNN` is a verification trail — if it's missing,
+         the post never happened and the human is being lied to.
      (d) After processing every entry, rewrite `.c3r/INBOX.md` to exactly:
          ```
          # INBOX

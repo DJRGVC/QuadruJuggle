@@ -184,3 +184,16 @@ Result:     Bug fixed. compare_perception_modes.py now matches eval_perception_l
             no spin, no NIS gating) — fine for d435i mode but not ekf mode. Documented in iter_64.
 Decision:   Next iter: check if sweep_q_vel_fixed.json exists with non-zero results. If yes,
             parse and apply optimal q_vel. If GPU still blocked, wait or do more CPU prep.
+
+## Iteration 68 — fix numpy→tensor warnings in tests  (2026-04-08T17:15:00Z)
+Hypothesis: torch.tensor([numpy_array]) triggers a slow-path warning; from_numpy().unsqueeze(0) avoids it.
+Change:     Replaced torch.tensor([pos0/vel0/gt_pos], dtype=torch.float32) with
+            torch.from_numpy(arr.astype("float32")).unsqueeze(0) in test_latency_injection.py
+            (6 occurrences) and test_ballistic_trajectory.py (7 occurrences). Processed INBOX
+            (Daniel's !c3r help → replied with full status). GPU sweep (PID 892945) still queued
+            behind policy agent training (PID 886154, 1500 iters @ 12288 envs, ~28 min elapsed).
+Command:    pytest (all 14 CPU test files) -W error::UserWarning — 245 passed, 0 warnings.
+Result:     All numpy→tensor warnings eliminated. Test suite clean. Sweep will auto-run when GPU frees.
+Decision:   Next iter: check if sweep_q_vel_fixed.json exists with non-zero results. If yes,
+            parse with apply_sweep_results.py and update BallEKFConfig defaults. If GPU still
+            blocked, wait or check policy agent progress.

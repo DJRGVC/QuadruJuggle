@@ -157,8 +157,8 @@ class TestBallisticFreeFlightEKF(unittest.TestCase):
         )
         ekf.reset(
             torch.tensor([0]),
-            torch.tensor([pos0], dtype=torch.float32),
-            torch.tensor([vel0], dtype=torch.float32),
+            torch.from_numpy(pos0.astype("float32")).unsqueeze(0),
+            torch.from_numpy(vel0.astype("float32")).unsqueeze(0),
         )
 
         pos_errors = []
@@ -280,7 +280,7 @@ class TestBallisticWithContact(unittest.TestCase):
         pos0 = np.array([0.0, 0.0, 0.020])  # resting on paddle
         ekf.reset(
             torch.tensor([0]),
-            torch.tensor([pos0], dtype=torch.float32),
+            torch.from_numpy(pos0.astype("float32")).unsqueeze(0),
             torch.zeros(1, 3),
         )
 
@@ -384,7 +384,7 @@ class TestMultipleBounces(unittest.TestCase):
 
         ekf.reset(
             torch.tensor([0]),
-            torch.tensor([pos0], dtype=torch.float32),
+            torch.from_numpy(pos0.astype("float32")).unsqueeze(0),
             torch.zeros(1, 3),
         )
 
@@ -421,7 +421,7 @@ class TestMultipleBounces(unittest.TestCase):
         pos0 = np.array([0.0, 0.0, 0.025])
         ekf.reset(
             torch.tensor([0]),
-            torch.tensor([pos0], dtype=torch.float32),
+            torch.from_numpy(pos0.astype("float32")).unsqueeze(0),
             torch.zeros(1, 3),
         )
 
@@ -461,8 +461,8 @@ class TestOffAxisLaunch(unittest.TestCase):
         ekf = BallEKF(num_envs=1, device="cpu", cfg=BallEKFConfig(contact_aware=True, nis_gate_enabled=False))
         ekf.reset(
             torch.tensor([0]),
-            torch.tensor([pos0], dtype=torch.float32),
-            torch.tensor([vel0], dtype=torch.float32),
+            torch.from_numpy(pos0.astype("float32")).unsqueeze(0),
+            torch.from_numpy(vel0.astype("float32")).unsqueeze(0),
         )
 
         cam = MockCamera(MockCameraConfig(depth_noise_std_mm=0.0))
