@@ -272,3 +272,19 @@ Change:     (1) Created `docs/hardware_pipeline_architecture.md` — comprehensi
 Command:    AST parse all 3 modified Python files — OK.
 Result:     Sim perception pipeline declared feature-complete. Noise model now matches real D435i characteristics per lit-review audit. Hardware pipeline architecture fully specified. Policy agent should note the noise parameter changes — training with updated defaults will produce a more robust policy (higher dropout forces better ball_lost_flag handling, higher depth noise trains depth uncertainty tolerance).
 Decision:   Next: create perception/real/ directory stubs per hardware_pipeline_architecture.md. These stubs define the exact interfaces the hardware deployment will use, ensuring the real pipeline is a drop-in replacement for the sim pipeline. Alternatively, if policy agent needs support (e.g., noise curriculum re-tuning with new defaults), prioritise that.
+
+---
+
+## iter_026 — Real hardware pipeline stubs (perception/real/)  (2026-04-08T12:15:00Z)
+Hypothesis: Creating well-specified interface stubs for the real hardware pipeline (5 files) will enable parallel development of each component when hardware arrives, and document the exact API surface that the sim pipeline already satisfies.
+Change:     Created `perception/real/` package with 6 files:
+            - `__init__.py` — re-exports all public classes
+            - `config.py` — `HardwarePipelineConfig` dataclass (camera, detector, EKF, policy params)
+            - `camera.py` — `D435iCamera` (pyrealsense2 depth-only, 848x480@90fps) + `CameraIntrinsics`
+            - `detector.py` — `BallDetector` (YOLOv8n+P2 TRT) + `Detection` dataclass + `_median_depth_in_bbox` (implemented, not stub)
+            - `calibration.py` — `CameraExtrinsics` (with working `transform_to_body`) + `CameraCalibrator` (from_yaml, from_checkerboard, from_known_mount)
+            - `pipeline.py` — `RealPerceptionPipeline` (threaded 90Hz camera + 200Hz EKF predict + 50Hz policy output) + `PipelineObservation`
+            All methods that require hardware raise `NotImplementedError` with pointers to the spec doc. Utility methods (`deproject`, `transform_to_body`, `_median_depth_in_bbox`) are fully implemented since they're pure math.
+Command:    AST parse all 6 files — OK.
+Result:     6 files created, all parse cleanly. Interfaces match `docs/hardware_pipeline_architecture.md` exactly. `_median_depth_in_bbox` is the only non-trivial implementation (median of valid depth pixels in YOLO bbox — needed for both testing and production).
+Decision:   Next iter: the remaining fix_plan items are all hardware-blocked (D435i driver, YOLO training, calibration). Consider: (1) writing unit tests for the implemented utility methods (deproject, transform_to_body, median_depth), (2) checking if policy agent needs any perception support, or (3) writing a mock camera for integration testing without hardware.
