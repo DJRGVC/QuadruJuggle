@@ -262,3 +262,83 @@ Change:     Created perception/real/mock.py (MockCamera + MockDetector). Created
 Command:    `test_mock_pipeline.py`
 Result:     **15/15 pass** (0.048s). EKF converges <10mm in 10 measurements. Velocity tracking within bounds. Dropout drift bounded.
 Decision:   All remaining fix_plan items hardware-blocked. Check if policy needs support or find other sim-side work.
+
+---
+
+## iter_029 — compaction (summarized iters 001-018)  (2026-04-08T16:00:00Z)
+Hypothesis: N/A — compaction iteration.
+Change:     Archived iters 001-018 verbatim to RESEARCH_LOG_ARCHIVE.md. Wrote compacted summary
+            covering docs/roadmap (001-004), camera+EKF core (005-008), full pipeline+handoff
+            (009-011), diagnostics+curriculum (012-015), comparison+tuning (016-018). Kept
+            iters 019-028 verbatim. Pruned fix_plan.md.
+Command:    No GPU commands.
+Result:     Log shrunk from 313->~115 lines. Archive preserved 18 verbatim entries.
+Decision:   Next: contact-aware EKF or policy support.
+
+---
+
+## iter_030 — Contact-aware EKF: adaptive process noise during paddle contact  (2026-04-08T17:15:00Z)
+Hypothesis: Inflating q_vel during contact (ball Z < 25mm) lets EKF use low q_vel=0.40 for
+            free-flight smoothing while trusting measurements during contact (q_vel=50.0),
+            fixing the NIS=970 root cause without permanently degrading accuracy.
+Change:     BallEKFConfig: q_vel 7.0->0.40 (free-flight CWNA), added contact_aware=True,
+            q_vel_contact=50.0, contact_z_threshold=0.025m. predict() builds per-env Q
+            matrix based on ball Z position. Added --no-contact-aware flag to nis_diagnostic.py.
+Command:    test_contact_aware_ekf.py (7 tests), test_world_frame_ekf.py (6), test_mock_pipeline.py (15).
+Result:     **28/28 tests pass.** Free-flight P growth ~6.4e-5 (low noise -> good smoothing).
+            Contact P growth >0.5 (high noise -> trust measurements).
+Decision:   GPU NIS validation next.
+
+---
+
+## iter_031 — GPU NIS validation: contact-aware EKF 860x improvement  (2026-04-08T18:35:00Z)
+Hypothesis: Contact-aware EKF will achieve NIS~3.0 during free-flight.
+Change:     No code changes — diagnostic validation.
+Command:    `nis_diagnostic.py --num_envs 256 --steps 200 --headless`
+Result:     **Contact-aware ON**: NIS=0.78, 10/10 intervals in 95% band. EKF RMSE=5.4mm.
+            **Contact-aware OFF**: NIS=671, 0/10 in band. 860x improvement.
+Decision:   Ballistic trajectory testing next.
+
+---
+
+## iter_032 — Ballistic trajectory tests (13/13 pass)  (2026-04-08T19:30:00Z)
+Hypothesis: EKF with contact-aware mode correctly tracks parabolic arcs across curriculum stages.
+Change:     Created test_ballistic_trajectory.py with 13 tests (Stages A/D/G arcs, noisy/dropout,
+            contact transitions, multi-bounce, off-axis launch).
+Command:    `python scripts/perception/test_ballistic_trajectory.py`
+Result:     **13/13 pass.** Stage G pos RMSE <20mm, multi-bounce NIS bounded, 20% dropout <30mm.
+Decision:   Latency injection testing next.
+
+---
+
+## iter_033 — Latency injection tests (16/16 pass)  (2026-04-08T20:30:00Z)
+Hypothesis: D435i latency buffer correctly delays observations by N steps, EKF degrades gracefully.
+Change:     Created test_latency_injection.py with 16 tests (buffer correctness, RMSE bounds,
+            monotonic degradation, combined dropout+latency, multi-env independence).
+Command:    `python scripts/perception/test_latency_injection.py`
+Result:     **16/16 pass.** Pos RMSE: 0-lat <15mm, 1-lat <40mm, 2-lat <80mm, 3-lat <120mm.
+            Vel RMSE at 3-frame: <2 m/s (usable). 57 total tests pass.
+Decision:   Ahn 2019-calibrated noise model next.
+
+---
+
+## iter_034 — Ahn 2019-calibrated noise model (74/74 pass)  (2026-04-08T22:00:00Z)
+Hypothesis: Physics-based noise (sigma_xy proportional to z, sigma_z proportional to z^2, distance-dependent
+            dropout) better matches real D435i than constant/linear model.
+Change:     Rewrote D435iNoiseParams: sigma_xy=0.0025*z (1mm floor), sigma_z=1mm+0.005*z^2,
+            dropout=20%+30%*(1-exp(-(z-0.5)/0.8)). EKF R matched at z=0.5m nominal.
+Command:    `pytest scripts/perception/test_*.py`
+Result:     **74/74 pass.** Noise tighter at close range, realistically worse at high altitude.
+Decision:   GPU NIS re-validation.
+
+---
+
+## iter_035 — GPU NIS re-validation with calibrated noise + kill lit-review  (2026-04-08T14:12:00Z)
+Hypothesis: Calibrated noise still achieves in-band NIS.
+Change:     No code changes — diagnostic. Killed lit-review subagent per Daniel's request.
+Command:    `nis_diagnostic.py --num_envs 256 --steps 200 --log_interval 20 --headless`
+Result:     **NIS=1.598, 10/10 in-band.** EKF RMSE=9.1mm, Raw=7.4mm, detection ~80%.
+            vs iter_031: NIS 0.78->1.60 (less over-conservative), detection 90->80% (realistic).
+Decision:   All Phase 4 sim-side tasks complete. Phase 5 (IMU-aided EKF, spin) nice-to-have.
+            Policy agent at iter_014, still on reward shaping. Next: check policy needs or
+            propose Phase 5 work.
