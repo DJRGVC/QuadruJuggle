@@ -1,6 +1,7 @@
 # Perception Pipeline Roadmap: Privileged State → Real Hardware
 
-**Created:** 2026-03-11
+**Created:** 2026-03-11  
+**Updated:** 2026-04-07 — switched camera to Intel RealSense D435i  
 **Approach:** ETH-style noise-injected EKF (Ma et al., Science Robotics 2025)
 **NOT teacher-student distillation** — see rationale below.
 
@@ -124,7 +125,7 @@ where Q = diag([q_pos², q_pos², q_pos², q_vel², q_vel², q_vel²])
       q_pos ≈ 1e-4, q_vel ≈ 2e-3  (process noise — how much we distrust the model)
 ```
 
-**Update step (60-120Hz — only when camera measurement arrives):**
+**Update step (30-90Hz — only when D435i depth frame arrives):**
 ```
 z = [px_meas, py_meas, pz_meas]   (3D position from detector)
 H = [I₃ | 0₃]                      (3×6 — we observe position, not velocity)
@@ -148,17 +149,23 @@ arrives, the large P makes K large and the filter snaps back.
 Physics (200Hz):  |---|---|---|---|---|---|---|---|---|---|
                   P   P   P   P   P   P   P   P   P   P
 
-Camera (60Hz):    |---------|---------|---(miss)--|---------|
-                        U         U                   U
+D435i depth (30Hz): |---------|---------|---(miss)--|---------|
+                          U         U                   U
 
 Policy (50Hz):    |---------|---------|---------|---------|
                         R         R         R         R
 
 P=predict, U=update, R=pi1 reads latest [x̂,v̂]
+
+Note: D435i depth stream runs at 30Hz (default) or up to 90Hz at reduced resolution.
+At 30Hz, the EKF predict-only coasts ~33ms between depth frames — ballistic model
+accuracy at 33ms is ~0.5mm positional error for a 1m/s ball, well within tolerance.
+RGB can run at 30Hz or higher; we only need depth for 3D position so RGB is unused
+except for HSV detection fallback.
 ```
 
 - **Implementation:** pure PyTorch, GPU-batched for 12288 envs
-- **Measurement input:** `[x, y, z]` — 3D position only (from detector or sim GT+noise)
+- **Measurement input:** `[x, y, z]` — 3D position only (from D435i depth or sim GT+noise)
 
 ### Validation criteria
 - [ ] Velocity estimate error <5% during free flight (compare to ground-truth)
@@ -192,15 +199,23 @@ performance collapses. The policy must learn during training that observations h
 jitter and occasional dropouts, so it develops compensating behaviors (e.g., relying
 on proprioception during dropouts, not overreacting to velocity spikes).
 
-### Step 2a: Noise model (placeholder parameters)
+### Step 2a: Noise model (placeholder parameters — D435i)
 Position noise std = `σ_base + σ_dist × d + σ_omega × |ω|`
-- `σ_base` ≈ 3mm (detector pixel noise at close range)
-- `σ_dist` ≈ 5mm/m (depth error grows with distance)
-- `σ_omega` ≈ 2mm/(rad/s) (motion blur from robot rotation)
-- Detection dropout: P(miss) ≈ 5-15% per frame
-- Latency: 1-3 policy steps (20-60ms) modeled as measurement delay
 
-These are educated guesses. Phase 5 calibrates them from real data.
+**D435i-specific estimates (vs prior mono camera estimates):**
+- `σ_base` ≈ 1-2mm (D435i sub-pixel depth at 0.3-0.5m; was 3mm for mono)
+- `σ_dist` ≈ 2mm/m (D435i depth error ≈ 0.1% × d at close range; was 5mm/m for mono from apparent size)
+- `σ_omega` ≈ 2mm/(rad/s) (global shutter on D435i — less motion blur than rolling shutter, but IR dot pattern can smear; similar magnitude kept as placeholder)
+- Detection dropout: P(miss) ≈ 5-10% per frame (IR structured light can reflect off shiny ball surface; smaller problem than mono segmentation failures)
+- Latency: 1-3 policy steps (20-60ms) — D435i hardware latency ~6ms at 90Hz depth; USB3 adds ~1ms; total pipeline <10ms → model as 1 policy step (20ms) delay
+- **XY noise:** D435i gives XY from pixel back-projection (same as mono) plus depth z; at 0.5m range with 1280×720 depth, pixel ~0.5mm → σ_xy ≈ 1-2mm (better than mono at short range)
+
+**Key difference from monocular approach:** D435i gives z directly from IR stereo depth,
+not from apparent ball diameter. This eliminates the `σ_dist × d` squared growth of
+mono-from-size. D435i depth error is ~linear in d (not quadratic), so the noise model
+stays bounded up to 1m.
+
+These are educated guesses based on D435i datasheet. Phase 5 calibrates from real data.
 
 ### Step 2b: Perception-aware env config
 New env config replacing privileged ball obs with EKF output:
@@ -243,14 +258,27 @@ scripts/rsl_rl/
 No causal dependency on sim work. Do this while Phases 1-2 are in progress.
 
 ### Camera selection
-**Recommended: global shutter USB camera** (e.g., ELP OV9281, ~$30, 120fps, 1MP).
-- Monocular depth from known ball diameter (40mm) — simpler than stereo
-- Global shutter avoids motion blur on fast-moving ball
-- Lightweight, easy to mount
-- At 0-1m range, monocular depth via apparent size is accurate enough
+**Selected: Intel RealSense D435i** (updated 2026-04-07; was: ELP OV9281 global shutter mono).
 
-Alternative: Intel RealSense D435i (RGB-D) — but IR structured light struggles
-with small shiny balls at close range.
+**Rationale for switching to D435i:**
+- **Native depth stream** — no need to estimate z from apparent ball diameter (removes the
+  dominant monocular depth error source, σ_dist 5mm/m → ~2mm/m)
+- **IR stereo** — depth from two IR cameras + dot projector; depth at 0.3-1m is ~1-3mm
+  RMS (D435i datasheet, 30% gray target, ideal conditions)
+- **RGB + IMU** — RGB for HSV ball detection; IMU potentially useful for EKF synchronization
+- **Go1 integration** — D435i already tested on legged robot platforms (ETH ANYmal work,
+  HITTER paper); ROS2/SDK drivers well established for Jetson
+
+**Trade-offs accepted:**
+- Slower depth frame rate: 30-90Hz vs 120Hz for ELP (acceptable — EKF coasts on physics)
+- Heavier and larger: ~90g vs ~25g; requires sturdier bracket mount
+- IR can reflect off shiny/wet ball surface → occasional dropout (mitigated by EKF coast)
+- More expensive: ~$200 vs $30
+
+**Previously considered: ELP OV9281 global shutter USB, 120fps, 1MP (~$30)**
+- Would have used monocular depth via apparent size (0.040m / d_px × f)
+- Depth error at 1m: ±65mm from ±1px; not suitable for Stage E/F (0.6-0.8m apex)
+- Rejected: depth accuracy insufficient for high-apex stages
 
 ### Physical setup
 - 3D-print upward-facing camera bracket for Go1's back, near paddle mount
@@ -278,11 +306,18 @@ with small shiny balls at close range.
 ### Why this follows Phase 3
 You need a camera producing frames before you can write and test the detector.
 
-### Full detection pipeline: RGB frame → EKF input
+### Full detection pipeline: D435i → EKF input
 
-**Step 1: Find the ball in the image (HSV detection)**
+**D435i streams two aligned images each depth frame:**
+- **Depth frame** (30-90Hz): 16-bit per pixel, 1280×720 or 640×480, each pixel = distance in mm
+- **RGB frame** (30Hz): 1920×1080 color; aligned to depth via D435i factory calibration
+
+The pipeline uses the RGB frame for 2D ball localization (HSV detection), then looks
+up the depth at the ball centroid pixel in the synchronized depth frame.
+
+**Step 1: Find the ball in the RGB image (HSV detection)**
 ```
-1. Convert frame BGR → HSV
+1. Convert RGB → HSV
 2. Threshold: keep pixels where H is in ball color range,
    S > 60 (saturated), V > 100 (bright)
    → binary mask (white where ball is, black elsewhere)
@@ -291,28 +326,34 @@ You need a camera producing frames before you can write and test the detector.
 5. Take the largest contour (the ball)
 6. Fit minimum enclosing circle → gives:
    - (u, v): centroid in pixel coordinates
-   - d_px: diameter in pixels
+   - d_px: diameter in pixels (used only for size filtering, not for depth)
 ```
 
-**Step 2: Get depth (monocular, from known ball size)**
+**Step 2: Get depth (D435i depth frame — NOT from apparent ball size)**
 
-The ball is exactly 40mm diameter. The camera has known focal length f (pixels,
-from calibration). Apparent size tells us distance:
+The D435i depth frame is aligned to the RGB frame by the camera's SDK.
+Read depth at the centroid pixel:
 ```
-z = (real_diameter × f) / d_px
-  = (0.040 × f) / d_px
+z = depth_frame[v, u] / 1000.0    # D435i returns mm; convert to meters
 ```
 
-Accuracy: at 0.5m, ±1 pixel error in d_px → ±16mm depth error.
-At 1.0m, ±1 pixel → ±65mm. This distance-dependent degradation is why the noise
-model has a σ_dist × d term.
+If the centroid pixel has no valid depth (D435i returns 0 for invalid pixels), fall
+back to averaging the 5×5 patch around (u, v), or skip update entirely.
 
-**Step 3: Get X and Y (back-projection)**
+**Why not monocular from apparent size?** At 1.0m, ±1px in d_px → ±65mm depth error
+(see Phase 3 camera selection notes). D435i depth error at 1.0m is ~3mm. No contest.
+
+**Step 3: Get X and Y (back-projection with D435i depth intrinsics)**
 ```
-# Camera intrinsics from calibration: fx, fy, cx, cy
+# D435i depth camera intrinsics (from rs2.intrinsics or SDK):
+# fx, fy, cx, cy (depth stream, not RGB stream — they differ)
 x_cam = (u - cx) × z / fx
 y_cam = (v - cy) × z / fy
 ```
+
+Use the **depth camera intrinsics** here (not RGB), because z comes from the depth frame.
+The D435i SDK provides pre-aligned depth-to-color transform, so pixel (u,v) from RGB
+detection maps directly to the depth camera frame with the SDK's `deproject_pixel_to_point`.
 
 **Step 4: Transform to paddle frame**
 
@@ -323,39 +364,46 @@ p_paddle = R_cam_to_paddle × [x_cam, y_cam, z] + t_cam_to_paddle
 
 **Full pipeline per frame:**
 ```
-Camera frame (8ms readout at 120fps)
+D435i (30-90Hz, depth + RGB aligned)
     ↓
-BGR → HSV                                          (~0.3ms)
+RGB → HSV                                          (~0.3ms)
     ↓
 Threshold + morphology                             (~0.2ms)
     ↓
-Contours → largest → centroid (u,v) + d_px         (~0.2ms)
+Contours → largest → centroid (u,v)                (~0.2ms)
     ↓
-Depth:  z = 0.040 × f / d_px                      (~0 ms)
+Depth: z = depth_frame[v,u] / 1000.0              (~0.01ms)
     ↓
-3D:     x = (u-cx)×z/fx,  y = (v-cy)×z/fy         (~0 ms)
+3D:    x=(u-cx)×z/fx, y=(v-cy)×z/fy               (~0 ms)
     ↓
 Transform: p_paddle = R × p_cam + t                (~0 ms)
     ↓
 Feed [x, y, z] to EKF update step                  (~0.02ms)
 ```
 
-**Total compute: <1ms.** Bottleneck is camera readout (8ms at 120fps), not processing.
-No neural network. No learned parameters. Just geometry and one division.
+**Total compute: <1ms.** Bottleneck is D435i frame readout (~11ms at 90Hz depth),
+not processing. No neural network. No learned parameters.
 
-**When ball not detected:** No contour found → EKF skips update, predict-only coasts.
-**Multiple orange blobs:** Take largest. Add size filter: reject <10px or >60px diameter.
+**When ball not detected:** Contour not found, or depth pixel invalid → EKF skips update,
+predict-only coasts for ~11-33ms (one depth frame interval at 90Hz or 30Hz).
+**Multiple orange blobs:** Take largest within size filter: reject blobs < d_px=8px
+or > d_px=80px (avoids background orange objects).
+**IR reflection off shiny ball:** Depth may be invalid at specular angles. The size filter
+on d_px handles this — if depth is 0, skip update. EKF coast handles brief dropouts.
 
 ### Calibration (once, before deployment)
 
-1. **Camera intrinsics** [fx, fy, cx, cy]: OpenCV checkerboard, 20 photos, 5 minutes.
+1. **D435i intrinsics** — provided by SDK (`rs2.intrinsics`). Use these directly;
+   OpenCV calibration optional as cross-check.
 2. **HSV thresholds** [H_lo, H_hi, S_min, V_min]: Point camera at ball under
    deployment lighting, adjust until clean segmentation.
 3. **Camera-to-paddle transform** [R, t]: Place ball at known position on paddle,
-   read camera detection, solve for rigid transform. Or measure with ruler.
+   read camera detection, solve for rigid transform. Or measure with ruler + inclinometer.
+4. **D435i depth-to-color alignment**: handled by SDK (`align_to = rs2.stream.color`).
+   Verify alignment is correct on a known flat surface.
 
 ### Latency budget
-HSV + contour: ~1ms on Jetson. Dominated by camera readout (~8ms at 120fps).
+HSV + contour + depth lookup: ~1ms on Jetson. D435i hardware latency ~6ms + USB3 ~1ms.
 Total: <10ms shutter-to-position.
 
 ### Key files to create
@@ -422,12 +470,14 @@ If deployment fails, the phased validation lets you isolate which component brok
 
 ### Deployment stack
 ```
-Camera (120Hz) → HSV detect → monocular depth → EKF (identical to training)
+D435i (30-90Hz depth + RGB) → HSV detect → depth lookup → EKF (identical to training)
 → [pos_est, vel_est] → pi1 (50Hz) → 8D torso cmd → pi2 (50Hz) → 12D joints
 → Go1 low-level controller (500Hz)
 ```
 
-All on Go1's Jetson. Pi1 + pi2 exported as TorchScript or ONNX.
+D435i connects via USB3 to Go1's Jetson. Pi1 + pi2 exported as TorchScript or ONNX.
+EKF runs as a Python/C++ thread at 200Hz (predict every 5ms; update only when new
+D435i depth frame arrives).
 
 ### Validation sequence (incremental)
 1. **Static robot + ball drop:** verify EKF tracks real ball correctly
