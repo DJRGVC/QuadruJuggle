@@ -62,7 +62,8 @@ def main():
         if args.headless:
             cmd.append("--headless")
 
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        env_vars = {**os.environ, "PYTHONUNBUFFERED": "1"}
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300, env=env_vars)
         stdout = proc.stdout
         stderr = proc.stderr
 

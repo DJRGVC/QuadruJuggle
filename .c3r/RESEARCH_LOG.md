@@ -194,3 +194,17 @@ Change:     (1) Updated BallEKFConfig.q_vel from 0.15 to 0.30 (comment updated w
 Command:    AST parse both files (OK). GPU locked by policy agent (PID 223622, 12288 envs × 1500 iters, ~10 min elapsed). NIS sweep deferred.
 Result:     Code changes ready; validation blocked on GPU. Lit-review iter_009 confirms diagnosis: D'Ambrosio 2024 (DeepMind TT) found latency > noise in sensitivity; CWNA prescribes q_vel ≈ 0.40; our 0.30 is conservative midpoint. Also flagged "train without EKF, deploy with EKF" as architecture option if EKF still trails raw noise after tuning.
 Decision:   Next iter: run NIS sweep (256 envs × 300 steps × 5 q_vel values, ~10 min GPU total). Pick q_vel with mean NIS closest to 3.0. Then re-run 3-mode comparison to see if reward gap closes.
+
+---
+
+## iter_021 — NIS diagnostic reveals EKF is 30× worse than raw noise  (2026-04-08T22:05:00Z)
+Hypothesis: Running NIS diagnostic with updated q_vel=0.30 (256 envs × 100 steps, random actions) will show NIS in the [0.35, 7.81] consistency band, validating the CWNA-derived tuning.
+Change:     (1) Fixed stdout buffering in nis_diagnostic.py (all print→_print with flush=True). (2) Fixed diagnostics initialization: pipeline was created during gym.make() BEFORE _perception_diagnostics_enabled flag was set; fix: set flag then set pipeline=None to force recreation. (3) Removed debug prints from ball_obs_spec.py.
+Command:    `PYTHONUNBUFFERED=1 uv run --active python scripts/perception/nis_diagnostic.py --pi2-checkpoint .../2026-03-12_17-16-01/model_best.pt --num_envs 256 --steps 100 --log_interval 10 --headless`
+Result:     **NIS = 966** (target 3.0) — 320× above ideal. EKF RMSE = 130mm vs raw noise RMSE = 4.4mm — EKF is **30× worse**. NIS grows from 12 at step 10 to ~1200 at step 40 and plateaus there. Detection rate = 98% (healthy). Root cause: EKF uses ballistic dynamics (gravity+drag) in body frame, but with random/untrained actions, the robot's own acceleration creates massive unmodeled pseudo-forces in the body frame. The EKF's prediction is catastrophically wrong → covariance collapses → innovations explode.
+  | Step | NIS    | EKF mm | Raw mm | Improvement |
+  |------|--------|--------|--------|-------------|
+  |   10 |   12.1 |  23.1  |  19.7  |    -17.6%   |
+  |   50 | 1262.0 | 136.1  |   4.3  |  -3051.9%   |
+  |  100 | 1155.2 | 129.9  |   4.4  |  -2852.4%   |
+Decision:   **EKF is conclusively harmful during training.** Adopt "train without EKF, deploy with EKF" pattern per lit-review recommendation. Next iter: (1) Update PERCEPTION_HANDOFF.md to recommend raw d435i noise for training, EKF for hardware deployment only. (2) Add body-frame acceleration compensation to EKF for deployment use (pass robot body_lin_acc to predict). (3) NIS sweep is moot — the body-frame dynamics mismatch is the bottleneck, not Q/R tuning.

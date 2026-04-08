@@ -19,6 +19,12 @@ import os
 import sys
 
 
+def _print(*args, **kwargs):
+    """Unbuffered print for subprocess visibility."""
+    kwargs.setdefault("flush", True)
+    print(*args, **kwargs)
+
+
 def main():
     parser = argparse.ArgumentParser(description="EKF NIS diagnostic")
     parser.add_argument("--num_envs", type=int, default=2048)
@@ -87,8 +93,8 @@ def main():
     if args.r_z is not None:
         ekf_cfg.r_z = args.r_z
 
-    print(f"\nEKF config: q_pos={ekf_cfg.q_pos}, q_vel={ekf_cfg.q_vel}, "
-          f"r_xy={ekf_cfg.r_xy}, r_z={ekf_cfg.r_z}, r_z_per_m={ekf_cfg.r_z_per_metre}")
+    _print(f"\nEKF config: q_pos={ekf_cfg.q_pos}, q_vel={ekf_cfg.q_vel}, "
+           f"r_xy={ekf_cfg.r_xy}, r_z={ekf_cfg.r_z}, r_z_per_m={ekf_cfg.r_z_per_metre}")
 
     # Build env config
     noise_cfg = BallObsNoiseCfg(mode="ekf", ekf_cfg=ekf_cfg)
@@ -131,18 +137,20 @@ def main():
     )
 
     env = gym.make("Isaac-BallJuggleHier-Go1-v0", cfg=env_cfg)
-    # Enable diagnostics on the base env BEFORE first step creates the pipeline
+    # Pipeline is created during gym.make() — delete and recreate with diagnostics
     base_env = env.unwrapped
     base_env._perception_diagnostics_enabled = True
+    if hasattr(base_env, "_perception_pipeline"):
+        base_env._perception_pipeline = None  # force recreation with diag enabled
 
     obs, _ = env.reset()
     action_dim = env.action_space.shape[-1]
 
-    print(f"\nRunning NIS diagnostic: {args.num_envs} envs × {args.steps} steps")
-    print(f"{'='*70}")
-    print(f"  {'Step':>6s}  {'NIS':>8s}  {'Band':>12s}  "
-          f"{'EKF mm':>8s}  {'Raw mm':>8s}  {'Impr%':>7s}  {'Det%':>6s}")
-    print(f"  {'-'*6}  {'-'*8}  {'-'*12}  {'-'*8}  {'-'*8}  {'-'*7}  {'-'*6}")
+    _print(f"\nRunning NIS diagnostic: {args.num_envs} envs × {args.steps} steps")
+    _print(f"{'='*70}")
+    _print(f"  {'Step':>6s}  {'NIS':>8s}  {'Band':>12s}  "
+           f"{'EKF mm':>8s}  {'Raw mm':>8s}  {'Impr%':>7s}  {'Det%':>6s}")
+    _print(f"  {'-'*6}  {'-'*8}  {'-'*12}  {'-'*8}  {'-'*8}  {'-'*7}  {'-'*6}")
 
     all_nis = []
 
@@ -154,12 +162,12 @@ def main():
         if step % args.log_interval == 0:
             pipeline = getattr(base_env, "_perception_pipeline", None)
             if pipeline is None:
-                print(f"  {step:6d}  PIPELINE NOT FOUND — check env wrapper chain")
+                _print(f"  {step:6d}  PIPELINE NOT FOUND — check env wrapper chain")
                 continue
 
             diag = pipeline.diagnostics
             if diag is None:
-                print(f"  {step:6d}  DIAGNOSTICS DISABLED — enable_diag not set?")
+                _print(f"  {step:6d}  DIAGNOSTICS DISABLED — enable_diag not set?")
                 continue
 
             nis = diag.get("mean_nis", 0.0)
@@ -173,32 +181,32 @@ def main():
             else:
                 band = "⚠ HIGH (overconfident)"
 
-            print(f"  {step:6d}  {nis:8.3f}  {band:>12s}  "
-                  f"{diag.get('pos_rmse_ekf_mm', 0):8.2f}  "
-                  f"{diag.get('pos_rmse_raw_mm', 0):8.2f}  "
-                  f"{diag.get('ekf_improvement_pct', 0):7.1f}  "
-                  f"{diag.get('detection_rate', 0)*100:6.1f}")
+            _print(f"  {step:6d}  {nis:8.3f}  {band:>12s}  "
+                   f"{diag.get('pos_rmse_ekf_mm', 0):8.2f}  "
+                   f"{diag.get('pos_rmse_raw_mm', 0):8.2f}  "
+                   f"{diag.get('ekf_improvement_pct', 0):7.1f}  "
+                   f"{diag.get('detection_rate', 0)*100:6.1f}")
 
-    print(f"{'='*70}")
+    _print(f"{'='*70}")
     if all_nis:
         mean_nis = sum(all_nis) / len(all_nis)
         in_band = sum(1 for n in all_nis if 0.35 <= n <= 7.81)
-        print(f"\nSummary:")
-        print(f"  Overall mean NIS: {mean_nis:.3f}  (target ≈ 3.0)")
-        print(f"  In 95% band [0.35, 7.81]: {in_band}/{len(all_nis)} intervals")
+        _print(f"\nSummary:")
+        _print(f"  Overall mean NIS: {mean_nis:.3f}  (target ≈ 3.0)")
+        _print(f"  In 95% band [0.35, 7.81]: {in_band}/{len(all_nis)} intervals")
 
         if mean_nis < 0.35:
-            print(f"  → DIAGNOSIS: Q/R too large. Try reducing q_vel (currently {ekf_cfg.q_vel})")
+            _print(f"  → DIAGNOSIS: Q/R too large. Try reducing q_vel (currently {ekf_cfg.q_vel})")
         elif mean_nis > 7.81:
-            print(f"  → DIAGNOSIS: Q/R too small. Try increasing q_vel or r_xy/r_z")
+            _print(f"  → DIAGNOSIS: Q/R too small. Try increasing q_vel or r_xy/r_z")
         elif mean_nis < 2.0:
-            print(f"  → DIAGNOSIS: Slightly over-conservative but OK. Consider reducing q_vel slightly.")
+            _print(f"  → DIAGNOSIS: Slightly over-conservative but OK. Consider reducing q_vel slightly.")
         elif mean_nis > 5.0:
-            print(f"  → DIAGNOSIS: Slightly overconfident but OK. Consider increasing q_vel slightly.")
+            _print(f"  → DIAGNOSIS: Slightly overconfident but OK. Consider increasing q_vel slightly.")
         else:
-            print(f"  → DIAGNOSIS: Well-tuned! NIS close to χ²(3) mean = 3.0")
+            _print(f"  → DIAGNOSIS: Well-tuned! NIS close to χ²(3) mean = 3.0")
     else:
-        print("\n  No NIS data collected!")
+        _print("\n  No NIS data collected!")
 
     env.close()
     simulation_app.close()
