@@ -208,3 +208,57 @@ Decision:   Next iter_014: keep ball_low=-1.0 (safe fallback) + add ball_release
             (positive reward for upward ball velocity at paddle separation). This rewards the ACT
             of throwing without penalizing temporary failure. Lit-review recommends weight=+3.0.
             Warm-start from Run 2 model_best.pt (best peak model, apex=14).
+
+## iter_014 — ball_release_velocity_reward (+3.0) d435i 1500-iter  (2026-04-08T07:44Z)
+Hypothesis: Positive reward for upward ball velocity at paddle separation (+3.0) will sustain
+            juggling behavior that ball_low_penalty alone couldn't maintain (iter_011 collapse).
+Change:     Added ball_release_velocity_reward() to rewards.py: returns vz/max_vel (clamped [0,1])
+            when ball is airborne AND moving upward. Weight=+3.0, max_vel=3.0m/s.
+            Warm-started from iter_013b model_best.pt (apex=14 peak model).
+Command:    gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+              --task Isaac-BallJuggleHier-Go1-v0 \
+              --pi2-checkpoint .../2026-03-12_09-04-32/model_best.pt \
+              --num_envs 12288 --max_iterations 1500 --headless --noise-mode d435i --wandb \
+              --resume --load_run 2026-04-08_07-13-21 --checkpoint model_2750.pt
+            Checkpoint dir: logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_07-44-03/
+Result:     **SUSTAINED JUGGLING — NO COLLAPSE.** 1500 iters completed (step 2750→4249).
+            
+            Trajectory:
+              step  2750: apex= 0.14  timeout= 1.6%  reward=   3  release_vel=0.002  noise=0.98
+              step  2810: apex=15.36  timeout=98.4%  reward= 404  release_vel=0.21   noise=0.92  ← PEAK
+              step  2950: apex=14.65  timeout=95.3%  reward= 429  release_vel=0.54   noise=0.74
+              step  3250: apex= 7.99  timeout=49.2%  reward= 213  release_vel=0.44   noise=1.05  ← trough
+              step  3500: apex= 7.65  timeout=52.8%  reward= 219  release_vel=0.44   noise=1.13
+              step  3750: apex= 9.18  timeout=60.0%  reward= 243  release_vel=0.53   noise=1.15
+              step  4000: apex= 9.84  timeout=61.6%  reward= 272  release_vel=0.57   noise=1.14
+              step  4249: apex= 9.73  timeout=63.2%  reward= 259  release_vel=0.55   noise=1.17  ← FINAL
+            
+            Final metrics (last 50 avg):
+              apex_rew=9.70, release_vel=0.56, alive=0.66, ball_low=-0.04
+              timeout=63.5%, ball_below=33.7%, ball_off=2.9%
+              mean_reward=264, mean_ep_len=980, noise_std=1.16
+            
+            KEY FINDINGS:
+            (1) ball_release_velocity_reward PREVENTS collapse to passive balance.
+                iter_011 (ball_low only): apex peaked 13.7 → collapsed to 0.18 (1000 iters).
+                iter_014 (ball_low + release_vel): apex peaked 15.4 → settled to 9.7 (STABLE, 1500 iters).
+                The positive reward for throwing gives a gradient signal that survives even when
+                ball drops increase — unlike the purely negative ball_low penalty.
+            (2) Policy found a stable juggling equilibrium: throw at moderate height, catch ~63% 
+                of the time, lose the ball ~34% (ball_below termination). NOT passive balance.
+            (3) Noise_std=1.17 — growing slowly but stable. Below 1.64 danger threshold.
+            (4) Curriculum likely stayed at Stage A (timeout 63% < 75% threshold for advancement).
+                Active juggling naturally has lower timeout% than passive balance.
+            
+            Checkpoints:
+            - model_best.pt: logs/.../2026-04-08_07-44-03/model_best.pt (likely from peak ~step 2810)
+            - model_4249.pt: logs/.../2026-04-08_07-44-03/model_4249.pt (final, stable juggling)
+Decision:   Major breakthrough — juggling is sustained. Next priorities:
+            (1) Curriculum advancement: timeout-based threshold (75%) is wrong for juggling. Need to
+                switch primary criterion to apex_reward (lit-review iter_026 recommended this). A
+                juggling policy with 63% timeout but apex=9.7 is FAR better than a passive policy
+                with 98% timeout but apex=0.18. Lower _BJ_THRESHOLD to 0.50 or use apex only.
+            (2) Noise_std monitoring: at 1.17, not yet critical but trending up. If next run shows
+                continued growth past 1.3, reduce entropy_coef.
+            (3) Oracle vs d435i comparison: now that juggling works, re-run oracle comparison to
+                measure noise impact on ACTIVE juggling (not passive balance).

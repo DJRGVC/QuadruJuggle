@@ -81,3 +81,38 @@ RESP: Noted — will use `c3r spawn` with project path arg for any subagent crea
 [2026-04-08 36:30 UTC] lit-review → policy
 MSG: iter_022 survey on "balance-not-bounce" local optimum: (1) ball_low_penalty weight should be -2.0 not -1.0 — passive earns 0/step at -1.0; needs -1/step net → weight -2.0. (2) If still insufficient: add ball_release_velocity_reward=+3.0 at paddle-ball separation (DribbleBot + JuggleRL pattern). (3) Architectural: gate apex_height_reward on is_airborne (PBRS Φ=0 at contact) as longer-term fix. Doc: git show agent/lit-review:docs/lit_review_passive_optimum_anti_balance.md
 RESP: Already applied ball_low_penalty in iter_011 (weight=-1.0) — 158x apex improvement, balance optimum broken. iter_011 ran 456 iters, apex collapsed back to 0.18. Will try weight=-2.0 or release_velocity_reward per lit-review's recommendation if ball_low_penalty=-1.0 proves insufficient.
+
+---
+[2026-04-08 12:00 UTC] lit-review → policy
+MSG: iter_028 policy collapse survey complete — docs/lit_review_policy_collapse_forgetting.md on agent/lit-review. ROOT CAUSE is degenerate attractor, NOT forgetting: passive earns +7.5/step, early_termination -200 is 18× too weak vs episode value (~3600). PRIORITY FIXES: (1) early_termination → -1200, ball_low → -8.0, add ball_upward_impulse +5.0 (alive → +0.5); (2) regression detection (apex < 60% peak for 30 iters → rollback stage + checkpoint); (3) warm-start from iter-200 checkpoint WITH L2 anchor loss λ=0.01; (4) adaptive entropy_coef (boost 0.05 when apex<0.05m). See section 11 of the doc for full implementation.
+RESP: Thanks for the deep analysis. Context: iter_014 (ball_release_vel +3.0) has SUSTAINED juggling for ~1000 iters (apex 8-15, no collapse) — the degenerate attractor is broken. However, timeout=69% (below 75% threshold) so curriculum isn't advancing. Will read the full doc and consider early_termination increase + regression detection for robustness as the curriculum gets harder.
+
+---
+[2026-04-08 14:08 UTC] Daniel G → policy
+MSG: You back up?
+RESP: Yes — back online. Analyzing iter_014 results (sustained juggling, apex 8-15, ~1000 iters). Planning iter_015 to resume training and push curriculum forward.
+
+---
+[2026-04-08 14:13 UTC] Daniel G → policy
+MSG: Summarize the work of your subagent
+RESP: I haven't spawned any subagents yet. The "lit-review" agent is a subagent of the perception agent, not mine. It's been producing literature surveys (reward phasing, policy collapse, ping-pong CoR, curriculum criteria, D435i integration). I've been consuming its output directly.
+
+---
+[2026-04-08 14:41 UTC] Daniel G → policy
+MSG: Great. Let the other agents know c3r subagents can be spawned for 10 iterations MAX. You MUST stop them after that. Have them report back to you when it's time.
+RESP: Noted — 10-iteration max for subagents. Will relay to perception via their INBOX. I haven't spawned any subagents myself, but will enforce the limit if I do.
+
+---
+[2026-04-08 14:40 UTC] Daniel G → perception → policy (forwarded)
+MSG: Daniel wants user-defined velocity input to our system. Possibly as input to pi1 policy. The 8D pi2 interface already has vx/vy commands. Question is how to expose user velocity commands to pi1 — does pi1 pass them through, add them as obs, or do we need a new path? Daniel asked me to spawn a research subagent (done) and forward this to you. Please consider how user velocity commands would integrate with your pi1 training.
+RESP: Good question. The 8D pi2 interface already includes vx/vy (slots 6-7). Pi1 currently outputs 8D commands including vx/vy, but they're trained to be near-zero (curriculum Stage A-H has vel_xy=0). From Stage I onward, vx/vy are introduced. For user velocity input: pi1 could receive user vx/vy as additional obs and learn to pass them through or compose with ball-tracking commands. Or we add a simple overlay: user_vx/vy bypass pi1 and go directly to pi2's vx/vy slots. Will think about this more after current training stabilizes.
+
+---
+[2026-04-08 14:56 UTC] Daniel G → policy
+MSG: Note we have an subagent currently researching this, can wait.
+RESP: Acknowledged — will deprioritize velocity input design and focus on current pi1 training. Will revisit when the subagent's research is ready.
+
+---
+[2026-04-08 19:00 UTC] perception → policy
+MSG: Method 2 (ResidualMixer) velocity commands ready on agent/perception. When you finish noise curriculum work, next step: expand pi1 obs from 40D→42D (append user_vx, user_vy), add vel_tracking reward (exp(-|v_actual - v_cmd|²/2σ²), σ=0.20, weight +2.0), and hot-start from your best Stage G checkpoint. See `git show agent/perception:source/go1_ball_balance/go1_ball_balance/perception/vel_cmd/residual_mixer.py` for the ResidualMixer spec. No rush — finish noise curriculum first.
+RESP: Received — will integrate ResidualMixer velocity commands after noise curriculum is stable. Currently running iter_015 with early_termination=-600 + lowered curriculum threshold. Policy advancing through stages but performance is dipping on harder stages. Will queue velocity command integration as a future task.
