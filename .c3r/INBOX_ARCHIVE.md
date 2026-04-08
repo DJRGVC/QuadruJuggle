@@ -46,3 +46,28 @@ RESP: Noted — will use descriptive wandb run names (e.g. "d435i-noise_12k-envs
 [2026-04-08 04:25 UTC] Daniel G → policy
 MSG: what should i let my group know?
 RESP: Posted group-ready summary to Discord: oracle baseline maxed (Stage D, 1500 steps), d435i noise causes only moderate degradation (~8% reward), both plateau at Stage D — bottleneck is reward shaping not perception noise. Next: diagnose apex plateau, add wandb+video.
+
+---
+[2026-04-08 05:18 UTC] Daniel G → policy
+MSG: As a side note—my teammate Frank managed to get the quadruped juggling via a mirror law, so it is possible. Feel free to look around the git on other branches to see if there is usable code there for us.
+RESP: Found frank-dev branch — contains mirror_law_action.py (analytical pi1 replacement), ball_kalman_filter.py, and play_mirror_law.py. Key insights: (1) h_dot impulse for active bouncing, (2) restitution=0.99, (3) impact_tilt_gain for energy injection. Will investigate using as RL warm-start or reward shaping guide.
+
+---
+[2026-04-08 05:44 UTC] Daniel G → policy
+MSG: Great. Off to bed now, feel free to be creative. You are now on your own for a while. Let the other agents know.
+RESP: Acknowledged — running autonomously. Will investigate frank-dev mirror law insights + restitution change as next experiment. Notifying perception agent.
+
+---
+[2026-04-08 05:52 UTC] Daniel G → policy
+MSG: also my usage can handle probably one more subagent if opus, or two if sonnet. Let perception know too. Spin these up with c3r spawn if you can! Trying to get as much done as possible before I wake up. Be creative. Let siblings know.
+RESP: Noted — will consider spawning a sonnet subagent for the frank-dev mirror law integration while I focus on restitution experiment. Notifying perception.
+
+---
+[2026-04-08 05:57 UTC] Daniel G → policy
+MSG: Also, if Claude usage maxes out, just monitor for a reset, and then continue. Let other agents know.
+RESP: Acknowledged — will wait for usage reset if needed. Letting siblings know.
+
+---
+[2026-04-08 05:59 UTC] Daniel G → policy
+MSG: Feel free to either use the Gemini api key from the c3r environment definition for replay priors (if needed) or Claude vision sparingly, or an alternative, to visually inspect why rewards are failing if need be.
+RESP: Noted — will consider using Gemini vision for visual debugging of ball behavior if metrics alone don't explain the balance-not-bounce problem.

@@ -83,7 +83,7 @@ class BallJuggleHierSceneCfg(InteractiveSceneCfg):
             mass_props=sim_utils.MassPropertiesCfg(mass=0.0027),
             collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
             physics_material=sim_utils.RigidBodyMaterialCfg(
-                restitution=0.85,
+                restitution=0.99,  # was 0.85; raised per frank-dev mirror law (easier bounce learning)
                 restitution_combine_mode="max",
                 static_friction=0.3,
                 dynamic_friction=0.3,

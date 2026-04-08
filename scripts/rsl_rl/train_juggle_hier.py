@@ -348,7 +348,7 @@ def _bj_install_curriculum(runner, start_stage: int = 0) -> None:
             old_label = _STAGE_LETTERS[state["old_stage"]] if state["old_stage"] < len(_STAGE_LETTERS) else str(state["old_stage"])
             blend_tag = f" [blend {old_label}→{label_display} {state['trans_iter']}/{_BJ_TRANSITION}]"
         else:
-            cur_tmin, cur_tmax, _, cur_xy, cur_vel = _BJ_STAGES[s]
+            cur_tmin, cur_tmax, _, cur_xy, cur_vel, _ns = _BJ_STAGES[s]
             blend_tag = ""
 
         to_str   = f"{time_out_frac:.0%}" if time_out_frac is not None else "n/a"
