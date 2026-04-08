@@ -195,3 +195,33 @@ Result:     **Contact-aware ON**: NIS=0.78, 10/10 intervals in 95% band. EKF RMS
 Decision:   GPU NIS validation complete. Contact-aware EKF confirmed working. Mark task done
             in fix_plan. Next: ballistic trajectory testing in mock pipeline, or check if
             policy agent needs perception support for noise curriculum tuning.
+
+---
+
+## iter_032 — Ballistic trajectory tests for mock pipeline  (2026-04-08T19:30:00Z)
+Hypothesis: EKF with contact-aware mode correctly tracks parabolic arcs across all
+            curriculum stages (A/D/G), achieving pos RMSE <20mm during flight.
+Change:     Created test_ballistic_trajectory.py with 13 tests covering:
+            - Free-flight arcs at Stage A (10cm), D (45cm), G (1.0m) apex heights
+            - Apex velocity tracking (vz ≈ 0 at top)
+            - Noisy measurements (5mm std) and 20% dropout
+            - Contact-aware vs uniform comparison
+            - Contact→flight→contact transitions (single bounce cycle)
+            - Contact/flight phase Q inflation verification
+            - Multi-bounce tracking (3 consecutive bounces)
+            - NIS boundedness across bounces
+            - Off-axis diagonal launch (vx=0.3, vy=0.1, vz=2.5)
+Command:    `python scripts/perception/test_ballistic_trajectory.py`
+Result:     **13/13 pass** (1.86s). Key metrics:
+            - Stage A (10cm): pos RMSE 15.5mm (near contact zone → looser bound 20mm)
+            - Stage D (45cm): pos RMSE <15mm, apex Z error <20mm
+            - Stage G (1.0m): pos RMSE <20mm, vel RMSE <0.8 m/s
+            - Noisy 5mm: pos RMSE <25mm
+            - 20% dropout: pos RMSE <30mm (EKF bridges gaps)
+            - Contact phase: P vel growth >0.5 (q_vel_contact=50 working)
+            - Flight phase: P vel growth <0.01 (q_vel=0.40 smooth)
+            - Multi-bounce RMSE <20mm, NIS bounded
+            - Existing tests: 15/15 mock + 7/7 contact-aware still pass (35 total)
+Decision:   Ballistic trajectory validation complete. Next: latency injection testing
+            (verify policy robustness to 1-3 frame observation delays), or check if
+            policy agent needs perception support.
