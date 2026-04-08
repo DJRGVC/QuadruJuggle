@@ -1,0 +1,150 @@
+---
+title: "perception"
+description: "implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline following ETH-style architecture, producing noisy ball observations usable by pi1 in Isaac Lab sim."
+date: today
+author: "perception (c3r agent)"
+---
+
+::: {.callout-tip appearance="simple"}
+**Role**: generic  ·  **Model**: `claude-opus-4-6`  ·  **Branch**: `agent/perception`
+
+implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline following ETH-style architecture, producing noisy ball observations usable by pi1 in Isaac Lab sim.
+:::
+
+## Current focus
+
+This page is maintained by the **perception** agent. Entries are in
+reverse chronological order (newest first).
+
+---
+
+## Iteration 66 — Quarto report + sweep status {.unnumbered}
+*2026-04-08*
+
+Caught up on all reportable work from iters 1-65. GPU q_vel sweep is queued
+behind policy agent training; results expected next iteration.
+
+**Next**: parse sweep results, find optimal flight q_vel for NIS ~3.0.
+
+---
+
+## Iterations 60-65 — EKF sweep diagnostics debugging {.unnumbered}
+*2026-04-08*
+
+Three iterations spent fixing a diagnostics bug in `sweep_q_vel.py`: the
+perception pipeline was created during `env.reset()` *before* the
+`_perception_diagnostics_enabled` flag was set, so NIS/RMSE accumulators
+were never initialized. All sweep JSON outputs showed zeros.
+
+**Fix**: force pipeline recreation (`base_env._perception_pipeline = None`)
+after enabling diagnostics. Also fixed `EKF.reset()` crash under
+`torch.inference_mode()` by wrapping the reset body in an inference context.
+
+**Result**: 242 CPU tests pass. Sweep queued behind GPU lock with the fix applied.
+
+**Decision**: parse real sweep results next iteration when GPU frees.
+
+Commits: `9274c85`, `1e70eb8`, `02ecb22`
+
+---
+
+## Iterations 49-55 — GPU NIS validation: EKF overconfident under active policy {.unnumbered}
+*2026-04-07 to 2026-04-08*
+
+The EKF was well-calibrated under random actions (flight NIS=1.45) but
+**severely overconfident under a trained juggling policy** (flight NIS=52.9,
+overall NIS=19.9). The root cause: violent paddle strikes produce near-instant
+velocity reversals that the ballistic prediction model cannot anticipate.
+With `q_vel=0.4`, the filter trusts its prediction too much and lags behind
+the true ball state.
+
+**Key finding**: random-action EKF tuning does NOT transfer to active-policy
+dynamics. Contact-mode `q_vel_contact=50.0` is close to correct (NIS=5.3), but
+flight-mode needs retuning. Built `eval_perception_live.py` for accurate
+under-policy evaluation and `sweep_q_vel.py` with bisection for systematic
+q_vel search.
+
+**Result**: EKF RMSE=22mm > raw noise RMSE=19mm — the filter is actively
+*hurting* position accuracy under the current flight q_vel.
+
+**Decision**: sweep flight q_vel to find NIS ~3.0, then re-evaluate RMSE.
+
+---
+
+## Iterations 36-48 — Extensions: IMU, spin, NIS gating, hardware pipeline {.unnumbered}
+*2026-04-05 to 2026-04-07*
+
+Extended the EKF with three optional modes:
+
+1. **IMU-aided**: Coriolis corrections using robot body angular velocity
+2. **9D spin estimation**: Magnus force model for spinning ball trajectories
+3. **Chi-squared NIS gating**: reject outlier measurements (threshold=11.345
+   for 3-DOF, 50-step warmup)
+
+Built the real hardware pipeline stubs: `RealPerceptionPipeline` with threaded
+camera+detector, `MockCamera`/`MockDetector` for integration tests, and a Hough
+circle fallback detector achieving <10mm accuracy at 0.3-1.0m.
+
+**Result**: 239 CPU tests pass. IMU/spin modes functionally identical to base
+in sim (expected — no wind/spin in Isaac Lab).
+
+---
+
+## Iterations 29-35 — Contact-aware EKF: 860x NIS improvement {.unnumbered}
+*2026-04-04 to 2026-04-05*
+
+::: {.callout-important}
+**Breakthrough**: contact-aware process noise reduced NIS from 966 to 0.78
+under random actions.
+:::
+
+The original EKF used constant `q_vel=0.30` for all time steps. During paddle
+contact, unmodeled normal forces made the ballistic prediction wildly wrong,
+inflating NIS to ~1000. The fix: detect paddle contact via force sensor and
+inflate `q_vel` to 50.0 during contact.
+
+Calibrated measurement noise to the Ahn 2019 D435i model:
+`sigma_xy = 0.0025 * z`, `sigma_z = 1mm + 0.005 * z^2`, dropout 20-50%.
+
+**Result**: NIS=1.60 with contact-aware Q (random actions). All 224 tests pass.
+
+---
+
+## Iterations 12-28 — EKF tuning + diagnostics {.unnumbered}
+*2026-04-02 to 2026-04-04*
+
+Added NIS (Normalized Innovation Squared) and RMSE diagnostics to the pipeline.
+Fixed a critical velocity-view mutation bug. Compared three observation modes:
+
+| Mode | Mean Reward |
+|------|------------|
+| Oracle (GT) | 13.7 |
+| Raw d435i noise | 10.5 |
+| EKF-filtered | 7.6 |
+
+EKF was 28% below raw noise — surprising result suggesting the noise acts as
+beneficial regularization for training.
+
+---
+
+## Iterations 1-11 — Full sim pipeline: camera + noise + EKF + handoff {.unnumbered}
+*2026-03-27 to 2026-04-01*
+
+Built the complete ETH-style perception pipeline from scratch:
+
+- **`ball_obs_spec.py`**: 3 observation modes (oracle, d435i, ekf)
+- **`noise_model.py`**: depth-dependent Gaussian noise, hold-last-value
+  dropout, configurable latency buffer
+- **`ball_ekf.py`**: batched 6-state EKF (pos+vel), ballistic + quadratic
+  drag dynamics, Joseph-form covariance update
+- **`PerceptionPipeline`**: orchestrates noise injection + EKF filtering
+- **`PERCEPTION_HANDOFF.md`**: spec for policy agent integration
+
+Mounted simulated D435i TiledCamera in the PLAY scene for debug visualization.
+Training uses noise injection on GT state (no camera sensor needed), following
+ETH methodology.
+
+**Result**: pipeline integration-tested, handed off to policy agent for
+noise-mode training.
+
+<!-- New entries go above this line -->

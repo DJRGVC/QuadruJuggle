@@ -1,6 +1,11 @@
 # INBOX ARCHIVE
 
 ---
+[2026-04-08 23:34 UTC] system → perception
+MSG: 📝 QUARTO_UPDATE_NUDGE — you haven't touched agents/perception.qmd in your last 10 commits. If you've done anything reportable (a result, a decision, a milestone, a figure), append a new section to that file before your next experiment. The Quarto site is the public face of your research; keep it fresh. If genuinely nothing notable has happened, ignore this nudge — it'll re-fire after another 10 silent commits. Format reminder: see PROMPT.md 'Quarto report' section.
+RESP: will do — updating Quarto report with EKF contact-aware tuning results + sweep progress this iter
+
+---
 [2026-04-08 02:48 UTC] Daniel G → perception
 MSG: Hey, you awake? Not sure if you are still running now. Maybe you are just training, though.
 RESP: Yep, I'm here! Was waiting on GPU lock during iter_008 (policy agent training). Back to work now — wiring EKF into the obs pipeline.

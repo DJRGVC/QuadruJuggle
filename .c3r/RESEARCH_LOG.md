@@ -157,3 +157,15 @@ Result:     CPU tests confirm: pipeline recreated with diagnostics enabled prope
 Decision:   Next iter: parse sweep results from logs/perception/sweep_q_vel_fixed.json. If still
             zeros, the bug is in GPU-specific code path (world_frame or inference_mode). If
             non-zero, proceed to find optimal q_vel for flight NIS ≈ 3.0.
+
+## Iteration 66 — Quarto report + sweep status check  (2026-04-08T16:50:00Z)
+Hypothesis: N/A — documentation iteration responding to QUARTO_UPDATE_NUDGE.
+Change:     Created agents/perception.qmd with 6 report sections covering all 65 prior iterations.
+            Pulled Quarto scaffolding (_quarto.yml, index.qmd, agents/index.qmd) from policy branch.
+            Processed INBOX (system nudge). Verified GPU sweep (PID 892945) is still queued behind
+            policy training (PID 886154, ~11min in, 1500 iters @ 12288 envs). 59 CPU tests pass.
+Command:    pytest (CPU only), ps/nvidia-smi checks. No GPU commands.
+Result:     Quarto page now has comprehensive research history. Sweep will auto-run when GPU frees
+            (~35-50 min from now). Old sweep JSONs confirmed all-zeros (pre-fix).
+Decision:   Next iter: check if sweep_q_vel_fixed.json exists with non-zero results. If yes, parse
+            and find optimal flight q_vel. If still waiting, check policy agent progress.
