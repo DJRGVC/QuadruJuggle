@@ -168,10 +168,14 @@ def main():
     _print(f"\nRunning NIS diagnostic: {args.num_envs} envs × {args.steps} steps")
     _print(f"{'='*70}")
     _print(f"  {'Step':>6s}  {'NIS':>8s}  {'Band':>12s}  "
-           f"{'EKF mm':>8s}  {'Raw mm':>8s}  {'Impr%':>7s}  {'Det%':>6s}")
-    _print(f"  {'-'*6}  {'-'*8}  {'-'*12}  {'-'*8}  {'-'*8}  {'-'*7}  {'-'*6}")
+           f"{'EKF mm':>8s}  {'Raw mm':>8s}  {'Impr%':>7s}  {'Det%':>6s}  "
+           f"{'Gate%':>6s}  {'Gated':>6s}")
+    _print(f"  {'-'*6}  {'-'*8}  {'-'*12}  {'-'*8}  {'-'*8}  {'-'*7}  {'-'*6}  "
+           f"{'-'*6}  {'-'*6}")
 
     all_nis = []
+    total_gate_rejected = 0
+    total_gate_total = 0
 
     for step in range(1, args.steps + 1):
         # Random actions (untrained — just want to measure EKF consistency)
@@ -200,11 +204,17 @@ def main():
             else:
                 band = "⚠ HIGH (overconfident)"
 
+            gate_rate = diag.get("gate_rejection_rate", 0.0)
+            gate_count = diag.get("gate_rejected", 0)
+            total_gate_rejected += gate_count
+            total_gate_total += diag.get("gate_total", 0)
             _print(f"  {step:6d}  {nis:8.3f}  {band:>12s}  "
                    f"{diag.get('pos_rmse_ekf_mm', 0):8.2f}  "
                    f"{diag.get('pos_rmse_raw_mm', 0):8.2f}  "
                    f"{diag.get('ekf_improvement_pct', 0):7.1f}  "
-                   f"{diag.get('detection_rate', 0)*100:6.1f}")
+                   f"{diag.get('detection_rate', 0)*100:6.1f}  "
+                   f"{gate_rate*100:6.2f}  "
+                   f"{gate_count:6d}")
 
     _print(f"{'='*70}")
     if all_nis:
@@ -213,6 +223,10 @@ def main():
         _print(f"\nSummary:")
         _print(f"  Overall mean NIS: {mean_nis:.3f}  (target ≈ 3.0)")
         _print(f"  In 95% band [0.35, 7.81]: {in_band}/{len(all_nis)} intervals")
+
+        overall_gate_rate = total_gate_rejected / total_gate_total * 100 if total_gate_total > 0 else 0
+        _print(f"  NIS gate: {total_gate_rejected}/{total_gate_total} rejected ({overall_gate_rate:.2f}%)")
+        _print(f"    (enabled={ekf_cfg.nis_gate_enabled}, threshold={ekf_cfg.nis_gate_threshold}, warmup={ekf_cfg.nis_gate_warmup})")
 
         if mean_nis < 0.35:
             _print(f"  → DIAGNOSIS: Q/R too large. Try reducing q_vel (currently {ekf_cfg.q_vel})")

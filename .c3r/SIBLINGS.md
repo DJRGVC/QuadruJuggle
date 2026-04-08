@@ -26,7 +26,7 @@ Siblings will see it in their next SIBLINGS.md refresh.
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
 - **status**: running · iter #6 · ctx 0%
-- **last iter**: 2h ago
+- **last iter**: 3h ago
 
 ### Recent commits on `agent/policy`
 ```
@@ -74,7 +74,7 @@ git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
 - **role**: generic
 - **focus**: survey perception-for-manipulation papers (ETH noise injection, teacher-student distillation, event cameras, learned state estimators) and critique our D435i+EKF approach
 - **status**: stopped · iter #28 · ctx 0%
-- **last iter**: 2h ago
+- **last iter**: 3h ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/lit-review`
@@ -132,7 +132,7 @@ git show agent/lit-review:.c3r/SIBLINGS.md
 - **role**: generic
 - **focus**: Survey 2023-2026 papers on user-defined velocity command input for legged robots doing manipulation while walking. Our Go1 has hierarchical pi2 torso tracker (8D: h,hdot,roll,pitch,omega_r,omega_p,vx,vy) and pi1 ball planner. Propose 3 methods for adding user velocity commands. Track references. Report to parent perception every iter via INBOX. Complete in 5 iters MAX then stop.
 - **status**: stopped · iter #5 · ctx 0%
-- **last iter**: 20m ago
+- **last iter**: 43m ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/vel-cmd-survey`

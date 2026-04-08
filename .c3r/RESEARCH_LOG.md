@@ -224,3 +224,21 @@ Result:     **19/19 new tests pass.** 8 test classes: config, outlier rejection,
             custom threshold. Zero regressions across all 12 pre-existing test files.
 Decision:   GPU NIS IMU on/off when available. Else: NIS diagnostic logging in nis_diagnostic.py
             (add gate rejection stats to the output), or latency injection refinements.
+
+---
+
+## iter_048 — Gate rejection stats in pipeline diagnostics + NIS diagnostic tool (2/2 new tests, 229/229 total)  (2026-04-08T23:15:00Z)
+Hypothesis: Surfacing NIS gate rejection counters in PerceptionPipeline.diagnostics and
+            nis_diagnostic.py enables tuning gate threshold via the GPU diagnostic tool.
+Change:     (1) PerceptionPipeline.diagnostics now includes gate_rejected, gate_total,
+            gate_rejection_rate (calls ekf.reset_gate_stats() with each read, resetting counters).
+            (2) nis_diagnostic.py: added Gate% and Gated columns to per-interval output +
+            cumulative gate summary in the footer (enabled/threshold/warmup shown).
+            (3) 2 new tests in test_world_frame_ekf.py: test_diagnostics_include_gate_stats
+            (verifies dict keys present, counters >0 after updates, rate=0 for consistent meas,
+            counters reset after read) and test_diagnostics_gate_counters_reset_on_read
+            (verifies windowed counter reset between successive diagnostics reads).
+Command:    All 13 test files: 229/229 pass (188 pytest + 41 manual).
+Result:     **2/2 new tests pass.** 229/229 total. Zero regressions.
+Decision:   GPU NIS IMU on/off comparison next if GPU available. Else: support policy agent
+            if they need perception changes, or investigate adaptive gate threshold warmup.

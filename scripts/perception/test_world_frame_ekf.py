@@ -328,6 +328,104 @@ def test_reset_with_robot_pose_args():
     print(f"  ✓ Reset with explicit robot pose: uses new coords, not stale (err {err:.2e})")
 
 
+def test_diagnostics_include_gate_stats():
+    """Pipeline diagnostics dict includes NIS gate rejection stats."""
+    ekf_cfg = BallEKFConfig(drag_coeff=0.0, nis_gate_enabled=True, nis_gate_warmup=0)
+    cfg = BallObsNoiseCfg(
+        mode="ekf", world_frame=False, ekf_cfg=ekf_cfg,
+        noise_model_cfg=D435iNoiseModelCfg(
+            sigma_xy_per_metre=0.0, sigma_xy_floor=0.0, sigma_z_base=0.0, sigma_z_quadratic=0.0,
+            dropout_base=0.0, dropout_range=0.0,
+        ),
+    )
+    pipe = PerceptionPipeline(N, "cpu", cfg, enable_diagnostics=True)
+
+    robot_pos = torch.tensor([[0.0, 0.0, 0.4]]).expand(N, -1).clone()
+    pipe._robot_quat_w = IDENTITY_QUAT.clone()
+    pipe._robot_pos_w = robot_pos
+    pipe._paddle_offset_b = PADDLE_OFFSET.clone()
+
+    env_ids = torch.arange(N)
+    pipe.reset(env_ids, torch.zeros(N, 3))
+
+    # Run several steps with consistent measurements (should all be accepted)
+    for i in range(20):
+        pipe._last_step_count = -1
+        pipe.step(
+            torch.zeros(N, 3), i,
+            robot_quat_w=IDENTITY_QUAT,
+            robot_pos_w=robot_pos,
+            paddle_offset_b=PADDLE_OFFSET,
+        )
+
+    diag = pipe.diagnostics
+    assert diag is not None, "diagnostics returned None"
+    assert "gate_rejected" in diag, f"missing 'gate_rejected' key: {list(diag.keys())}"
+    assert "gate_total" in diag, f"missing 'gate_total' key: {list(diag.keys())}"
+    assert "gate_rejection_rate" in diag, f"missing 'gate_rejection_rate' key: {list(diag.keys())}"
+    assert diag["gate_total"] > 0, "gate_total should be > 0 after updates"
+    assert diag["gate_rejected"] == 0, f"zero-noise measurements shouldn't be gated: {diag['gate_rejected']}"
+    assert diag["gate_rejection_rate"] == 0.0, f"rejection rate should be 0: {diag['gate_rejection_rate']}"
+
+    # Verify counters were reset after diagnostics read
+    assert pipe.ekf._gate_total_count == 0, "gate counters not reset after diagnostics read"
+    print(f"  ✓ Diagnostics include gate stats: rejected={diag['gate_rejected']}, "
+          f"total={diag['gate_total']}, rate={diag['gate_rejection_rate']}")
+
+
+def test_diagnostics_gate_counters_reset_on_read():
+    """Pipeline diagnostics gate counters reset after each read."""
+    ekf_cfg = BallEKFConfig(drag_coeff=0.0, nis_gate_enabled=True, nis_gate_warmup=0)
+    cfg = BallObsNoiseCfg(
+        mode="ekf", world_frame=False, ekf_cfg=ekf_cfg,
+        noise_model_cfg=D435iNoiseModelCfg(
+            sigma_xy_per_metre=0.0, sigma_xy_floor=0.0, sigma_z_base=0.0, sigma_z_quadratic=0.0,
+            dropout_base=0.0, dropout_range=0.0,
+        ),
+    )
+    pipe = PerceptionPipeline(N, "cpu", cfg, enable_diagnostics=True)
+
+    robot_pos = torch.tensor([[0.0, 0.0, 0.4]]).expand(N, -1).clone()
+    pipe._robot_quat_w = IDENTITY_QUAT.clone()
+    pipe._robot_pos_w = robot_pos
+    pipe._paddle_offset_b = PADDLE_OFFSET.clone()
+
+    env_ids = torch.arange(N)
+    pipe.reset(env_ids, torch.zeros(N, 3))
+
+    # Run a few steps
+    for i in range(5):
+        pipe._last_step_count = -1
+        pipe.step(
+            torch.zeros(N, 3), i,
+            robot_quat_w=IDENTITY_QUAT,
+            robot_pos_w=robot_pos,
+            paddle_offset_b=PADDLE_OFFSET,
+        )
+
+    diag1 = pipe.diagnostics
+    assert diag1["gate_total"] > 0, "first read should have gate data"
+    total1 = diag1["gate_total"]
+
+    # Run more steps
+    for i in range(5, 10):
+        pipe._last_step_count = -1
+        pipe.step(
+            torch.zeros(N, 3), i,
+            robot_quat_w=IDENTITY_QUAT,
+            robot_pos_w=robot_pos,
+            paddle_offset_b=PADDLE_OFFSET,
+        )
+
+    diag2 = pipe.diagnostics
+    assert diag2["gate_total"] > 0, "second read should have fresh gate data"
+    # Second read should reflect only the 5 new steps, not accumulate from first
+    assert diag2["gate_total"] == total1, (
+        f"gate_total should be same for same step count: {diag2['gate_total']} vs {total1}"
+    )
+    print(f"  ✓ Gate counters reset between diagnostics reads: {total1} per window")
+
+
 if __name__ == "__main__":
     print("\n=== World-Frame EKF Unit Tests ===\n")
     tests = [
@@ -337,6 +435,8 @@ if __name__ == "__main__":
         test_body_frame_backward_compat,
         test_reset_world_frame,
         test_reset_with_robot_pose_args,
+        test_diagnostics_include_gate_stats,
+        test_diagnostics_gate_counters_reset_on_read,
     ]
     passed = 0
     for t in tests:

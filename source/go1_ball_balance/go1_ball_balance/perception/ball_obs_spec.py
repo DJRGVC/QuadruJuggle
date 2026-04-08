@@ -476,6 +476,11 @@ class PerceptionPipeline:
         result = self._diag.summary_and_reset()
         # Add EKF ANEES diagnostic (resets accumulator)
         result["mean_nis"] = round(self.ekf.reset_nis(), 3)
+        # Add NIS gate rejection stats (resets counters)
+        rejected, total = self.ekf.reset_gate_stats()
+        result["gate_rejected"] = rejected
+        result["gate_total"] = total
+        result["gate_rejection_rate"] = round(rejected / total, 4) if total > 0 else 0.0
         return result
 
 
