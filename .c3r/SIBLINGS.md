@@ -132,7 +132,7 @@ git show agent/lit-review:.c3r/SIBLINGS.md
 - **role**: generic
 - **focus**: Survey 2023-2026 papers on user-defined velocity command input for legged robots doing manipulation while walking. Our Go1 has hierarchical pi2 torso tracker (8D: h,hdot,roll,pitch,omega_r,omega_p,vx,vy) and pi1 ball planner. Propose 3 methods for adding user velocity commands. Track references. Report to parent perception every iter via INBOX. Complete in 5 iters MAX then stop.
 - **status**: stopped · iter #5 · ctx 0%
-- **last iter**: 7m ago
+- **last iter**: 13m ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/vel-cmd-survey`

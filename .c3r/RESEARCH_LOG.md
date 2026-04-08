@@ -177,3 +177,24 @@ Result:     **15/15 new tests pass.** Hough detects ball at 30cm/50cm/1m with <1
             Wrote handoff to policy INBOX re: Method 2 (obs 40→42D, vel_tracking reward).
 Decision:   GPU NIS with IMU on/off when GPU available. Else: implement more mock-testable
             real pipeline pieces (e.g. threaded pipeline integration with MockCamera+Hough).
+
+---
+
+## iter_046 — Threaded RealPerceptionPipeline + integration tests (17/17 new tests, 208/208 total)  (2026-04-08T20:30:00Z)
+Hypothesis: A threaded RealPerceptionPipeline (camera+detector on acq thread, EKF on main thread)
+            can be fully tested with MockCamera + MockDetector, validating the real-time architecture.
+Change:     Replaced pipeline.py stubs with working implementation: acquisition thread runs
+            camera.get_frame() + detector.detect() and pushes _Measurement to a lock-guarded deque;
+            get_observation() drains queue, runs EKF predict+update, transforms to body frame.
+            Dependency injection: accepts any camera/detector matching the interface (MockCamera,
+            MockDetector, BallDetector w/ Hough, or future real D435i). Added _quat_to_rotmat(),
+            PipelineObservation (extended with timestamp + ekf_pos_w/ekf_vel_w debug fields),
+            reset_ekf(), stats property. 17 integration tests across 8 test classes:
+            lifecycle, convergence, dropout, body-frame transform, extrinsics, EKF reset, Hough.
+Command:    `uv run --active python scripts/perception/test_threaded_pipeline.py -v` → 17/17
+            Full suite (12 test files): 208/208 pass.
+Result:     **17/17 new pass.** EKF converges to <5cm error on stationary ball within 200ms.
+            Body-frame transform correct under rotation and translation. Dropout→ball_lost works.
+            Hough-on-MockCamera end-to-end: <10cm error. Zero regressions.
+Decision:   GPU NIS IMU on/off comparison next if GPU available. Else: NIS gating in pipeline
+            (reject wild measurements via chi-squared test before EKF update).
