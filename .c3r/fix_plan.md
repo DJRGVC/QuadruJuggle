@@ -18,4 +18,5 @@
 - [ ] Do NOT retrain pi1 with noise until perception has committed a non-stub implementation — check SIBLINGS.md each iteration; if waiting more than 10 of your iterations, ping me via ask_human.py to re-scope
 - [x] BUG: action_term.py builds 41D pi2 obs (missing last_action=12D) but pi2 checkpoints from 2026-03-12_14-31-45 onward have 53D input; fix action_term.py to include last joint targets then retrain pi2 and pi1 from scratch
   # DONE iter_002: action_term.py now auto-detects pi2 input dim (41 or 53) and conditionally appends last_action. 53D pi2 baseline ran but underperformed 41D pi2 (Stage C vs Stage D at 500 iters).
+  # iter_003: Confirmed — 41D pi2 + 12288 envs gives best oracle baseline (mean_len=1500 maxed, timeout=98.9%). Oracle checkpoint: logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_20-18-34/model_best.pt
 

@@ -55,3 +55,35 @@ Result:
   - Checkpoint: logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_19-43-53/model_best.pt
   - Compared to iter_001 (41D pi2, 4096 envs): WORSE. iter_001 reached Stage D with 92% timeout; iter_002 stuck at Stage C with 47% timeout. Possible causes: (a) 53D pi2 checkpoint is worse quality, (b) 12288 envs vs 4096 changes batch statistics, (c) pi2 last_action integration has a bug (zeros at first step → obs distribution mismatch).
 Decision:   The 53D pi2 with last_action underperforms the 41D pi2 from iter_001. Next iteration should use the 41D pi2 checkpoint that worked in iter_001 (2026-03-12_09-04-32) — but first verify it exists on disk. If it does, re-run 500 iters with that pi2 and 12288 envs to get a clean Stage D+ baseline. The action_term fix (53D) is still correct and needed for the newest pi2, but the pi2 itself may have regressed.
+
+## iter_003 — oracle baseline with 41D pi2 + 12288 envs  (2026-04-07T20:18Z)
+Hypothesis: iter_002 regression was due to 53D pi2 quality, not env count. Using the proven 41D pi2 checkpoint with 12288 envs should give a stronger oracle baseline (higher timeout, better survival).
+Change:     Same 41D pi2 as iter_001 (2026-03-12_09-04-32/model_best.pt) but 12288 envs (3× more than iter_001). action_term.py now auto-detects pi2 input dim → 41D path taken automatically.
+Command:    uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+              --task Isaac-BallJuggleHier-Go1-v0 \
+              --pi2-checkpoint .../go1_torso_tracking/2026-03-12_09-04-32/model_best.pt \
+              --num_envs 12288 --max_iterations 500 --headless
+            # checkpoint: logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_20-18-34/model_best.pt
+Result:     Training time 1683s (~28 min).  Stage transitions: A→B (~9 iters), B→C (+35 iters),
+            C→D (+35 iters). Spent remaining ~280 iters in Stage D.
+            At iter 499 (tbdump):
+              Train/mean_episode_length  : 1500.0  ← MAXED OUT (1500 steps)
+              Episode_Termination/time_out: 98.9%
+              Episode_Termination/ball_below: 1.1%  (ball_off: 0%)
+              Episode_Reward/ball_apex_height: 2.92  (needs 5.0 for Stage D→E advance)
+              Episode_Reward/alive: 0.994
+              Train/mean_reward: 78.5
+              Policy/mean_noise_std: 0.337  (very converged)
+              Perf/total_fps: 191 K env-steps/s (12288 envs much better GPU utilization)
+            CONFIRMED: 53D pi2 was the culprit in iter_002, not env count.
+            41D pi2 + 12288 envs gives BEST oracle baseline:
+              iter_001 (41D, 4096): timeout=92.4%, mean_len=1470, Stage D
+              iter_002 (53D, 12288): timeout=47%, mean_len=995, Stage C  ← worst
+              iter_003 (41D, 12288): timeout=98.9%, mean_len=1500, Stage D ← BEST
+            Ball is still not being actively juggled (apex_rew=2.92 vs 5.0 needed);
+            the robot is maintaining the ball on the paddle at Stage D target height
+            but not launching it to the apex. Policy is near local optimum.
+Decision:   Oracle baseline is now solid. Proceed to fix_plan Task 3: write compare_pi1.py
+            eval infrastructure. Also flag that longer training (>500 iters) may be needed
+            to advance past Stage D — the apex reward is plateauing at ~3/5. Consider
+            running 1000-iter warm-start from iter_003 checkpoint in a future iteration.

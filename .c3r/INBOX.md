@@ -1,9 +1,5 @@
 # INBOX
 
 ---
-[2026-04-08 02:08 UTC] Daniel G → policy
-MSG: Great, you running now?
-
----
-[2026-04-08 02:48 UTC] Daniel G → policy
-MSG: You running still?
+[2026-04-08 03:42 UTC] Daniel G → policy
+MSG: great. can you give me like a 5 sentence breifing on what you've done thus far, and what you plan to do next?

@@ -27,6 +27,11 @@ from isaaclab.utils import configclass
 
 from . import mdp
 from go1_ball_balance.tasks.torso_tracking.action_term import TorsoCommandActionCfg
+from go1_ball_balance.perception.ball_obs_spec import (
+    ball_pos_perceived,
+    ball_vel_perceived,
+    BallObsNoiseCfg,
+)
 
 from isaaclab_assets.robots.unitree import UNITREE_GO1_CFG  # isort: skip
 
@@ -126,18 +131,20 @@ class ObservationsCfg:
     @configclass
     class PolicyCfg(ObsGroup):
         ball_pos = ObsTerm(
-            func=mdp.ball_pos_in_paddle_frame,
+            func=ball_pos_perceived,
             params={
                 "ball_cfg": SceneEntityCfg("ball"),
                 "robot_cfg": SceneEntityCfg("robot"),
                 "paddle_offset_b": _PADDLE_OFFSET_B,
+                "noise_cfg": BallObsNoiseCfg(mode="oracle"),
             },
         )
         ball_vel = ObsTerm(
-            func=mdp.ball_vel_in_paddle_frame,
+            func=ball_vel_perceived,
             params={
                 "ball_cfg": SceneEntityCfg("ball"),
                 "robot_cfg": SceneEntityCfg("robot"),
+                "noise_cfg": BallObsNoiseCfg(mode="oracle"),
             },
         )
         base_lin_vel      = ObsTerm(func=mdp.base_lin_vel)

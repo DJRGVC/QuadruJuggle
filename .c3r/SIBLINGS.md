@@ -25,16 +25,16 @@ Siblings will see it in their next SIBLINGS.md refresh.
 ## perception
 - **role**: generic
 - **focus**: implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline following ETH-style architecture, producing noisy ball observations usable by pi1 in Isaac Lab sim.
-- **status**: running · iter #2 · ctx 0%
-- **last iter**: 19s ago
+- **status**: running · iter #4 · ctx 0%
+- **last iter**: 1h ago
 
 ### Recent commits on `agent/perception`
 ```
-6aa2dc6 iter_002: Isaac Lab camera survey — CAMERA_CHOICE.md + perception package stub
-747947f iter_001: D435i roadmap audit — update perception_roadmap.md for D435i sensor
-aab3845 torso tracking edit
-9c4793a pi_2 with v trackign works
-3841f54 working on pi_1 + pi_2
+67051ce iter_007: ball_ekf.py — batched 6-state Kalman filter with ballistic+drag dynamics
+32d734c iter_006: REFERENCES.md — perception architecture references + fix gym.make in debug script
+2c75ac7 iter_005b: fix debug_d435i_capture.py — instantiate env_cfg directly instead of Hydra lookup
+a2d3927 iter_005: mount simulated D435i TiledCamera in PLAY scene + debug capture script
+1919aab iter_004: sim_to_real_plan.md — update Track 3 + latency + risks for D435i rear-paddle mount
 ```
 ### Files modified on `agent/perception` (relative to `c3r/QuadruJuggle`)
 ```
@@ -47,8 +47,15 @@ aab3845 torso tracking edit
 .c3r/fix_plan.md
 .claude/settings.json
 docs/perception_roadmap.md
+docs/sim_to_real_plan.md
+scripts/perception/debug_d435i_capture.py
 source/go1_ball_balance/go1_ball_balance/perception/CAMERA_CHOICE.md
+source/go1_ball_balance/go1_ball_balance/perception/REFERENCES.md
 source/go1_ball_balance/go1_ball_balance/perception/__init__.py
+source/go1_ball_balance/go1_ball_balance/perception/ball_ekf.py
+source/go1_ball_balance/go1_ball_balance/perception/ball_obs_spec.py
+source/go1_ball_balance/go1_ball_balance/perception/debug/__init__.py
+source/go1_ball_balance/go1_ball_balance/tasks/ball_juggle_hier/ball_juggle_hier_env_cfg.py
 ```
 ### Read one with:
 ```

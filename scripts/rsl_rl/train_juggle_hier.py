@@ -42,6 +42,11 @@ parser.add_argument(
     "--start-stage", type=int, default=0,
     help="Curriculum stage to start from (0=A, 13=N, etc.). Use with --resume for hot restarts.",
 )
+parser.add_argument(
+    "--noise-mode", type=str, default="oracle",
+    choices=["oracle", "d435i"],
+    help="Ball observation noise mode: 'oracle' (ground truth) or 'd435i' (structured camera noise).",
+)
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
@@ -399,6 +404,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         raise FileNotFoundError(f"pi2 checkpoint not found: {pi2_path}")
     env_cfg.actions.torso_cmd.pi2_checkpoint = pi2_path
     print(f"[INFO] pi2 checkpoint: {pi2_path}")
+
+    # ── Inject ball observation noise mode ─────────────────────────────────
+    if args_cli.noise_mode != "oracle":
+        from go1_ball_balance.perception.ball_obs_spec import BallObsNoiseCfg
+        noise_cfg = BallObsNoiseCfg(mode=args_cli.noise_mode)
+        env_cfg.observations.policy.ball_pos.params["noise_cfg"] = noise_cfg
+        env_cfg.observations.policy.ball_vel.params["noise_cfg"] = noise_cfg
+        print(f"[INFO] Ball obs noise mode: {args_cli.noise_mode}")
+    else:
+        print("[INFO] Ball obs noise mode: oracle (ground truth)")
 
     log_root_path = os.path.abspath(os.path.join("logs", "rsl_rl", agent_cfg.experiment_name))
     print(f"[INFO] Logging experiment in directory: {log_root_path}")
