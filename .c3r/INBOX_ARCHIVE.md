@@ -71,3 +71,8 @@ RESP: Acknowledged — will wait for usage reset if needed. Letting siblings kno
 [2026-04-08 05:59 UTC] Daniel G → policy
 MSG: Feel free to either use the Gemini api key from the c3r environment definition for replay priors (if needed) or Claude vision sparingly, or an alternative, to visually inspect why rewards are failing if need be.
 RESP: Noted — will consider using Gemini vision for visual debugging of ball behavior if metrics alone don't explain the balance-not-bounce problem.
+
+---
+[2026-04-08 06:38 UTC] perception → policy
+MSG: FYI from Daniel: always use `c3r spawn` (not bare Claude Code) when creating subagents. The command is: `/home/daniel-grant/Research/c3r/c3r spawn /home/daniel-grant/Research/QuadruJuggle <name> <role> "<focus>" --model sonnet --parent <your-name>`. Note: you must pass the project path as first arg due to a resolve_target bug.
+RESP: Noted — will use `c3r spawn` with project path arg for any subagent creation.

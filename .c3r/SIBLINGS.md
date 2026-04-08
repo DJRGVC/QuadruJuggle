@@ -25,16 +25,16 @@ Siblings will see it in their next SIBLINGS.md refresh.
 ## perception
 - **role**: generic
 - **focus**: implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline following ETH-style architecture, producing noisy ball observations usable by pi1 in Isaac Lab sim.
-- **status**: running · iter #9 · ctx 0%
-- **last iter**: 1h ago
+- **status**: running · iter #11 · ctx 0%
+- **last iter**: 8m ago
 
 ### Recent commits on `agent/perception`
 ```
+c6b53dc iter_016: fix EKF vel-view covariance bug + 3-mode perception comparison
+6d0e6f8 iter_015: subprocess isolation for compare script + lit-review subagent spawned
 6ea23b9 iter_014: body-frame gravity in EKF + HANDOFF noise_scale docs
 fa2c767 iter_013: noise_scale curriculum support for BallObsNoiseCfg + update_perception_noise_scale()
 94874d8 iter_012: perception diagnostics + compare_perception_modes.py
-0482b39 iter_011: PERCEPTION_HANDOFF.md — EKF mode integration guide for policy agent
-c2ac397 iter_010: EKF integration test — full pipeline verified in Isaac Lab (4096 envs, 50 iters)
 ```
 ### Files modified on `agent/perception` (relative to `c3r/QuadruJuggle`)
 ```
@@ -70,5 +70,45 @@ git show agent/perception:.c3r/INBOX_ARCHIVE.md
 git show agent/perception:.c3r/PROMPT.md
 git show agent/perception:.c3r/RESEARCH_LOG.md
 git show agent/perception:.c3r/SIBLINGS.md
+```
+
+## lit-review
+- **role**: generic
+- **focus**: survey perception-for-manipulation papers (ETH noise injection, teacher-student distillation, event cameras, learned state estimators) and critique our D435i+EKF approach
+- **status**: running · iter #4 · ctx 0%
+- **last iter**: 4m ago
+- **parent**: perception (this is a sub-agent)
+
+### Recent commits on `agent/lit-review`
+```
+5a4c9ab iter_004: ball spin survey → docs/lit_review_ball_spin.md (Q-inflation sufficient for Stage A-D; upgrade path at Stage E+)
+16c8cf4 iter_003: EKF Q/R tuning + ANEES diagnostic → docs/lit_review_ekf_tuning.md
+ac06c8c iter_002: noise curriculum + latency injection literature → docs/lit_review_noise_curriculum.md
+cfa644b iter_001: literature survey — 8 papers + D435i+EKF critique → docs/lit_review_perception.md
+aab3845 torso tracking edit
+```
+### Files modified on `agent/lit-review` (relative to `c3r/QuadruJuggle`)
+```
+.c3r/INBOX.md
+.c3r/INBOX_ARCHIVE.md
+.c3r/PROMPT.md
+.c3r/RESEARCH_LOG.md
+.c3r/SIBLINGS.md
+.c3r/agent.conf
+.c3r/env.sh
+.c3r/fix_plan.md
+.claude/settings.json
+docs/lit_review_ball_spin.md
+docs/lit_review_ekf_tuning.md
+docs/lit_review_noise_curriculum.md
+docs/lit_review_perception.md
+```
+### Read one with:
+```
+git show agent/lit-review:.c3r/INBOX.md
+git show agent/lit-review:.c3r/INBOX_ARCHIVE.md
+git show agent/lit-review:.c3r/PROMPT.md
+git show agent/lit-review:.c3r/RESEARCH_LOG.md
+git show agent/lit-review:.c3r/SIBLINGS.md
 ```
 
