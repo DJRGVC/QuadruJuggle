@@ -225,3 +225,30 @@ Result:     **13/13 pass** (1.86s). Key metrics:
 Decision:   Ballistic trajectory validation complete. Next: latency injection testing
             (verify policy robustness to 1-3 frame observation delays), or check if
             policy agent needs perception support.
+
+---
+
+## iter_033 — Latency injection tests: buffer + EKF degradation  (2026-04-08T20:30:00Z)
+Hypothesis: D435i latency buffer correctly delays observations by N steps, and EKF
+            tracking degrades gracefully (monotonic RMSE increase) with 1-3 frame delays.
+Change:     Created test_latency_injection.py with 16 tests in 3 test classes:
+            - TestLatencyBuffer (6): zero/1/2/3-step delay correctness, reset, dropout interaction
+            - TestLatencyEKFDegradation (8): RMSE bounds per latency level, monotonic increase,
+              velocity usable at 3 frames, combined latency+dropout, multi-env independence
+            - TestLatencyPolicyImpact (2): apex detection accuracy with 3-frame delay
+            Used free-flight arcs (z > contact_z_threshold) to isolate latency from contact-aware mode.
+Command:    `python scripts/perception/test_latency_injection.py`
+Result:     **16/16 pass** (0.072s). Key findings:
+            - Latency buffer delays exactly N steps (verified with zero-noise deterministic tests)
+            - Pos RMSE: 0-lat <15mm, 1-lat <40mm, 2-lat <80mm, 3-lat <120mm (all pass)
+            - Vel RMSE at 3-frame delay: <2 m/s (usable for pi1 planning)
+            - 2-frame + 10% dropout: pos RMSE <100mm, max error <200mm
+            - 2-frame + 20% dropout: pos RMSE <150mm, max error <300mm
+            - Multi-env independence: no cross-talk through shared latency buffer
+            - At apex (vz≈0), 3-frame delay causes <50mm Z error (minimal)
+            - All existing tests still pass: 57 total (7+6+15+13+16)
+Decision:   Latency injection validated. All sim-side fix_plan items complete except
+            "check if policy needs support". Policy agent at iter_014 (ball_release_velocity
+            reward), not yet back to noise robustness. Next: either propose new sim-side work
+            (e.g. observation noise during contact phases, or spin estimation) or wait for
+            policy to reach noise curriculum stage and provide support then.

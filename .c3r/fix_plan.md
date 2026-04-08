@@ -17,5 +17,5 @@
 - [x] Contact-aware EKF: detect contact phase (ball on paddle) and inflate q_vel (0.40→50.0) — DONE iter_030
 - [x] GPU NIS validation: contact_aware=True NIS=0.78 (in-band), OFF NIS=671 (divergent) — 860× improvement — DONE iter_031
 - [x] Ballistic trajectory simulation in mock pipeline (parabolic arcs, not just stationary/linear) — DONE iter_032
-- [ ] Latency injection testing: verify policy robustness to 1-3 frame observation delays
+- [x] Latency injection testing: 16 tests for buffer correctness, RMSE degradation, dropout+latency combo — DONE iter_033
 - [ ] Check if policy agent needs perception support (noise curriculum tuning, new obs features)
