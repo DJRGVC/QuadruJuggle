@@ -317,5 +317,33 @@ class TestContactAwareEKF(unittest.TestCase):
         self.assertEqual(ekf._post_contact_countdown[0].item(), 5)
 
 
+    def test_reset_after_inference_mode_predict(self):
+        """Reset must work even after predict/update ran inside inference_mode.
+
+        Regression test: predict() replaces self._P with an inference tensor
+        via torch.bmm(); subsequent reset() outside inference_mode would fail
+        with 'Inplace update to inference tensor outside InferenceMode'.
+        """
+        cfg = BallEKFConfig(q_vel=0.40, q_vel_contact=50.0, contact_aware=True)
+        ekf = BallEKF(num_envs=4, device="cpu", cfg=cfg)
+        pos = torch.zeros(4, 3)
+        ekf.reset(torch.arange(4), pos)
+
+        # Run predict inside inference_mode (as env.step does)
+        with torch.inference_mode():
+            ekf.predict(dt=0.02)
+            z = torch.zeros(4, 3)
+            ekf.update(z, torch.ones(4, dtype=torch.bool))
+
+        # Now reset OUTSIDE inference_mode (as sweep_q_vel does between runs)
+        new_pos = torch.ones(4, 3) * 0.05
+        ekf.reset(torch.arange(4), new_pos)
+
+        # Verify reset worked
+        self.assertTrue(torch.allclose(ekf.pos, new_pos),
+                        "Reset did not update position correctly")
+        self.assertTrue(torch.isfinite(ekf._P).all(), "P has NaN/Inf after reset")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -107,3 +107,19 @@ Result:     Sweep is auto-queued (waiting on flock). Results will save to logs/p
 Decision:   Next iter: check if sweep completed (ls logs/perception/sweep_q_vel_*.json). If yes,
             parse results and update BallEKFConfig defaults. If still waiting, consider other CPU
             work or wait for GPU. Eventually re-run with noise-trained pi1.
+
+## Iteration 63 — fix EKF reset under inference_mode  (2026-04-08T22:01:00Z)
+Hypothesis: sweep_q_vel.py crashes because EKF.reset() does in-place updates on tensors that
+            became inference tensors after predict/update ran inside torch.inference_mode().
+Change:     Wrapped BallEKF.reset() body in `with torch.inference_mode():` so it can modify
+            internal tensors regardless of caller's context. Added regression test
+            (test_reset_after_inference_mode_predict) to test_contact_aware_ekf.py.
+Command:    pytest scripts/perception/test_*.py (CPU): 241+1=242 total, all pass.
+            Attempted GPU sweep twice — both times blocked by policy agent training.
+            Policy agent iter_018 ran 2000 iters (7200→9200), then launched another 2000 from
+            stage 5 (pid 805803, ~51min in when checked).
+Result:     Bug fixed. The RuntimeError "Inplace update to inference tensor outside InferenceMode"
+            is resolved. Sweep script verified to parse args correctly. Cannot GPU-validate
+            until policy agent's training completes.
+Decision:   Next iter: run GPU q_vel sweep. Policy agent should be done soon (2000 iters from
+            model_best.pt stage 5). If still blocked, coordinate timing via INBOX.
