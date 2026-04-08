@@ -180,6 +180,10 @@ def main():
     env = gym.make("Isaac-BallJuggleHier-Go1-v0", cfg=env_cfg)
     base_env = env.unwrapped
     base_env._perception_diagnostics_enabled = True
+    # Force pipeline recreation so diagnostics flag is picked up
+    # (gym.make may have created the pipeline without diagnostics during reset)
+    if hasattr(base_env, "_perception_pipeline"):
+        base_env._perception_pipeline = None
 
     target_h = args.target_height
     sigma = target_h / args.sigma_ratio
@@ -222,6 +226,9 @@ def main():
         _print(f"{'='*80}")
 
         pipeline = getattr(base_env, "_perception_pipeline", None)
+        _print(f"  [debug] pipeline={pipeline is not None}, "
+               f"diag_flag={getattr(base_env, '_perception_diagnostics_enabled', 'MISSING')}, "
+               f"diag_obj={pipeline._diag is not None if pipeline else 'N/A'}")
         if pipeline is not None and hasattr(pipeline, "ekf"):
             pipeline.ekf.cfg.q_vel = q_vel_val
             pipeline.ekf.cfg.q_vel_contact = args.q_vel_contact

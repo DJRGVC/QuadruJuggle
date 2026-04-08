@@ -123,3 +123,19 @@ Result:     Bug fixed. The RuntimeError "Inplace update to inference tensor outs
             until policy agent's training completes.
 Decision:   Next iter: run GPU q_vel sweep. Policy agent should be done soon (2000 iters from
             model_best.pt stage 5). If still blocked, coordinate timing via INBOX.
+
+## Iteration 64 — fix sweep diagnostics bug (pipeline recreation)  (2026-04-08T23:10:00Z)
+Hypothesis: sweep_q_vel.py returns all-zero NIS/RMSE because the perception pipeline is created
+            during gym.make() → env.reset() BEFORE _perception_diagnostics_enabled is set.
+Change:     Added `base_env._perception_pipeline = None` after setting the diagnostics flag,
+            matching eval_perception_live.py (which worked in iter_054-055). This forces pipeline
+            recreation with diagnostics enabled on the next obs call. Also documented EKF
+            divergence between perception and policy branches (docs/EKF_CONTACT_AWARE_NOTE.md).
+            Policy agent stripped contact-aware 3-level q_vel, NIS gating, and 9D spin from their
+            copy — fine for d435i mode but will fail under ekf mode (NIS 52.9 vs 1.60).
+Command:    GPU locked by policy agent (PID 866211, 2000 iters from model_9100, ~2min in). 107/107
+            CPU tests pass. Sweep queued behind GPU lock (will run next iter).
+Result:     Root cause identified and fixed. The eval_perception_live.py had this fix already
+            (lines 196-197) but sweep_q_vel.py didn't. Without it, diagnostics always returned None.
+Decision:   Next iter: GPU sweep should be queued or just finished. Parse results, find optimal
+            q_vel for flight NIS ≈ 3.0. If GPU still blocked, escalate via ask_human.
