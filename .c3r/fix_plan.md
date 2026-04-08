@@ -6,9 +6,9 @@
 # q_vel=0.4 good for random actions but WAY too low for juggling dynamics.
 
 # PRIORITY: EKF Q-tuning for active juggling
-- [ ] q_vel sweep: eval_perception_live.py with q_vel=[2.0, 5.0, 10.0, 20.0] @ target_height=0.10
+- [x] Post-contact P inflation: 3-level q_vel (contact=50, post_contact=20, flight=0.4)
+- [ ] GPU sweep: sweep_q_vel.py with q_vel=[0.4,2.0,5.0,10.0,20.0,50.0] @ target_height=0.10
 - [ ] Find q_vel where flight NIS ≈ 3.0 and EKF RMSE < raw RMSE
-- [ ] Consider dynamic q_vel (increase during post-bounce flight, decrease during stable arcs)
 - [ ] Re-validate NIS with random actions at new q_vel (ensure not over-conservative)
 - [ ] Update BallEKFConfig defaults with tuned values
 

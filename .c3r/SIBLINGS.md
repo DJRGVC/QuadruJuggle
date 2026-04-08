@@ -30,11 +30,11 @@ they get stuck, or they exceed their useful budget.** Each child
 also has a hard iteration cap and will self-kill at MAX_ITERATIONS,
 but that's a safety net — proactive management is your job.
 
-- **lit-review** (generic, parent=perception) — status=running, iter=#28, last=7h ago  ⚠ STALE — consider killing
+- **lit-review** (generic, parent=perception) — status=stopped, iter=#28, last=7h ago  ⚠ STALE — consider killing  (already stopped)
   Focus: survey perception-for-manipulation papers (ETH noise injection, teacher-student distillation, event cameras, learned state estimators) and critique our D435i+EKF approach
-- **vel-cmd-survey** (generic, parent=perception) — status=running, iter=#5, last=4h ago  ⚠ STALE — consider killing
+- **vel-cmd-survey** (generic, parent=perception) — status=stopped, iter=#5, last=4h ago  ⚠ STALE — consider killing  (already stopped)
   Focus: Survey 2023-2026 papers on user-defined velocity command input for legged robots doing manipulation while walking. Our Go1 has hierarchical pi2 torso tracker (8D: h,hdot,roll,pitch,omega_r,omega_p,vx,vy) and pi1 ball planner. Propose 3 methods for adding user velocity commands. Track references. Report to parent perception every iter via INBOX. Complete in 5 iters MAX then stop.
-- **report-writer** (generic, parent=perception) — status=idle, iter=#8, last=1h ago
+- **report-writer** (generic, parent=perception) — status=stopped, iter=#8, last=1h ago  (already stopped)
   Focus: Create a nicely formatted project report (HTML or Markdown with embedded images/graphs) covering the QuadruJuggle project: perception pipeline, policy training, architecture, and results. Max 10 iterations.
 
 **Decision rules** (apply at the top of every iteration):
@@ -50,22 +50,21 @@ but that's a safety net — proactive management is your job.
 ## policy
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
-- **status**: idle · iter #9 · ctx 0%
-- **last iter**: 1h ago
+- **status**: running · iter #10 · ctx 81%
+- **last iter**: 2m ago
 
 ### Recent commits on `agent/policy`
 ```
+206e928 iter_017: compaction (summarized iters 009-014)
 e33e0d8 iter_016: continue training from step 5748 — apex plateau at 10.7 after curriculum advance
 c5f3d4e iter_015: curriculum threshold 0.75→0.30 — CURRICULUM ADVANCES, juggling sustained
 f77d50e iter_014: ball_release_velocity_reward SUSTAINS JUGGLING (apex 9.7 stable, 1500 iters)
 dc7bb6f iter_014: add ball_release_velocity_reward (+3.0)
-eefbf31 iter_013: ball_low -2.0 death spiral; fix curriculum sustain-during-blend bug
 ```
 ### Files modified on `agent/policy` (relative to `c3r/QuadruJuggle`)
 ```
 .c3r/INBOX.md
 .c3r/INBOX_ARCHIVE.md
-.c3r/PAUSED
 .c3r/PROMPT.md
 .c3r/RESEARCH_LOG.md
 .c3r/RESEARCH_LOG_ARCHIVE.md
@@ -91,8 +90,8 @@ source/go1_ball_balance/go1_ball_balance/tasks/torso_tracking/action_term.py
 ```
 git show agent/policy:.c3r/INBOX.md
 git show agent/policy:.c3r/INBOX_ARCHIVE.md
-git show agent/policy:.c3r/PAUSED
 git show agent/policy:.c3r/PROMPT.md
 git show agent/policy:.c3r/RESEARCH_LOG.md
+git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
 ```
 

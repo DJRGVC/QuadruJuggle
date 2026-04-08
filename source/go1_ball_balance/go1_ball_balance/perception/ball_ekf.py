@@ -60,6 +60,15 @@ class BallEKFConfig:
     # Ball radius = 0.020m, resting on paddle → centre at ~0.020m.
     # Threshold 0.025m gives 5mm margin for measurement noise.
 
+    # Post-contact inflation: after a bounce, velocity estimate is stale.
+    # Keep q_vel elevated for N steps after ball leaves contact zone.
+    # At 200Hz physics, 10 steps = 50ms = ~1-2 measurement cycles.
+    # Ref: D'Ambrosio RSS 2023 (state machine), lit_review_ekf_q_tuning iter_031.
+    post_contact_steps: int = 10  # steps after contact to keep q_vel inflated
+    q_vel_post_contact: float = 20.0  # q_vel during post-contact window (m/s/√s)
+    # Intermediate between flight (0.4) and contact (50.0) — allows filter to
+    # converge to new post-bounce velocity without full contact-level noise.
+
     # Measurement noise — matched to D435iNoiseModelCfg (Ahn 2019 calibration)
     r_xy: float = 0.00125   # measurement noise std, XY (m) — 0.0025·z at z=0.5m
     r_z: float = 0.00225    # measurement noise std, Z (m) — 0.001 + 0.005·0.5² at z=0.5m
@@ -209,6 +218,12 @@ class BallEKF:
 
         # Per-env update count (diagnostic)
         self._update_count = torch.zeros(num_envs, dtype=torch.long, device=self.device)
+
+        # Post-contact inflation counter: counts down from post_contact_steps
+        # after ball exits contact zone. 0 = not in post-contact window.
+        self._post_contact_countdown = torch.zeros(
+            num_envs, dtype=torch.long, device=self.device
+        )
 
     # --- Public properties ---
 
@@ -409,27 +424,40 @@ class BallEKF:
             ).exp()
             self._x[:, 6:9] = spin * decay_factor
 
-        # Process noise Q — contact-aware: per-env q_vel depends on ball Z
+        # Process noise Q — contact-aware with post-contact inflation.
+        # Three-level q_vel: contact (50.0) > post-contact (20.0) > flight (0.4).
+        # Post-contact window covers the first N steps after bounce where the
+        # filter's velocity estimate is stale from the pre-bounce prediction.
+        # Ref: D'Ambrosio RSS 2023, lit_review_ekf_q_tuning iter_031.
         q_pos_sq = (self.cfg.q_pos * dt) ** 2
         if self.cfg.contact_aware:
             ball_z = self._x[:, 2]
             in_contact = ball_z < self.cfg.contact_z_threshold
-            q_vel_val = torch.where(
-                in_contact,
-                torch.tensor(self.cfg.q_vel_contact, device=self.device),
-                torch.tensor(self.cfg.q_vel, device=self.device),
+
+            # Update post-contact countdown:
+            # - entering contact: reset countdown to full window
+            # - in flight with countdown > 0: decrement
+            self._post_contact_countdown[in_contact] = self.cfg.post_contact_steps
+            in_post_contact = (~in_contact) & (self._post_contact_countdown > 0)
+            self._post_contact_countdown[in_post_contact] -= 1
+
+            # Three-level q_vel selection
+            q_vel_val = torch.full(
+                (self.num_envs,), self.cfg.q_vel, device=self.device
             )
+            q_vel_val[in_post_contact] = self.cfg.q_vel_post_contact
+            q_vel_val[in_contact] = self.cfg.q_vel_contact
+
             q_vel_sq = (q_vel_val * dt) ** 2
             Q = torch.zeros(self.num_envs, D, D, device=self.device)
             I3 = torch.eye(3, device=self.device)
             Q[:, :3, :3] = I3.unsqueeze(0) * q_pos_sq
             Q[:, 3:6, 3:6] = I3.unsqueeze(0) * q_vel_sq.view(-1, 1, 1)
             if self._spin_enabled:
-                q_spin_val = torch.where(
-                    in_contact,
-                    torch.tensor(self.cfg.q_spin_contact, device=self.device),
-                    torch.tensor(self.cfg.q_spin, device=self.device),
+                q_spin_val = torch.full(
+                    (self.num_envs,), self.cfg.q_spin, device=self.device
                 )
+                q_spin_val[in_contact] = self.cfg.q_spin_contact
                 q_spin_sq = (q_spin_val * dt) ** 2
                 Q[:, 6:9, 6:9] = I3.unsqueeze(0) * q_spin_sq.view(-1, 1, 1)
         else:
@@ -614,3 +642,5 @@ class BallEKF:
 
         # Reset per-env update count so gating warm-up restarts
         self._update_count[env_ids] = 0
+        # Reset post-contact countdown
+        self._post_contact_countdown[env_ids] = 0

@@ -218,6 +218,103 @@ class TestContactAwareEKF(unittest.TestCase):
         self.assertTrue(cfg.contact_aware)
         self.assertLess(cfg.q_vel, cfg.q_vel_contact)
         self.assertGreater(cfg.contact_z_threshold, 0.0)
+        self.assertGreater(cfg.post_contact_steps, 0)
+        self.assertGreater(cfg.q_vel_post_contact, cfg.q_vel)
+        self.assertLess(cfg.q_vel_post_contact, cfg.q_vel_contact)
+
+    def test_post_contact_inflation_window(self):
+        """After ball leaves contact zone, q_vel stays elevated for
+        post_contact_steps steps before dropping to flight level.
+        Note: contact detection uses POST-prediction ball Z."""
+        cfg = BallEKFConfig(
+            q_vel=0.40,
+            q_vel_contact=50.0,
+            q_vel_post_contact=20.0,
+            post_contact_steps=5,
+            contact_aware=True,
+            contact_z_threshold=0.025,
+        )
+        ekf = BallEKF(num_envs=1, device="cpu", cfg=cfg)
+
+        # Start ball sitting on paddle with zero velocity (stays in contact)
+        pos = torch.tensor([[0.0, 0.0, 0.020]])
+        vel = torch.tensor([[0.0, 0.0, 0.0]])
+        ekf.reset(torch.tensor([0]), pos, vel)
+
+        dt = 0.005  # physics rate
+        # Step 1: ball in contact (predicted Z ≈ 0.020 + 0.5*(-9.81)*0.005²
+        # ≈ 0.0199 < 0.025 → in_contact)
+        ekf.predict(dt=dt)
+        self.assertEqual(ekf._post_contact_countdown[0].item(), 5,
+                         "Countdown should be set during contact")
+
+        # Now simulate a bounce: set ball high with upward velocity
+        ekf._x[0, 2] = 0.10
+        ekf._x[0, 5] = 2.0  # upward velocity
+        P_before = ekf._P.clone()
+        ekf.predict(dt=dt)
+        P_after = ekf._P.clone()
+
+        # Ball is now in flight but in post-contact window
+        # Should use post-contact q_vel (20.0), not flight (0.40)
+        dP_post = (P_after[0, 3, 3] - P_before[0, 3, 3]).item()
+        # q_vel_post_contact=20.0 → q^2*dt^2 = (20*0.005)^2 = 0.01
+        self.assertGreater(dP_post, 0.005,
+                           f"Post-contact P growth {dP_post:.6f} too small (not using elevated q_vel)")
+
+        # Countdown should have decremented
+        self.assertLess(ekf._post_contact_countdown[0].item(), 5,
+                        "Countdown should decrement in flight")
+
+        # Advance through remaining post-contact steps
+        remaining = ekf._post_contact_countdown[0].item()
+        for _ in range(remaining):
+            ekf.predict(dt=dt)
+
+        # Countdown should be 0 now
+        self.assertEqual(ekf._post_contact_countdown[0].item(), 0,
+                         "Countdown should reach 0 after post_contact_steps")
+
+        # Next step should use flight q_vel (0.40)
+        P_before_flight = ekf._P.clone()
+        ekf.predict(dt=dt)
+        P_after_flight = ekf._P.clone()
+        dP_flight = (P_after_flight[0, 3, 3] - P_before_flight[0, 3, 3]).item()
+
+        # Flight P growth should be much smaller than post-contact
+        self.assertLess(dP_flight, dP_post * 0.5,
+                        f"Flight P growth {dP_flight:.6f} not much smaller than post-contact {dP_post:.6f}")
+
+    def test_post_contact_reset_on_new_contact(self):
+        """Re-entering contact resets the post-contact countdown."""
+        cfg = BallEKFConfig(
+            q_vel=0.40,
+            q_vel_contact=50.0,
+            q_vel_post_contact=20.0,
+            post_contact_steps=5,
+            contact_aware=True,
+            contact_z_threshold=0.025,
+        )
+        ekf = BallEKF(num_envs=1, device="cpu", cfg=cfg)
+
+        pos = torch.tensor([[0.0, 0.0, 0.020]])
+        ekf.reset(torch.tensor([0]), pos)
+
+        dt = 0.02
+        # Contact → sets countdown
+        ekf.predict(dt=dt)
+        self.assertEqual(ekf._post_contact_countdown[0].item(), 5)
+
+        # Move to flight, decrement twice
+        ekf._x[0, 2] = 0.10
+        ekf.predict(dt=dt)  # countdown 4
+        ekf.predict(dt=dt)  # countdown 3
+
+        # Re-enter contact
+        ekf._x[0, 2] = 0.020
+        ekf.predict(dt=dt)
+        # Countdown should be reset to 5 (not continued from 3)
+        self.assertEqual(ekf._post_contact_countdown[0].item(), 5)
 
 
 if __name__ == "__main__":

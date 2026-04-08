@@ -163,3 +163,26 @@ Result:     Log shrunk from 308 → ~170 lines. Archive now has 48 verbatim entr
             Agents: 2/5 (perception + policy). Report accessible via browser.
 Decision:   Next iter: q_vel sweep with eval_perception_live.py [2.0, 5.0, 10.0, 20.0] to find
             optimal flight q_vel where NIS ≈ 3.0 and EKF RMSE < raw RMSE.
+
+---
+
+## Iteration 57 — post-contact P inflation + q_vel sweep script  (2026-04-08T19:45:00Z)
+Hypothesis: Flight NIS=52.9 under active policy is caused by stale velocity estimates in the
+            first ~10 steps after a paddle bounce. A post-contact q_vel inflation window
+            (20.0 for 10 steps) will help the filter converge to the new velocity faster.
+Change:     (1) Added 3-level q_vel to BallEKF: contact=50.0, post_contact=20.0, flight=0.4.
+            New BallEKFConfig fields: post_contact_steps=10, q_vel_post_contact=20.0.
+            Predict method tracks per-env _post_contact_countdown (set on contact entry,
+            decremented each flight step). Reset clears countdown.
+            (2) Wrote sweep_q_vel.py: single env session, iterates q_vel values, collects
+            NIS/RMSE per setting. Reuses env (no restart per q_vel point).
+            (3) Added 2 new tests: post_contact_inflation_window, post_contact_reset_on_new_contact.
+Command:    CPU tests only (GPU locked by policy agent training 12288-env run).
+            uv run --active python scripts/perception/test_contact_aware_ekf.py → 9/9 pass
+            uv run --active python scripts/perception/test_world_frame_ekf.py → 8/8 pass
+            uv run --active python scripts/perception/test_imu_aided_ekf.py → 16/16 pass
+Result:     33/33 CPU tests pass. Post-contact inflation implemented and verified.
+            GPU sweep blocked — policy agent holds gpu_lock for train_juggle_hier.
+Decision:   Next iter: run sweep_q_vel.py on GPU when lock frees. Sweep q_vel=[0.4,2.0,5.0,10.0,20.0,50.0]
+            with post-contact inflation enabled. If GPU still locked, look at improving the
+            sweep script or adding more CPU-only analysis.
