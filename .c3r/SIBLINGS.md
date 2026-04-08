@@ -32,9 +32,9 @@ but that's a safety net — proactive management is your job.
 
 - **lit-review** (generic, parent=perception) — status=stopped, iter=#28, last=7h ago  ⚠ STALE — consider killing  (already stopped)
   Focus: survey perception-for-manipulation papers (ETH noise injection, teacher-student distillation, event cameras, learned state estimators) and critique our D435i+EKF approach
-- **vel-cmd-survey** (generic, parent=perception) — status=stopped, iter=#6, last=3m ago  (already stopped)
+- **vel-cmd-survey** (generic, parent=perception) — status=stopped, iter=#6, last=7m ago  (already stopped)
   Focus: Survey 2023-2026 papers on user-defined velocity command input for legged robots doing manipulation while walking. Our Go1 has hierarchical pi2 torso tracker (8D: h,hdot,roll,pitch,omega_r,omega_p,vx,vy) and pi1 ball planner. Propose 3 methods for adding user velocity commands. Track references. Report to parent perception every iter via INBOX. Complete in 5 iters MAX then stop.
-- **report-writer** (generic, parent=perception) — status=stopped, iter=#9, last=5m ago  (already stopped)
+- **report-writer** (generic, parent=perception) — status=stopped, iter=#9, last=9m ago  (already stopped)
   Focus: Create a nicely formatted project report (HTML or Markdown with embedded images/graphs) covering the QuadruJuggle project: perception pipeline, policy training, architecture, and results. Max 10 iterations.
 
 **Decision rules** (apply at the top of every iteration):
@@ -51,7 +51,7 @@ but that's a safety net — proactive management is your job.
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
 - **status**: running · iter #10 · ctx 81%
-- **last iter**: 36m ago
+- **last iter**: 39m ago
 
 ### Recent commits on `agent/policy`
 ```

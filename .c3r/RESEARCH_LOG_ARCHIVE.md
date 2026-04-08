@@ -613,3 +613,70 @@ Result:     **CRITICAL FINDING: EKF severely overconfident under active policy.*
 Decision:   q_vel needs MAJOR increase for live policy. Next: sweep q_vel=[2.0, 5.0, 10.0, 20.0]
             with eval_perception_live.py to find optimal setting. Contact q_vel_contact=50.0
             is close to right (NIS=5.3 under active policy).
+
+---
+
+## iter_056 — compaction (summarized iters 044-048)  (2026-04-08T19:10:00Z)
+Hypothesis: N/A — compaction iteration (log at 308 lines > 300 threshold).
+Change:     Archived iters 044-048 verbatim to RESEARCH_LOG_ARCHIVE.md. Rewrote compacted summary
+            through iter_048. Kept iters 049-055 verbatim. Killed all 3 children (lit-review,
+            vel-cmd-survey, report-writer) per Daniel's request. Copied project report to
+            docs/project_report.html. Processed 3 INBOX messages.
+Command:    No GPU commands.
+Result:     Log shrunk from 308 → ~170 lines. Archive now has 48 verbatim entries (001-048).
+            Agents: 2/5 (perception + policy). Report accessible via browser.
+Decision:   Next iter: q_vel sweep with eval_perception_live.py [2.0, 5.0, 10.0, 20.0] to find
+            optimal flight q_vel where NIS ≈ 3.0 and EKF RMSE < raw RMSE.
+
+---
+
+## Iteration 57 — post-contact P inflation + q_vel sweep script  (2026-04-08T19:45:00Z)
+Hypothesis: Flight NIS=52.9 under active policy is caused by stale velocity estimates in the
+            first ~10 steps after a paddle bounce. A post-contact q_vel inflation window
+            (20.0 for 10 steps) will help the filter converge to the new velocity faster.
+Change:     (1) Added 3-level q_vel to BallEKF: contact=50.0, post_contact=20.0, flight=0.4.
+            New BallEKFConfig fields: post_contact_steps=10, q_vel_post_contact=20.0.
+            Predict method tracks per-env _post_contact_countdown (set on contact entry,
+            decremented each flight step). Reset clears countdown.
+            (2) Wrote sweep_q_vel.py: single env session, iterates q_vel values, collects
+            NIS/RMSE per setting. Reuses env (no restart per q_vel point).
+            (3) Added 2 new tests: post_contact_inflation_window, post_contact_reset_on_new_contact.
+Command:    CPU tests only (GPU locked by policy agent training 12288-env run).
+            uv run --active python scripts/perception/test_contact_aware_ekf.py → 9/9 pass
+            uv run --active python scripts/perception/test_world_frame_ekf.py → 8/8 pass
+            uv run --active python scripts/perception/test_imu_aided_ekf.py → 16/16 pass
+Result:     33/33 CPU tests pass. Post-contact inflation implemented and verified.
+            GPU sweep blocked — policy agent holds gpu_lock for train_juggle_hier.
+Decision:   Next iter: run sweep_q_vel.py on GPU when lock frees. Sweep q_vel=[0.4,2.0,5.0,10.0,20.0,50.0]
+            with post-contact inflation enabled. If GPU still locked, look at improving the
+            sweep script or adding more CPU-only analysis.
+
+---
+
+## Iteration 58 — sweep script bugfixes + child cleanup  (2026-04-08T20:30:00Z)
+Hypothesis: sweep_q_vel.py has a critical bug (EKF reset missing init_pos arg) that would
+            crash on GPU. Fix and add warmup period for clean per-q_vel statistics.
+Change:     (1) Fixed EKF reset in sweep script: now passes init_pos + init_vel (was missing).
+            (2) Replaced crude diagnostic dict zeroing with proper pipeline.diagnostics flush.
+            (3) Added --warmup-steps (default 50) to let EKF converge before collecting stats.
+            (4) Added --no-post-contact flag to compare with/without post-contact inflation.
+            (5) Killed 3 stale children (lit-review, vel-cmd-survey, report-writer) that
+                survived iter_056 kill attempt.
+Command:    CPU tests only (GPU locked by policy 2000-iter training from model_early_stop.pt).
+            224/224 CPU tests pass. Script syntax verified.
+Result:     Sweep script ready for GPU. Children cleaned up (agents: 2/5).
+Decision:   Next iter: GPU q_vel sweep when lock frees. If still locked, consider writing
+            a test that validates the sweep logic on CPU with synthetic data.
+
+---
+
+## Iteration 59 — compaction (summarized iters 049-055)  (2026-04-08T20:50:00Z)
+Hypothesis: N/A — compaction iteration (context at 100% per system auto-compact trigger).
+Change:     Archived iters 049-055 verbatim to RESEARCH_LOG_ARCHIVE.md. Rewrote compacted summary
+            through iter_055 (including GPU NIS validation findings + live-policy eval critical
+            result). Kept iters 056-058 verbatim. Pruned fix_plan.md (removed completed items).
+Command:    No GPU commands.
+Result:     Log shrunk from ~206 → ~110 lines. Archive now has 55 verbatim entries (001-055).
+            fix_plan.md pruned to forward-looking tasks only.
+Decision:   Next iter: GPU q_vel sweep with sweep_q_vel.py when GPU lock frees. Primary goal:
+            find flight q_vel where NIS ≈ 3.0 and EKF RMSE < raw RMSE under active policy.

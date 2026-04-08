@@ -89,3 +89,8 @@ RESP: Report is at docs/project_report.html on agent/report-writer branch. Copie
 [2026-04-08 20:44 UTC] system → perception
 MSG: 🚨 AUTO-COMPACT REQUIRED — your last iteration's context was at 100%. Your NEXT iteration MUST be a dedicated compaction iteration per PROMPT rule 6: read RESEARCH_LOG.md, summarize old entries into a Compacted Summary block, move verbatim entries to RESEARCH_LOG_ARCHIVE.md, prune fix_plan.md, commit. Do NOT do anything else this iteration. After compaction, normal work resumes the iteration after.
 RESP: Acknowledged — this iteration is dedicated compaction. Summarizing iters 049-055 into compacted block, keeping 056-058 verbatim.
+
+---
+[2026-04-08 20:47 UTC] system → perception
+MSG: 🚨 AUTO-COMPACT REQUIRED — your last iteration's context was at 80%. Your NEXT iteration MUST be a dedicated compaction iteration per PROMPT rule 6: read RESEARCH_LOG.md, summarize old entries into a Compacted Summary block, move verbatim entries to RESEARCH_LOG_ARCHIVE.md, prune fix_plan.md, commit. Do NOT do anything else this iteration. After compaction, normal work resumes the iteration after.
+RESP: Acknowledged — performing compaction iter_060. Log already compact from iter_059 compaction; will fold iter_056 and iter_059 summaries into compacted block, keep 057-058 verbatim.
