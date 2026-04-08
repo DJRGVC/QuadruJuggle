@@ -84,3 +84,8 @@ RESP: Confirmed — all 3 children killed, 2/5 active.
 [2026-04-08 18:25 UTC] Daniel G → perception
 MSG: Where is the report? How can I easily download it and view it?
 RESP: Report is at docs/project_report.html on agent/report-writer branch. Copied it to perception branch — open in browser.
+
+---
+[2026-04-08 20:44 UTC] system → perception
+MSG: 🚨 AUTO-COMPACT REQUIRED — your last iteration's context was at 100%. Your NEXT iteration MUST be a dedicated compaction iteration per PROMPT rule 6: read RESEARCH_LOG.md, summarize old entries into a Compacted Summary block, move verbatim entries to RESEARCH_LOG_ARCHIVE.md, prune fix_plan.md, commit. Do NOT do anything else this iteration. After compaction, normal work resumes the iteration after.
+RESP: Acknowledged — this iteration is dedicated compaction. Summarizing iters 049-055 into compacted block, keeping 056-058 verbatim.
