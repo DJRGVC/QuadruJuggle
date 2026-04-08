@@ -286,3 +286,31 @@ Result:     Early stopped at iter 1127 (700-iter patience exhausted at Stage F).
             Also lowered _BJ_APEX_THRESHOLD to 0.5 (appropriate for tighter sigma).
 Decision:   Next iter_010: fresh run with sigma_ratio=3.5 (all stages) + d435i noise.
             Checkpoint dir for iter_009: logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_00-55-03/model_best.pt
+
+## iter_010 — sigma_ratio=3.5 fresh run (1500-iter d435i)  (2026-04-08T03:30Z)
+Hypothesis: sigma_ratio=2.5→3.5 reduces ball-at-rest apex reward from 4.4% to 0.2% per step,
+forcing active throwing to earn meaningful reward.
+Change:     sigma_ratio changed from 2.5 to 3.5 (Stage C-P), 3.0 (Stage B), 2.5 (Stage A kept wider for bootstrap).
+            _BJ_APEX_THRESHOLD lowered to 0.5.
+Command:    gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+              --task Isaac-BallJuggleHier-Go1-v0 \
+              --pi2-checkpoint .../2026-03-12_09-04-32/model_best.pt \
+              --num_envs 12288 --max_iterations 1500 --headless --noise-mode d435i --wandb
+            Checkpoint dir: logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_03-28-26/
+Result:     At iter 524 (still running, converged): timeout=99.4%, apex_rew=0.07, mean_reward=23.1
+            SAME balance local optimum as before.
+            
+            ROOT CAUSE 2 IDENTIFIED: alive reward (weight=1.0) × 1500 steps = 1500/ep is too dominant.
+            With sigma_ratio=3.5, ball at rest earns 0.07/step apex reward. But alive=1500/ep
+            regardless of throwing behavior. Policy still earns ~1507/ep from balance vs risk of
+            -200 (early_termination) + potential apex upside. Balancing wins.
+            
+            The sigma_ratio fix reduced apex-at-rest from 1650→105/ep, but alive (1500/ep) still
+            makes balancing >> juggling. The policy doesn't need to throw at all.
+            
+            FIX: ball_low_penalty=-1.0/step when ball h≤0.03m. With this:
+            - Balance: alive=1.0 - low_penalty=1.0 = 0/step (break-even vs random)
+            - Juggling: alive=1.0 + apex>0 - low_penalty=0 = 1+apex/step (positive)
+            This forces policy to choose between 0/step (balance) vs variable (juggle+survive).
+Decision:   Next: iter_011 with ball_low_penalty added. Expected: policy must explore throwing
+            to avoid earning ~0 from passive balancing.

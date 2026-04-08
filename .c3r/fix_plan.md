@@ -34,7 +34,12 @@
   # ROOT CAUSE FOUND: sigma_ratio=2.5 → ball-at-rest earns 4.4% max apex reward per step (1650/ep guaranteed).
   # Policy never learns to juggle — balancing earns more than risky throwing.
   # FIX: sigma_ratio=3.5 in all stages → ball-at-rest earns only 0.2% (82/ep). APPLIED.
-- [ ] iter_010: Fresh run with sigma_ratio=3.5 + _BJ_APEX_THRESHOLD=0.5 to break balance-not-bounce local optimum
+- [x] iter_010: Fresh run sigma_ratio=3.5 → SAME balance local optimum (apex=0.07 at iter 524)
+  # sigma_ratio alone insufficient: alive=1.0/step dominates. Policy earns 1500/ep alive regardless.
+  # ROOT CAUSE 2: alive reward too dominant vs near-zero apex reward at balancing.
+  # FIX: ball_low_penalty=-1.0/step when ball h≤0.03m → cancels alive during balancing.
+  # With this fix: balance earns alive-low_penalty ≈ 0/step; juggle earns alive+apex > 0/step.
+- [ ] iter_011: Fresh run with sigma_ratio=3.5 + ball_low_penalty=-1.0 to break balance-not-bounce
 - [x] Add wandb logging to train_juggle_hier.py (entity: d-grant-uc-berkeley) + video recording for play visualization
   # DONE iter_007b/008: wandb entity + descriptive run naming added; video upload at end of training added.
 - [x] BUG: action_term.py builds 41D pi2 obs (missing last_action=12D) but pi2 checkpoints from 2026-03-12_14-31-45 onward have 53D input; fix action_term.py to include last joint targets then retrain pi2 and pi1 from scratch
