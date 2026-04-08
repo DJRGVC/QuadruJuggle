@@ -5,7 +5,7 @@ Newest entries at the bottom. Each entry follows the format in PROMPT_*.md.
 
 ---
 
-## Compacted summary (through iter_035)
+## Compacted summary (through iter_043)
 
 **Iters 001-004 (docs/roadmap):** Updated perception_roadmap.md and sim_to_real_plan.md for D435i
 (stereo depth, not monocular). Surveyed Isaac Lab camera APIs — TiledCamera for debug only;
@@ -44,105 +44,31 @@ MockDetector for hardware-free testing. 32/32 real+mock tests pass.
 free-flight, q_vel=50.0 during contact) achieved 860x NIS improvement (0.78 vs 671).
 GPU-validated at NIS=1.60 with Ahn 2019-calibrated noise model (sigma_xy∝z, sigma_z∝z²,
 distance-dependent dropout). Ballistic trajectory tests (13/13), latency injection tests
-(16/16) all pass. Killed lit-review subagent after 29 iters.
+(16/16) all pass.
 
-**Key architectural findings through iter_035:**
-- Body-frame EKF structurally wrong due to unmodeled contact forces -> contact-aware mode required
-- Contact-aware EKF: inflate process noise during paddle contact -> NIS from 966 to 0.78
+**Iters 036 (compaction):** Archived iters 019-028.
+
+**Iters 037-038 (IMU + spin extensions):** IMU-aided EKF adds Coriolis/centrifugal corrections
+using robot angular velocity (16/16 tests). 9D spin estimation extends state to [pos, vel, spin]
+with Magnus force dynamics (25/25 tests). Both optional, toggled via enable_imu/enable_spin flags.
+
+**Iters 039-040 (config wiring):** Wired enable_spin and enable_imu through BallObsNoiseCfg +
+PerceptionPipeline. Added --no-imu and --enable-spin flags to nis_diagnostic.py. Spawned
+vel-cmd-survey subagent.
+
+**Iters 041-043 (velocity commands):** Created vel_cmd/ package: UserVelocityInput (threaded
+keyboard/joystick), CommandMixer (override/blend/passthrough), ResidualMixer (Method 2 —
+pi1+user additive). play_teleop.py wires it all together. Killed vel-cmd-survey subagent
+after it completed 5 iters. 176/176 tests total.
+
+**Key architectural findings through iter_043:**
+- Body-frame EKF structurally wrong due to unmodeled contact forces → contact-aware mode required
+- Contact-aware EKF: inflate process noise during paddle contact → NIS from 966 to 0.78
 - Ahn 2019 noise: sigma_xy=0.0025*z, sigma_z=1mm+0.005*z², dropout 20-50% with distance
 - Raw d435i noise outperforms EKF for training (noise acts as regularization)
 - EKF value: velocity estimation + dropout bridging during free-flight only
-- TiledCamera adds obs to pi2 scene -> must isolate to DEBUG scene subclass only
-- Policy agent consumes perception via BallObsNoiseCfg(mode="d435i") — drop-in swap
-
----
-
-## iter_036 — compaction (summarized iters 019-028)  (2026-04-08T15:00:00Z)
-Hypothesis: N/A — compaction iteration.
-Change:     Archived iters 019-028 verbatim to RESEARCH_LOG_ARCHIVE.md. Expanded compacted
-            summary. Pruned fix_plan.md.
-Command:    No GPU commands.
-Result:     Log shrunk from 310->~120 lines. Archive now has 28 verbatim entries (001-028).
-Decision:   Next: IMU-aided EKF (Phase 5).
-
----
-
-## iter_037 — IMU-aided EKF: Coriolis + centrifugal corrections (16/16 tests pass)  (2026-04-08T16:30:00Z)
-Hypothesis: Adding Coriolis (-2ω×v) and centrifugal (-ω×(ω×r)) pseudo-force corrections
-            using robot angular velocity will make body-frame EKF physically correct under
-            platform rotation, improving tracking accuracy without requiring world-frame mode.
-Change:     Added `robot_ang_vel_b` parameter to `BallEKF.predict()` and `.step()`.
-            When provided, computes Coriolis + centrifugal accelerations and adds them to the
-            prediction dynamics. Linearised Jacobian F updated. Added `_batch_skew()` helper.
-            Pipeline passes `robot.data.root_ang_vel_b` through to EKF in body-frame mode.
-Command:    `python scripts/perception/test_imu_aided_ekf.py -v` (16 tests)
-            Full suite: 90/90 tests pass.
-Result:     **16/16 new tests pass.** Coriolis/centrifugal magnitudes exact. Multi-step tracking
-            under 1.5 rad/s rotation: pos RMSE <10mm, vel RMSE <0.5 m/s. 90/90 total.
-Decision:   GPU NIS validation of body-frame+IMU vs world-frame next.
-
----
-
-## iter_038 — 9D spin estimation: Magnus effect EKF extension (25/25 tests, 109/109 total)  (2026-04-08T17:45:00Z)
-Hypothesis: Extending EKF to 9D [pos, vel, spin] with Magnus force dynamics allows spin
-            estimation from trajectory curvature.
-Change:     Added optional `enable_spin` mode to BallEKF. Magnus force: a_M = Cm*(spin×vel).
-            Spin decay: exponential with Stokes viscous torque. Contact-aware: q_spin inflated.
-            All matrices properly sized as D×D where D=6 or 9. 25 tests across 6 classes.
-Command:    `pytest scripts/perception/test_spin_estimation.py -v` → 25/25, full suite 109/109.
-Result:     **25/25 pass.** Magnus direction correct. Cm*ω*v = 0.894 m/s² matches. EKF estimates
-            spin=40 rad/s from curvature alone. Zero regressions.
-Decision:   Wire enable_spin through BallObsNoiseCfg pipeline.
-
----
-
-## iter_039 — Wire enable_spin + spawn vel-cmd-survey subagent (12/12 new tests, 127/127 total)  (2026-04-08T15:00:00Z)
-Hypothesis: BallObsNoiseCfg.enable_spin should propagate to EKF via PerceptionPipeline.
-Change:     Added enable_spin to BallObsNoiseCfg + PerceptionPipeline. Created test_pipeline_config.py
-            (12 tests). Spawned vel-cmd-survey subagent (sonnet, max 5 iters) per Daniel's request.
-Command:    `pytest scripts/perception/test_*.py` → 127/127 pass.
-Result:     **12/12 new tests pass.** Config propagation verified. vel-cmd-survey spawned.
-Decision:   Monitor vel-cmd-survey. GPU NIS when available.
-
----
-
-## iter_040 — enable_imu flag + NIS diagnostic flags (5 new tests, 132/132 total)  (2026-04-08T08:10:00Z)
-Hypothesis: Adding enable_imu toggle to BallObsNoiseCfg allows ablation of IMU corrections.
-Change:     Added enable_imu to BallObsNoiseCfg (default True). --no-imu and --enable-spin
-            flags on nis_diagnostic.py. 5 tests added.
-Command:    `pytest scripts/perception/test_*.py` → 132/132 pass.
-Result:     **5/5 new pass.** GPU NIS blocked by policy agent.
-Decision:   Velocity command work (CPU-only) while GPU blocked.
-
----
-
-## iter_041 — Velocity command modules: UserVelocityInput + CommandMixer (21/21 tests, 153/153 total)  (2026-04-08T09:30:00Z)
-Hypothesis: Method 1 (Direct Override) gives users joystick/keyboard vx/vy control during play.
-Change:     Created vel_cmd/ package: user_velocity_input.py (threaded input), command_mixer.py
-            (override/blend/passthrough modes). 21 tests in 8 classes.
-Command:    `pytest scripts/perception/test_vel_cmd.py -v` → 21/21; full suite 153/153.
-Result:     **21/21 pass.** All blend modes verified. 153/153 total.
-Decision:   Create play_teleop.py integration script.
-
----
-
-## iter_042 — play_teleop.py integration script (7/7 new tests, 160/160 total)  (2026-04-08T11:00:00Z)
-Hypothesis: Standalone play_teleop.py wires UserVelocityInput + CommandMixer into play loop.
-Change:     Created scripts/rsl_rl/play_teleop.py with backend selection, telemetry, video support.
-            7 integration tests (TestTeleopFlow class).
-Command:    `pytest scripts/perception/test_vel_cmd.py -v` → 28/28; full suite 160/160.
-Result:     **7/7 pass.** 160/160 total. Script ready for use.
-Decision:   Check vel-cmd-survey subagent. Kill if done.
-
----
-
-## iter_043 — ResidualMixer (Method 2) + kill vel-cmd-survey (16/16 new tests, 176/176 total)  (2026-04-08T16:30:00Z)
-Hypothesis: ResidualMixer (Method 2) provides production velocity command architecture.
-Change:     Killed vel-cmd-survey subagent. Created vel_cmd/residual_mixer.py: ResidualMixer +
-            ResidualMixerCfg. 16 tests in 5 classes.
-Command:    `pytest scripts/perception/test_vel_cmd.py -v` → 44/44; full suite 176/176.
-Result:     **16/16 pass.** Residual adds pi1+user (vs override which discards pi1). 176/176 total.
-Decision:   Policy agent handoff for Method 2 requirements. GPU NIS when available.
+- IMU/spin features: non-harmful in sim (random actions → low ω), ready for real hardware
+- Velocity commands: Method 1 (override) implemented; Method 2 (residual) needs pi1 retraining
 
 ---
 
@@ -211,19 +137,10 @@ Change:     Added NIS gating to BallEKF.update(): computes NIS for all envs, rej
             drops in 1 step but velocity P needs ~50). Config: nis_gate_enabled (default True),
             nis_gate_threshold, nis_gate_warmup. Diagnostics: gate_rejection_rate,
             gate_rejection_count, reset_gate_stats(). _update_count per env, reset on env reset.
-            Key design decisions:
-            - Warm-up count (not P-threshold) because pos-P converges instantly while vel-P lags
-            - 50 updates ≈ 1s at 50Hz — sufficient for velocity convergence in sim (reset near truth)
-            - Real pipeline's cold start (init at [0,0,0]) also covered by warm-up
-            - Existing ballistic trajectory tests use nis_gate_enabled=False since they pre-date
-              gating and have multi-bounce discontinuities the gate correctly rejects
 Command:    `uv run --active python scripts/perception/test_nis_gating.py -v` → 19/19
             Full suite (13 test files): 227/227 pass.
-Result:     **19/19 new tests pass.** 8 test classes: config, outlier rejection, disabled mode,
-            warm-up (skip/activate/reset-on-env-reset), diagnostics, 9D spin, contact-aware,
-            custom threshold. Zero regressions across all 12 pre-existing test files.
-Decision:   GPU NIS IMU on/off when available. Else: NIS diagnostic logging in nis_diagnostic.py
-            (add gate rejection stats to the output), or latency injection refinements.
+Result:     **19/19 new tests pass.** Zero regressions across all 12 pre-existing test files.
+Decision:   GPU NIS IMU on/off when available. Else: NIS diagnostic logging.
 
 ---
 
@@ -231,49 +148,27 @@ Decision:   GPU NIS IMU on/off when available. Else: NIS diagnostic logging in n
 Hypothesis: Surfacing NIS gate rejection counters in PerceptionPipeline.diagnostics and
             nis_diagnostic.py enables tuning gate threshold via the GPU diagnostic tool.
 Change:     (1) PerceptionPipeline.diagnostics now includes gate_rejected, gate_total,
-            gate_rejection_rate (calls ekf.reset_gate_stats() with each read, resetting counters).
-            (2) nis_diagnostic.py: added Gate% and Gated columns to per-interval output +
-            cumulative gate summary in the footer (enabled/threshold/warmup shown).
-            (3) 2 new tests in test_world_frame_ekf.py: test_diagnostics_include_gate_stats
-            (verifies dict keys present, counters >0 after updates, rate=0 for consistent meas,
-            counters reset after read) and test_diagnostics_gate_counters_reset_on_read
-            (verifies windowed counter reset between successive diagnostics reads).
+            gate_rejection_rate. (2) nis_diagnostic.py: added Gate% and Gated columns.
+            (3) 2 new tests in test_world_frame_ekf.py.
 Command:    All 13 test files: 229/229 pass (188 pytest + 41 manual).
 Result:     **2/2 new tests pass.** 229/229 total. Zero regressions.
-Decision:   GPU NIS IMU on/off comparison next if GPU available. Else: support policy agent
-            if they need perception changes, or investigate adaptive gate threshold warmup.
+Decision:   GPU NIS IMU on/off comparison next if GPU available.
 
 ---
 
 ## iter_049 — GPU NIS validation: IMU ON vs OFF vs 9D Spin comparison  (2026-04-08T16:10:00Z)
 Hypothesis: IMU-aided Coriolis/centrifugal corrections and 9D spin estimation will measurably
             improve EKF NIS consistency compared to baseline (no IMU).
-Change:     Ran nis_diagnostic.py three times on GPU: (1) IMU ON (default), (2) IMU OFF (--no-imu),
-            (3) 9D spin (--enable-spin). All with 2048 envs × 500 steps, random actions.
-Command:    `$C3R_BIN/gpu_lock.sh uv run --active python scripts/perception/nis_diagnostic.py
-             --pi2-checkpoint .../model_best.pt --num_envs 2048 --steps 500 --headless [flags]`
+Change:     Ran nis_diagnostic.py three times on GPU with 2048 envs × 500 steps, random actions.
 Result:     **All three modes functionally identical:**
             | Mode      | NIS   | In-band | EKF mm | Raw mm | Gate rej |
             |-----------|-------|---------|--------|--------|----------|
             | IMU ON    | 0.445 | 2/10    | 6.09   | 3.91   | 0/656k   |
             | IMU OFF   | 0.444 | 2/10    | 5.98   | 3.87   | 0/657k   |
             | 9D Spin   | 0.442 | 2/10    | 5.99   | 3.85   | 2/657k   |
-
-            Key findings:
-            (1) IMU corrections negligible — random actions produce minimal angular velocity.
-                Real hardware with active juggling will have higher ω → IMU matters more there.
-            (2) EKF over-conservative (NIS=0.44 vs target 3.0) — contact-aware q_vel=0.40/50.0
-                inflates Q during frequent paddle contact (ball mostly resting on paddle with
-                random actions, so contact mode dominates). q_vel reduction would help NIS but
-                would break free-flight tracking.
-            (3) Raw noise still outperforms EKF for position (3.9mm vs 6.0mm) — confirms earlier
-                finding that noise acts as regularization for training.
-            (4) 9D spin: 2 gate rejections vs 0 — spin occasionally produces innovation spikes.
-            (5) Detection rate ~80% (20% dropout) consistent across all modes.
-Decision:   GPU NIS validation complete. IMU and spin features validated as non-harmful (no
-            regression) and ready for real hardware where angular velocities are higher. Next:
-            check if policy agent needs perception pipeline changes, or investigate reducing
-            q_vel in free-flight to improve NIS (q_vel=0.40 may be too high for sim).
+            IMU corrections negligible with random actions (low ω). EKF over-conservative
+            (NIS=0.44 vs target 3.0) due to contact-phase Q inflation.
+Decision:   Phase-separated NIS tracking to isolate flight vs contact NIS.
 
 ---
 
@@ -281,21 +176,9 @@ Decision:   GPU NIS validation complete. IMU and spin features validated as non-
 Hypothesis: The low overall NIS=0.44 (iter_049) is dominated by contact-phase Q inflation
             (q_vel_contact=50.0). Separating NIS by phase will reveal whether free-flight
             q_vel=0.40 is well-calibrated independently.
-Change:     Added phase-separated NIS accumulators to BallEKF: _nis_sum_flight/_nis_count_flight
-            and _nis_sum_contact/_nis_count_contact. In update(), NIS is classified by whether
-            ball_z < contact_z_threshold (contact) or >= (flight). When contact_aware=False, all
-            NIS goes to flight bucket. Properties: mean_nis_flight, mean_nis_contact. reset_nis()
-            clears all phase accumulators. PerceptionPipeline.diagnostics now includes
-            mean_nis_flight, mean_nis_contact, nis_count_flight, nis_count_contact.
-            nis_diagnostic.py displays Flight and Contact NIS columns in the per-interval table.
+Change:     Added phase-separated NIS accumulators to BallEKF. PerceptionPipeline.diagnostics
+            now includes mean_nis_flight, mean_nis_contact. nis_diagnostic.py displays columns.
 Command:    `uv run --active python scripts/perception/test_nis_phase.py -v` → 10/10
             Full suite (14 test files): 239/239 pass.
-Result:     **10/10 new tests pass.** 7 test classes: properties, separation (flight-only,
-            contact-only, mixed, contact<flight ordering), reset, no-contact-aware fallback,
-            undetected exclusion, diagnostics keys. Zero regressions.
-            CPU test confirms hypothesis: contact NIS << flight NIS because q_vel_contact=50.0
-            inflates Q massively. GPU validation next iter will give exact numbers.
-Decision:   GPU NIS phase-separated validation next: run nis_diagnostic.py and verify
-            free-flight NIS is closer to 3.0 than the 0.44 overall. If flight NIS is still
-            far from 3.0, q_vel=0.40 needs adjustment. If contact NIS is near 0 (expected),
-            confirms contact-aware Q is working as designed.
+Result:     **10/10 new tests pass.** CPU test confirms contact NIS << flight NIS as expected.
+Decision:   GPU NIS phase-separated validation next: verify free-flight NIS closer to 3.0.

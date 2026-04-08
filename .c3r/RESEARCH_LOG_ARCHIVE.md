@@ -342,3 +342,92 @@ Result:     **NIS=1.598, 10/10 in-band.** EKF RMSE=9.1mm, Raw=7.4mm, detection ~
 Decision:   All Phase 4 sim-side tasks complete. Phase 5 (IMU-aided EKF, spin) nice-to-have.
             Policy agent at iter_014, still on reward shaping. Next: check policy needs or
             propose Phase 5 work.
+
+---
+
+## iter_036 — compaction (summarized iters 019-028)  (2026-04-08T15:00:00Z)
+Hypothesis: N/A — compaction iteration.
+Change:     Archived iters 019-028 verbatim to RESEARCH_LOG_ARCHIVE.md. Expanded compacted
+            summary. Pruned fix_plan.md.
+Command:    No GPU commands.
+Result:     Log shrunk from 310->~120 lines. Archive now has 28 verbatim entries (001-028).
+Decision:   Next: IMU-aided EKF (Phase 5).
+
+---
+
+## iter_037 — IMU-aided EKF: Coriolis + centrifugal corrections (16/16 tests pass)  (2026-04-08T16:30:00Z)
+Hypothesis: Adding Coriolis (-2ω×v) and centrifugal (-ω×(ω×r)) pseudo-force corrections
+            using robot angular velocity will make body-frame EKF physically correct under
+            platform rotation, improving tracking accuracy without requiring world-frame mode.
+Change:     Added `robot_ang_vel_b` parameter to `BallEKF.predict()` and `.step()`.
+            When provided, computes Coriolis + centrifugal accelerations and adds them to the
+            prediction dynamics. Linearised Jacobian F updated. Added `_batch_skew()` helper.
+            Pipeline passes `robot.data.root_ang_vel_b` through to EKF in body-frame mode.
+Command:    `python scripts/perception/test_imu_aided_ekf.py -v` (16 tests)
+            Full suite: 90/90 tests pass.
+Result:     **16/16 new tests pass.** Coriolis/centrifugal magnitudes exact. Multi-step tracking
+            under 1.5 rad/s rotation: pos RMSE <10mm, vel RMSE <0.5 m/s. 90/90 total.
+Decision:   GPU NIS validation of body-frame+IMU vs world-frame next.
+
+---
+
+## iter_038 — 9D spin estimation: Magnus effect EKF extension (25/25 tests, 109/109 total)  (2026-04-08T17:45:00Z)
+Hypothesis: Extending EKF to 9D [pos, vel, spin] with Magnus force dynamics allows spin
+            estimation from trajectory curvature.
+Change:     Added optional `enable_spin` mode to BallEKF. Magnus force: a_M = Cm*(spin×vel).
+            Spin decay: exponential with Stokes viscous torque. Contact-aware: q_spin inflated.
+            All matrices properly sized as D×D where D=6 or 9. 25 tests across 6 classes.
+Command:    `pytest scripts/perception/test_spin_estimation.py -v` → 25/25, full suite 109/109.
+Result:     **25/25 pass.** Magnus direction correct. Cm*ω*v = 0.894 m/s² matches. EKF estimates
+            spin=40 rad/s from curvature alone. Zero regressions.
+Decision:   Wire enable_spin through BallObsNoiseCfg pipeline.
+
+---
+
+## iter_039 — Wire enable_spin + spawn vel-cmd-survey subagent (12/12 new tests, 127/127 total)  (2026-04-08T15:00:00Z)
+Hypothesis: BallObsNoiseCfg.enable_spin should propagate to EKF via PerceptionPipeline.
+Change:     Added enable_spin to BallObsNoiseCfg + PerceptionPipeline. Created test_pipeline_config.py
+            (12 tests). Spawned vel-cmd-survey subagent (sonnet, max 5 iters) per Daniel's request.
+Command:    `pytest scripts/perception/test_*.py` → 127/127 pass.
+Result:     **12/12 new tests pass.** Config propagation verified. vel-cmd-survey spawned.
+Decision:   Monitor vel-cmd-survey. GPU NIS when available.
+
+---
+
+## iter_040 — enable_imu flag + NIS diagnostic flags (5 new tests, 132/132 total)  (2026-04-08T08:10:00Z)
+Hypothesis: Adding enable_imu toggle to BallObsNoiseCfg allows ablation of IMU corrections.
+Change:     Added enable_imu to BallObsNoiseCfg (default True). --no-imu and --enable-spin
+            flags on nis_diagnostic.py. 5 tests added.
+Command:    `pytest scripts/perception/test_*.py` → 132/132 pass.
+Result:     **5/5 new pass.** GPU NIS blocked by policy agent.
+Decision:   Velocity command work (CPU-only) while GPU blocked.
+
+---
+
+## iter_041 — Velocity command modules: UserVelocityInput + CommandMixer (21/21 tests, 153/153 total)  (2026-04-08T09:30:00Z)
+Hypothesis: Method 1 (Direct Override) gives users joystick/keyboard vx/vy control during play.
+Change:     Created vel_cmd/ package: user_velocity_input.py (threaded input), command_mixer.py
+            (override/blend/passthrough modes). 21 tests in 8 classes.
+Command:    `pytest scripts/perception/test_vel_cmd.py -v` → 21/21; full suite 153/153.
+Result:     **21/21 pass.** All blend modes verified. 153/153 total.
+Decision:   Create play_teleop.py integration script.
+
+---
+
+## iter_042 — play_teleop.py integration script (7/7 new tests, 160/160 total)  (2026-04-08T11:00:00Z)
+Hypothesis: Standalone play_teleop.py wires UserVelocityInput + CommandMixer into play loop.
+Change:     Created scripts/rsl_rl/play_teleop.py with backend selection, telemetry, video support.
+            7 integration tests (TestTeleopFlow class).
+Command:    `pytest scripts/perception/test_vel_cmd.py -v` → 28/28; full suite 160/160.
+Result:     **7/7 pass.** 160/160 total. Script ready for use.
+Decision:   Check vel-cmd-survey subagent. Kill if done.
+
+---
+
+## iter_043 — ResidualMixer (Method 2) + kill vel-cmd-survey (16/16 new tests, 176/176 total)  (2026-04-08T16:30:00Z)
+Hypothesis: ResidualMixer (Method 2) provides production velocity command architecture.
+Change:     Killed vel-cmd-survey subagent. Created vel_cmd/residual_mixer.py: ResidualMixer +
+            ResidualMixerCfg. 16 tests in 5 classes.
+Command:    `pytest scripts/perception/test_vel_cmd.py -v` → 44/44; full suite 176/176.
+Result:     **16/16 pass.** Residual adds pi1+user (vs override which discards pi1). 176/176 total.
+Decision:   Policy agent handoff for Method 2 requirements. GPU NIS when available.
