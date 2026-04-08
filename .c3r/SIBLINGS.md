@@ -70,17 +70,39 @@ git show agent/policy:.c3r/SIBLINGS.md
 ## lit-review
 - **role**: generic
 - **focus**: survey perception-for-manipulation papers (ETH noise injection, teacher-student distillation, event cameras, learned state estimators) and critique our D435i+EKF approach
-- **status**: running · iter #0 · ctx 0%
+- **status**: running · iter #3 · ctx 0%
+- **last iter**: 3m ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/lit-review`
 ```
+16c8cf4 iter_003: EKF Q/R tuning + ANEES diagnostic → docs/lit_review_ekf_tuning.md
+ac06c8c iter_002: noise curriculum + latency injection literature → docs/lit_review_noise_curriculum.md
+cfa644b iter_001: literature survey — 8 papers + D435i+EKF critique → docs/lit_review_perception.md
 aab3845 torso tracking edit
 9c4793a pi_2 with v trackign works
-3841f54 working on pi_1 + pi_2
-085e457 frank-proofed requirements.txt
-7256612 added req + install explainer
 ```
 ### Files modified on `agent/lit-review` (relative to `c3r/QuadruJuggle`)
-_(none)_
+```
+.c3r/INBOX.md
+.c3r/INBOX_ARCHIVE.md
+.c3r/PROMPT.md
+.c3r/RESEARCH_LOG.md
+.c3r/SIBLINGS.md
+.c3r/agent.conf
+.c3r/env.sh
+.c3r/fix_plan.md
+.claude/settings.json
+docs/lit_review_ekf_tuning.md
+docs/lit_review_noise_curriculum.md
+docs/lit_review_perception.md
+```
+### Read one with:
+```
+git show agent/lit-review:.c3r/INBOX.md
+git show agent/lit-review:.c3r/INBOX_ARCHIVE.md
+git show agent/lit-review:.c3r/PROMPT.md
+git show agent/lit-review:.c3r/RESEARCH_LOG.md
+git show agent/lit-review:.c3r/SIBLINGS.md
+```
 

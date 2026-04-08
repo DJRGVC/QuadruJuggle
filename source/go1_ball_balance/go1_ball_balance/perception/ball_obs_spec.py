@@ -247,11 +247,14 @@ class PerceptionPipeline:
 
         Returns None if diagnostics are disabled. Otherwise returns a dict
         with keys like 'pos_rmse_ekf', 'pos_rmse_raw', 'vel_rmse_ekf',
-        'detection_rate', 'ekf_improvement_pct'.
+        'detection_rate', 'ekf_improvement_pct', 'mean_nis'.
         """
         if self._diag is None:
             return None
-        return self._diag.summary_and_reset()
+        result = self._diag.summary_and_reset()
+        # Add EKF ANEES diagnostic (resets accumulator)
+        result["mean_nis"] = round(self.ekf.reset_nis(), 3)
+        return result
 
 
 class _PerceptionDiagnostics:

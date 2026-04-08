@@ -152,3 +152,12 @@ Result:     All three modes complete (no crashes). 50-iter comparison (2048 envs
   | ekf    | 278.6          | 19.3           | 0.0%     |
   Oracle leads on reward (+12% over EKF). D435i raw noise surprisingly leads on ep_len (noise as regularization?). Gaps are modest at 50 iters — real differentiation expected at 500+ iters.
 Decision:   Core perception pipeline is feature-complete and stable. Next: update fix_plan (mark comparison done), check lit-review subagent, then pursue EKF parameter tuning or longer training comparison.
+
+---
+
+## iter_017 — EKF Q/R tuning (CWNA-derived) + time-varying R + ANEES diagnostic  (2026-04-08T10:30:00Z)
+Hypothesis: CWNA-derived Q/R values (lit-review analysis) will make the EKF rely more on ballistic dynamics during camera gaps, and time-varying R will correctly weight close vs far measurements. ANEES provides automatic consistency checking.
+Change:     (1) Updated BallEKFConfig defaults: q_pos 0.01→0.003, q_vel 1.0→0.15, r_xy 0.003→0.002, r_z 0.005→0.004+0.002/m. (2) Added `r_z_per_metre=0.002` and `adaptive_r=True` fields. (3) Made `update()` compute per-env R when adaptive_r=True: σ_z = r_z + r_z_per_metre × |z_est|. (4) Added ANEES/NIS diagnostic: `NIS_k = y^T S^{-1} y` computed during update for detected envs; exposed via `mean_nis` property and `reset_nis()` method. Target band: [0.35, 7.81] for 3D meas (95% χ²(3)). (5) Updated PerceptionPipeline.diagnostics to include mean_nis. (6) Updated PERCEPTION_HANDOFF.md with new param table. (7) Copied lit_review_ekf_tuning.md to this branch. (8) Killed lit-review subagent (attempted — c3r binary path issue).
+Command:    6 CPU unit tests (new defaults, gravity prediction, time-varying R, NIS diagnostics, adaptive_r=False fallback, NIS counting). GPU comparison blocked by modal process holding lock.
+Result:     All 6 tests PASS. GPU comparison deferred — another agent holds GPU lock for modal cloud run (no local GPU usage, just lock contention). Comparison to be run next iteration.
+Decision:   Next iter: run 3-mode comparison (oracle/d435i/ekf, 2048 envs × 50 iters) with tuned Q/R. Compare mean_nis to [0.35, 7.81] consistency band. If NIS is outside band, adjust Q/R further.

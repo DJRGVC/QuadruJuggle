@@ -110,12 +110,21 @@ into your branch. The relevant files are:
 | `latency_steps` | 1 | Observation delay |
 
 ### BallEKFConfig (noise_cfg.ekf_cfg)
+
+**Tuned in iter_017** using CWNA model (Bar-Shalom et al. 2001) + lit-review analysis:
+
 | Param | Default | Notes |
 |---|---|---|
-| `process_noise_pos` | 0.01 | Q diagonal for position |
-| `process_noise_vel` | 0.1 | Q diagonal for velocity |
-| `meas_noise_pos` | 0.005 | R diagonal for position |
+| `q_pos` | 0.003 | Position process noise std (m/√s) — CWNA with q_c=0.3 m²/s³ |
+| `q_vel` | 0.15 | Velocity process noise std ((m/s)/√s) — drag uncertainty ~0.3 m/s² |
+| `r_xy` | 0.002 | Measurement noise std, XY (m) — matches D435i sigma_xy_base |
+| `r_z` | 0.004 | Measurement noise std, Z base (m) — 3mm + 2mm/m × 0.5m |
+| `r_z_per_metre` | 0.002 | Additional Z noise std per metre of distance |
+| `adaptive_r` | True | If True, r_z varies with estimated ball height |
 | `drag_coeff` | 0.112 | Quadratic drag (ping-pong ball) |
+
+**ANEES diagnostic**: `ekf.mean_nis` should be ~3.0 (mean of χ²(3)). Band [0.35, 7.81].
+Access via `pipeline.diagnostics["mean_nis"]` when diagnostics enabled.
 
 ## Integration Test Results (iter_010)
 

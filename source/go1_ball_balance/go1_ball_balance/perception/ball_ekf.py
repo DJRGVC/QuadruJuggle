@@ -34,14 +34,16 @@ import torch
 class BallEKFConfig:
     """EKF tuning parameters."""
 
-    # Process noise (how much we distrust the dynamics model)
-    q_pos: float = 0.01     # position process noise std (m) per sqrt(s)
-    q_vel: float = 1.0      # velocity process noise std (m/s) per sqrt(s)
+    # Process noise — CWNA model with q_c ≈ 0.3 m²/s³ (drag uncertainty ~0.3 m/s²)
+    # Ref: Bar-Shalom, Li, Kirubarajan (2001) Ch. 6; lit_review_ekf_tuning.md
+    q_pos: float = 0.003    # position process noise std (m) per sqrt(s)
+    q_vel: float = 0.15     # velocity process noise std (m/s) per sqrt(s)
 
-    # Measurement noise (how much we distrust the camera)
-    # These should roughly match D435iNoiseParams but can be tuned independently.
-    r_xy: float = 0.003     # measurement noise std, XY (m)
-    r_z: float = 0.005      # measurement noise std, Z (m)
+    # Measurement noise — matched to D435iNoiseModelCfg at ~0.5m nominal distance
+    r_xy: float = 0.002     # measurement noise std, XY (m) — matches sigma_xy_base
+    r_z: float = 0.004      # measurement noise std, Z (m) — 3mm base + 2mm/m × 0.5m
+    r_z_per_metre: float = 0.002  # additional Z noise std per metre of distance
+    adaptive_r: bool = True  # if True, r_z varies with estimated ball height
 
     # Drag coefficient: F_drag = -drag_coeff * |v| * v
     # For a 40mm ping-pong ball at low speeds: Cd ≈ 0.4, A = pi*0.02^2,
@@ -91,16 +93,22 @@ class BallEKF:
         self._H[1, 1] = 1.0
         self._H[2, 2] = 1.0
 
-        # Measurement noise R: (3, 3) diagonal
-        self._R = torch.diag(torch.tensor(
+        # Measurement noise R: (3, 3) diagonal (baseline; may be updated per-step)
+        self._R_base = torch.diag(torch.tensor(
             [self.cfg.r_xy**2, self.cfg.r_xy**2, self.cfg.r_z**2],
             device=self.device,
         ))
+        self._R = self._R_base.clone()
 
         # Default gravity vector (used when no body-frame gravity is provided)
         self._gravity_default = torch.tensor(
             [0.0, 0.0, self.cfg.gravity_z], device=self.device
         )
+
+        # ANEES / NIS diagnostic (Bar-Shalom et al. 2001, Ch. 5)
+        # Target: mean NIS ∈ [0.35, 7.81] for 3D measurements (95% χ²(3) band)
+        self._nis_sum = 0.0
+        self._nis_count = 0
 
     # --- Public properties ---
 
@@ -118,6 +126,26 @@ class BallEKF:
     def state(self) -> torch.Tensor:
         """Full state vector (N, 6)."""
         return self._x
+
+    @property
+    def mean_nis(self) -> float:
+        """Average Normalized Innovation Squared (ANEES).
+
+        For a well-tuned EKF with 3D measurements, this should be ~3.0
+        (the mean of χ²(3)). The 95% consistency band is [0.35, 7.81].
+        If consistently > 7.81: Q or R too small (overconfident).
+        If consistently < 0.35: Q or R too large (over-conservative).
+        """
+        if self._nis_count == 0:
+            return 0.0
+        return self._nis_sum / self._nis_count
+
+    def reset_nis(self) -> float:
+        """Return current mean NIS and reset accumulators."""
+        val = self.mean_nis
+        self._nis_sum = 0.0
+        self._nis_count = 0
+        return val
 
     # --- Core EKF operations ---
 
@@ -187,12 +215,22 @@ class BallEKF:
         if not detected.any():
             return
 
+        # Time-varying R: depth noise grows with distance (D435i stereo baseline)
+        if self.cfg.adaptive_r:
+            z_height = self._x[:, 2].abs()  # current Z estimate (N,)
+            sigma_z = self.cfg.r_z + self.cfg.r_z_per_metre * z_height  # (N,)
+            # Build per-env R: (N, 3, 3) diagonal
+            R = self._R_base.unsqueeze(0).expand(self.num_envs, -1, -1).clone()
+            R[:, 2, 2] = sigma_z ** 2
+        else:
+            R = self._R.unsqueeze(0).expand(self.num_envs, -1, -1)
+
         # Innovation: y = z - H @ x = z - pos_predicted
         y = z - self._x[:, :3]  # (N, 3)
 
         # Innovation covariance: S = H @ P @ H^T + R
         # Since H selects the first 3 rows: S = P[:3, :3] + R
-        S = self._P[:, :3, :3] + self._R.unsqueeze(0)  # (N, 3, 3)
+        S = self._P[:, :3, :3] + R  # (N, 3, 3)
 
         # Kalman gain: K = P @ H^T @ S^{-1}
         # P @ H^T = P[:, :, :3] (since H^T has non-zero only in first 3 rows)
@@ -200,6 +238,17 @@ class BallEKF:
         # Regularise S to prevent singular matrices from numerical drift
         S += torch.eye(3, device=self.device).unsqueeze(0) * 1e-8
         K = torch.linalg.solve(S.transpose(-1, -2), PH_T.transpose(-1, -2)).transpose(-1, -2)  # (N, 6, 3)
+
+        # ANEES / NIS diagnostic: NIS_k = y^T S^{-1} y (scalar per env)
+        # For correctly-tuned EKF: mean NIS ∈ [0.35, 7.81] (95% χ²(3) band)
+        if detected.any():
+            y_det = y[detected]  # (M, 3)
+            S_det = S[detected]  # (M, 3, 3)
+            # S_inv @ y via solve (reuses factored S)
+            S_inv_y = torch.linalg.solve(S_det, y_det.unsqueeze(-1))  # (M, 3, 1)
+            nis = torch.bmm(y_det.unsqueeze(1), S_inv_y).squeeze()  # (M,)
+            self._nis_sum += nis.sum().item()
+            self._nis_count += nis.numel()
 
         # State update: x = x + K @ y (only for detected envs)
         dx = torch.bmm(K, y.unsqueeze(-1)).squeeze(-1)  # (N, 6)
