@@ -195,15 +195,11 @@ def _bj_set_params(
             term_cfg.params["vel_xy_std"] = vel_xy_std
     # Also update scalar fallbacks in reward params (used if per-env buffers not yet created)
     mid = (target_min + target_max) / 2.0
-    # Dynamic ball_low threshold: 40% of current target height forces ball to bounce meaningfully.
-    # At Stage A (target=0.05m): threshold=0.02m. At Stage E (0.25m): threshold=0.10m.
-    ball_low_threshold = 0.4 * mid
     for i, name in enumerate(rl_env.reward_manager._term_names):
         if name == "ball_apex_height":
             rl_env.reward_manager._term_cfgs[i].params["target_height"] = mid
             rl_env.reward_manager._term_cfgs[i].params["std"] = mid / sigma_ratio
-        elif name == "ball_low":
-            rl_env.reward_manager._term_cfgs[i].params["low_threshold"] = ball_low_threshold
+            break
     # Update noise scale on perception obs terms (only active in d435i mode)
     _bj_set_noise_scale(rl_env, noise_scale)
 
@@ -215,12 +211,11 @@ def _bj_apply_stage(rl_env, stage_idx: int) -> None:
         tgt_str = f"target={tgt_min:.2f} m (fixed)"
     else:
         tgt_str = f"target=[{tgt_min:.2f}, {tgt_max:.2f}] m"
-    low_thr = 0.4 * (tgt_min + tgt_max) / 2.0
     print(
         f"\n[HIER-JUGGLE-CURRICULUM] Stage {stage_idx}/{len(_BJ_STAGES) - 1}  "
         f"{tgt_str}  σ_ratio={sigma_ratio:.1f}  "
         f"xy_std={xy_std:.3f} m  vel_xy={vel_xy_std:.3f} m/s  "
-        f"noise_scale={noise_scale:.2f}  ball_low_thr={low_thr:.3f} m\n"
+        f"noise_scale={noise_scale:.2f}\n"
     )
 
 

@@ -377,7 +377,7 @@ class RewardsCfg:
 
     ball_low = RewTerm(
         func=mdp.ball_low_penalty,
-        weight=-1.0,
+        weight=-2.0,  # was -1.0; -2.0 makes passive balance earn alive(1)-penalty(2)=-1/step
         params={
             "low_threshold": 0.03,
             "ball_cfg": SceneEntityCfg("ball"),
