@@ -78,6 +78,15 @@ class BallObsNoiseCfg:
     d435i: D435iNoiseParams = field(default_factory=D435iNoiseParams)
     """D435i noise parameters (only used when mode="d435i")."""
 
+    noise_scale: float = 1.0
+    """Multiplicative scale applied to all D435i noise std and dropout parameters.
+
+    0.0 = silent (oracle-equivalent even in d435i mode).
+    1.0 = full noise as specified by d435i params.
+    Values in between allow gradual noise curriculum scheduling.
+    The scale applies to: sigma_xy_base, sigma_z_base, sigma_z_per_metre, dropout_prob.
+    """
+
 
 # ---------------------------------------------------------------------------
 # Internal: oracle ball state (same math as observations.py)
@@ -147,7 +156,7 @@ def ball_pos_perceived(
         return pos_b
 
     if noise_cfg.mode == "d435i":
-        return _apply_d435i_pos_noise(pos_b, noise_cfg.d435i)
+        return _apply_d435i_pos_noise(pos_b, noise_cfg.d435i, noise_cfg.noise_scale)
 
     if noise_cfg.mode == "ekf":
         raise NotImplementedError(
@@ -179,7 +188,7 @@ def ball_vel_perceived(
         return vel_b
 
     if noise_cfg.mode == "d435i":
-        return _apply_d435i_vel_noise(vel_b, noise_cfg.d435i)
+        return _apply_d435i_vel_noise(vel_b, noise_cfg.d435i, noise_cfg.noise_scale)
 
     if noise_cfg.mode == "ekf":
         raise NotImplementedError(
@@ -196,6 +205,7 @@ def ball_vel_perceived(
 def _apply_d435i_pos_noise(
     pos_b: torch.Tensor,
     params: D435iNoiseParams,
+    scale: float = 1.0,
 ) -> torch.Tensor:
     """Apply D435i-style structured noise to ball position in paddle frame.
 
@@ -209,21 +219,25 @@ def _apply_d435i_pos_noise(
     device = pos_b.device
     N = pos_b.shape[0]
 
+    if scale <= 0.0:
+        return pos_b
+
     # XY noise (lateral, from pixel quantisation + IR pattern matching)
-    xy_noise = torch.randn(N, 2, device=device) * params.sigma_xy_base
+    xy_noise = torch.randn(N, 2, device=device) * (params.sigma_xy_base * scale)
 
     # Z noise (depth, distance-dependent)
     z_dist = pos_b[:, 2].abs()  # distance along z in paddle frame
-    sigma_z = params.sigma_z_base + params.sigma_z_per_metre * z_dist
+    sigma_z = (params.sigma_z_base + params.sigma_z_per_metre * z_dist) * scale
     z_noise = torch.randn(N, device=device) * sigma_z
 
     noise = torch.stack([xy_noise[:, 0], xy_noise[:, 1], z_noise], dim=-1)
 
     # Dropout: zero the noise for dropped frames (position freezes at GT
     # for now; proper hold-last-value requires EKF state buffer)
-    if params.dropout_prob > 0:
+    dropout_prob = params.dropout_prob * scale
+    if dropout_prob > 0:
         dropout_mask = (
-            torch.rand(N, device=device) < params.dropout_prob
+            torch.rand(N, device=device) < dropout_prob
         ).unsqueeze(-1)
         # On dropout, return GT (no noise) — conservative stub.
         # Full pipeline will hold last EKF estimate instead.
@@ -235,6 +249,7 @@ def _apply_d435i_pos_noise(
 def _apply_d435i_vel_noise(
     vel_b: torch.Tensor,
     params: D435iNoiseParams,
+    scale: float = 1.0,
 ) -> torch.Tensor:
     """Apply noise to ball velocity estimate.
 
@@ -255,13 +270,17 @@ def _apply_d435i_vel_noise(
     sigma_vel_xy = (2 ** 0.5) * params.sigma_xy_base / dt_camera
     sigma_vel_z = (2 ** 0.5) * params.sigma_z_base / dt_camera
 
-    noise = torch.zeros_like(vel_b)
-    noise[:, :2] = torch.randn(N, 2, device=device) * sigma_vel_xy
-    noise[:, 2] = torch.randn(N, device=device) * sigma_vel_z
+    if scale <= 0.0:
+        return vel_b
 
-    if params.dropout_prob > 0:
+    noise = torch.zeros_like(vel_b)
+    noise[:, :2] = torch.randn(N, 2, device=device) * (sigma_vel_xy * scale)
+    noise[:, 2] = torch.randn(N, device=device) * (sigma_vel_z * scale)
+
+    dropout_prob = params.dropout_prob * scale
+    if dropout_prob > 0:
         dropout_mask = (
-            torch.rand(N, device=device) < params.dropout_prob
+            torch.rand(N, device=device) < dropout_prob
         ).unsqueeze(-1)
         noise = noise * (~dropout_mask).float()
 

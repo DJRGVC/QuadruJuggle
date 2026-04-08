@@ -124,23 +124,23 @@ torch.backends.cudnn.benchmark = False
 # By Stage P the full [0.30, 1.00] range is active.  σ = target / sigma_ratio
 # per env, maintaining the target/σ invariant regardless of sampled height.
 _BJ_STAGES = [
-    # tgt_min  tgt_max  σ_ratio  xy_std  vel_xy_std
-    (0.05,     0.05,    2.0,     0.020,  0.00),   # A  — bootstrap bounce, fixed
-    (0.10,     0.10,    2.5,     0.022,  0.00),   # B  — fixed
-    (0.15,     0.15,    2.5,     0.025,  0.00),   # C  — fixed
-    (0.20,     0.20,    2.5,     0.028,  0.00),   # D  — fixed
-    (0.25,     0.25,    2.5,     0.030,  0.00),   # E  — fixed
-    (0.30,     0.30,    2.5,     0.033,  0.00),   # F  — fixed
-    (0.36,     0.36,    2.5,     0.036,  0.00),   # G  — fixed
-    (0.42,     0.42,    2.5,     0.040,  0.00),   # H  — fixed
-    (0.30,     0.48,    2.5,     0.045,  0.02),   # I  — range begins, lateral vel
-    (0.30,     0.55,    2.5,     0.050,  0.04),   # J
-    (0.30,     0.62,    2.5,     0.055,  0.06),   # K
-    (0.30,     0.70,    2.5,     0.060,  0.08),   # L
-    (0.30,     0.78,    2.5,     0.068,  0.10),   # M
-    (0.30,     0.86,    2.5,     0.075,  0.12),   # N
-    (0.30,     0.92,    2.5,     0.082,  0.15),   # O
-    (0.30,     1.00,    2.5,     0.090,  0.18),   # P  — full range
+    # tgt_min  tgt_max  σ_ratio  xy_std  vel_xy_std  noise_scale
+    (0.05,     0.05,    2.0,     0.020,  0.00,       0.00),  # A  — oracle, bootstrap bounce
+    (0.10,     0.10,    2.5,     0.022,  0.00,       0.00),  # B  — oracle
+    (0.15,     0.15,    2.5,     0.025,  0.00,       0.00),  # C  — oracle
+    (0.20,     0.20,    2.5,     0.028,  0.00,       0.25),  # D  — 25% d435i noise
+    (0.25,     0.25,    2.5,     0.030,  0.00,       0.50),  # E  — 50% d435i noise
+    (0.30,     0.30,    2.5,     0.033,  0.00,       0.75),  # F  — 75% d435i noise
+    (0.36,     0.36,    2.5,     0.036,  0.00,       1.00),  # G  — full d435i noise
+    (0.42,     0.42,    2.5,     0.040,  0.00,       1.00),  # H  — full d435i noise
+    (0.30,     0.48,    2.5,     0.045,  0.02,       1.00),  # I  — range begins + lateral vel
+    (0.30,     0.55,    2.5,     0.050,  0.04,       1.00),  # J
+    (0.30,     0.62,    2.5,     0.055,  0.06,       1.00),  # K
+    (0.30,     0.70,    2.5,     0.060,  0.08,       1.00),  # L
+    (0.30,     0.78,    2.5,     0.068,  0.10,       1.00),  # M
+    (0.30,     0.86,    2.5,     0.075,  0.12,       1.00),  # N
+    (0.30,     0.92,    2.5,     0.082,  0.15,       1.00),  # O
+    (0.30,     1.00,    2.5,     0.090,  0.18,       1.00),  # P  — full range, full noise
 ]
 _BJ_THRESHOLD      = 0.75
 _BJ_APEX_THRESHOLD = 2.0     # was 5.0; lowered to let curriculum advance past Stage D plateau
@@ -156,12 +156,23 @@ class EarlyStopException(Exception):
     pass
 
 
+def _bj_set_noise_scale(rl_env, noise_scale: float) -> None:
+    """Update noise_scale on ball_pos / ball_vel obs term params (in-place)."""
+    obs_group = getattr(rl_env.observation_manager, "_group_obs_term_cfgs", {})
+    for _group, term_cfgs in obs_group.items():
+        for cfg in term_cfgs:
+            params = getattr(cfg, "params", None) or {}
+            noise_cfg = params.get("noise_cfg")
+            if noise_cfg is not None and hasattr(noise_cfg, "noise_scale"):
+                noise_cfg.noise_scale = noise_scale
+
+
 def _bj_set_params(
     rl_env,
     target_min: float, target_max: float, sigma_ratio: float,
-    xy_std: float, vel_xy_std: float,
+    xy_std: float, vel_xy_std: float, noise_scale: float = 1.0,
 ) -> None:
-    """Write per-env target range and event params directly."""
+    """Write per-env target range, event params, and noise scale directly."""
     # Update the randomize_target_apex event params
     for term_cfg in rl_env.event_manager._mode_term_cfgs.get("reset", []):
         if hasattr(term_cfg, "params") and "target_min" in (term_cfg.params or {}):
@@ -179,11 +190,13 @@ def _bj_set_params(
             rl_env.reward_manager._term_cfgs[i].params["target_height"] = mid
             rl_env.reward_manager._term_cfgs[i].params["std"] = mid / sigma_ratio
             break
+    # Update noise scale on perception obs terms (only active in d435i mode)
+    _bj_set_noise_scale(rl_env, noise_scale)
 
 
 def _bj_apply_stage(rl_env, stage_idx: int) -> None:
-    tgt_min, tgt_max, sigma_ratio, xy_std, vel_xy_std = _BJ_STAGES[stage_idx]
-    _bj_set_params(rl_env, tgt_min, tgt_max, sigma_ratio, xy_std, vel_xy_std)
+    tgt_min, tgt_max, sigma_ratio, xy_std, vel_xy_std, noise_scale = _BJ_STAGES[stage_idx]
+    _bj_set_params(rl_env, tgt_min, tgt_max, sigma_ratio, xy_std, vel_xy_std, noise_scale)
     if tgt_min == tgt_max:
         tgt_str = f"target={tgt_min:.2f} m (fixed)"
     else:
@@ -191,7 +204,8 @@ def _bj_apply_stage(rl_env, stage_idx: int) -> None:
     print(
         f"\n[HIER-JUGGLE-CURRICULUM] Stage {stage_idx}/{len(_BJ_STAGES) - 1}  "
         f"{tgt_str}  σ_ratio={sigma_ratio:.1f}  "
-        f"xy_std={xy_std:.3f} m  vel_xy={vel_xy_std:.3f} m/s\n"
+        f"xy_std={xy_std:.3f} m  vel_xy={vel_xy_std:.3f} m/s  "
+        f"noise_scale={noise_scale:.2f}\n"
     )
 
 
@@ -245,6 +259,7 @@ def _bj_install_curriculum(runner, start_stage: int = 0) -> None:
                 sigma_ratio = o[2] + alpha * (n[2] - o[2]),
                 xy_std      = o[3] + alpha * (n[3] - o[3]),
                 vel_xy_std  = o[4] + alpha * (n[4] - o[4]),
+                noise_scale = o[5] + alpha * (n[5] - o[5]),
             )
             if state["trans_iter"] >= _BJ_TRANSITION:
                 state["old_stage"] = None
@@ -293,7 +308,8 @@ def _bj_install_curriculum(runner, start_stage: int = 0) -> None:
                     f"\n[HIER-JUGGLE-CURRICULUM] Stage {s-1}→{s} ({_STAGE_LETTERS[s-1]}→{label})  "
                     f"blending over {_BJ_TRANSITION} iters  "
                     f"{tgt_str}  σ_ratio={n[2]:.1f}  "
-                    f"xy={n[3]:.3f} m  vel_xy={n[4]:.3f} m/s\n"
+                    f"xy={n[3]:.3f} m  vel_xy={n[4]:.3f} m/s  "
+                    f"noise_scale={n[5]:.2f}\n"
                 )
 
         # ── early stopping ─────────────────────────────────────────────────────
