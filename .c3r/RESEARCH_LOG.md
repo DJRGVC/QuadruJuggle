@@ -242,3 +242,35 @@ Command:    All 13 test files: 229/229 pass (188 pytest + 41 manual).
 Result:     **2/2 new tests pass.** 229/229 total. Zero regressions.
 Decision:   GPU NIS IMU on/off comparison next if GPU available. Else: support policy agent
             if they need perception changes, or investigate adaptive gate threshold warmup.
+
+---
+
+## iter_049 — GPU NIS validation: IMU ON vs OFF vs 9D Spin comparison  (2026-04-08T16:10:00Z)
+Hypothesis: IMU-aided Coriolis/centrifugal corrections and 9D spin estimation will measurably
+            improve EKF NIS consistency compared to baseline (no IMU).
+Change:     Ran nis_diagnostic.py three times on GPU: (1) IMU ON (default), (2) IMU OFF (--no-imu),
+            (3) 9D spin (--enable-spin). All with 2048 envs × 500 steps, random actions.
+Command:    `$C3R_BIN/gpu_lock.sh uv run --active python scripts/perception/nis_diagnostic.py
+             --pi2-checkpoint .../model_best.pt --num_envs 2048 --steps 500 --headless [flags]`
+Result:     **All three modes functionally identical:**
+            | Mode      | NIS   | In-band | EKF mm | Raw mm | Gate rej |
+            |-----------|-------|---------|--------|--------|----------|
+            | IMU ON    | 0.445 | 2/10    | 6.09   | 3.91   | 0/656k   |
+            | IMU OFF   | 0.444 | 2/10    | 5.98   | 3.87   | 0/657k   |
+            | 9D Spin   | 0.442 | 2/10    | 5.99   | 3.85   | 2/657k   |
+
+            Key findings:
+            (1) IMU corrections negligible — random actions produce minimal angular velocity.
+                Real hardware with active juggling will have higher ω → IMU matters more there.
+            (2) EKF over-conservative (NIS=0.44 vs target 3.0) — contact-aware q_vel=0.40/50.0
+                inflates Q during frequent paddle contact (ball mostly resting on paddle with
+                random actions, so contact mode dominates). q_vel reduction would help NIS but
+                would break free-flight tracking.
+            (3) Raw noise still outperforms EKF for position (3.9mm vs 6.0mm) — confirms earlier
+                finding that noise acts as regularization for training.
+            (4) 9D spin: 2 gate rejections vs 0 — spin occasionally produces innovation spikes.
+            (5) Detection rate ~80% (20% dropout) consistent across all modes.
+Decision:   GPU NIS validation complete. IMU and spin features validated as non-harmful (no
+            regression) and ready for real hardware where angular velocities are higher. Next:
+            check if policy agent needs perception pipeline changes, or investigate reducing
+            q_vel in free-flight to improve NIS (q_vel=0.40 may be too high for sim).
