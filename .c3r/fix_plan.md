@@ -18,5 +18,7 @@
 - [x] Run debug_d435i_capture.py smoke test when GPU is free — verified: RGB + depth frames saved to perception/debug/ (grey/black in headless, but pipeline works end-to-end)
 - [x] Read Forrai et al. 2023 (event-based ANYmal badminton paper) if available in the repo, summarize their architectural choices in perception/REFERENCES.md, and flag the sensor-modality differences relative to our D435i — SKIPPED: paper not in repo; wrote REFERENCES.md with Ma et al. (primary ref), Ji et al., Portela et al., and noted Forrai modality differences
 - [x] Implement ball_ekf.py — batched 6-state (pos+vel) Kalman filter in PyTorch, ballistic+drag dynamics model, runs on GPU across all envs
-- [ ] Implement noise_model.py — D435i-structured noise sampling (depth-dependent σ, dropout, latency) consumed by ball_obs_spec.py d435i mode
-- [ ] Integration test: wire ball_obs_spec.py (d435i mode) + ball_ekf.py into ball_juggle_hier obs pipeline; run short training with oracle baseline comparison
+- [x] Implement noise_model.py — D435i-structured noise sampling (depth-dependent σ, dropout, latency) consumed by ball_obs_spec.py d435i mode
+- [x] Wire EKF mode into ball_obs_spec.py — PerceptionPipeline class (noise→EKF→filtered obs), lazy init on env, reset event, idempotent step dedup
+- [ ] Integration test: swap ball_juggle_hier obs to mode="ekf", run short training (50-100 iters), compare mean_episode_length vs oracle baseline
+- [ ] Handoff to policy agent: document how to enable EKF mode in env_cfg (swap noise_cfg, add reset event), provide example config diff

@@ -74,3 +74,12 @@ Change:     (1) Fixed prim path: `Robot/base/D435i` → `Robot/trunk/D435i` (Go1
 Command:    `uv run --active python scripts/perception/debug_d435i_capture.py --task Isaac-BallJuggleHier-Go1-Play-v0 --num_envs 1 --headless --enable_cameras --steps 20`
 Result:     Camera successfully instantiated in scene (`d435i` in entity list). RGB (640×480) and depth frames saved to `perception/debug/`. Images are grey/black because: (a) headless mode shows only dome light in upward view, (b) pi2 step fails (obs dim mismatch 41 vs 53 — the TiledCamera adds obs to pi2 that the frozen checkpoint doesn't expect). Key finding: adding a camera sensor changes the scene entity count, which may affect pi2 obs dimension if not isolated properly.
 Decision:   Next iter: wire EKF into ball_obs_spec.py "ekf" mode — this is the main deliverable. The camera is a debug tool; the EKF pipeline is what pi1 training needs.
+
+---
+
+## iter_009 — noise_model.py + EKF mode wired into ball_obs_spec.py  (2026-04-08T03:45:00Z)
+Hypothesis: A stateful D435iNoiseModel (latency buffer, hold-last-value dropout) combined with BallEKF, exposed via PerceptionPipeline class in ball_obs_spec.py's "ekf" mode, completes the GT→noise→EKF→obs pipeline.
+Change:     (1) Created `perception/noise_model.py` — `D435iNoiseModel` class with depth-dependent noise, proper hold-last-value on dropout (not GT passthrough), configurable latency buffer (deque). (2) Added `PerceptionPipeline` class to `ball_obs_spec.py` — wraps D435iNoiseModel + BallEKF, lazy-initialized on `env._perception_pipeline`, idempotent step dedup via `env.common_step_counter`. (3) Implemented "ekf" mode in both `ball_pos_perceived` and `ball_vel_perceived`. (4) Added `reset_perception_pipeline()` EventTerm-compatible function for env reset. (5) Updated `__init__.py` exports.
+Command:    AST parse (OK). CPU unit tests for noise_model: 4/4 pass (sampling stats, dropout hold, latency buffer, reset).
+Result:     Full pipeline code complete. The "ekf" mode in ball_obs_spec.py now chains: GT pos → D435iNoiseModel.sample() → (noisy_pos, detected) → BallEKF.step() → filtered pos/vel. Drop-in usage: change `BallObsNoiseCfg(mode="oracle")` to `BallObsNoiseCfg(mode="ekf")` and add `reset_perception_pipeline` EventTerm. No sim test yet (requires GPU + Isaac Lab env).
+Decision:   Next iter: integration test — modify ball_juggle_hier env_cfg to use mode="ekf", run 50-iter smoke test with GPU, verify mean_episode_length is reasonable (some degradation expected vs oracle).

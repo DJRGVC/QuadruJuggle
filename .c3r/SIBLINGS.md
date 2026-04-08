@@ -25,16 +25,35 @@ Siblings will see it in their next SIBLINGS.md refresh.
 ## policy
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
-- **status**: running · iter #0 · ctx 0%
+- **status**: running · iter #1 · ctx 0%
+- **last iter**: 22m ago
 
 ### Recent commits on `agent/policy`
 ```
+20cc01f iter_002: fix pi2 obs dim (41→53D auto-detect) + 500-iter oracle baseline
+b0c014c iter_001: oracle pi1 baseline (500 iter, Stage D, mean_len=1470)
 aab3845 torso tracking edit
 9c4793a pi_2 with v trackign works
 3841f54 working on pi_1 + pi_2
-085e457 frank-proofed requirements.txt
-7256612 added req + install explainer
 ```
 ### Files modified on `agent/policy` (relative to `c3r/QuadruJuggle`)
-_(none)_
+```
+.c3r/INBOX.md
+.c3r/PROMPT.md
+.c3r/RESEARCH_LOG.md
+.c3r/SIBLINGS.md
+.c3r/agent.conf
+.c3r/env.sh
+.c3r/fix_plan.md
+.claude/settings.json
+source/go1_ball_balance/go1_ball_balance/tasks/torso_tracking/action_term.py
+```
+### Read one with:
+```
+git show agent/policy:.c3r/INBOX.md
+git show agent/policy:.c3r/PROMPT.md
+git show agent/policy:.c3r/RESEARCH_LOG.md
+git show agent/policy:.c3r/SIBLINGS.md
+git show agent/policy:.c3r/agent.conf
+```
 

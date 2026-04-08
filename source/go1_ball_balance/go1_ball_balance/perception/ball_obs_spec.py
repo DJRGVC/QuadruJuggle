@@ -39,6 +39,9 @@ import isaaclab.utils.math as math_utils
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 
+from .ball_ekf import BallEKF, BallEKFConfig
+from .noise_model import D435iNoiseModel, D435iNoiseModelCfg
+
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
@@ -77,6 +80,107 @@ class BallObsNoiseCfg:
 
     d435i: D435iNoiseParams = field(default_factory=D435iNoiseParams)
     """D435i noise parameters (only used when mode="d435i")."""
+
+    noise_model_cfg: D435iNoiseModelCfg = field(default_factory=D435iNoiseModelCfg)
+    """Stateful noise model config (used when mode="ekf")."""
+
+    ekf_cfg: BallEKFConfig = field(default_factory=BallEKFConfig)
+    """EKF config (used when mode="ekf")."""
+
+    policy_dt: float = 0.02
+    """Policy step period in seconds (50Hz default). Used by EKF predict step."""
+
+
+# ---------------------------------------------------------------------------
+# Perception pipeline: stateful noise + EKF (lazy-initialized on env)
+# ---------------------------------------------------------------------------
+
+class PerceptionPipeline:
+    """Stateful perception pipeline: D435i noise model → EKF → filtered state.
+
+    Attached to the env object as ``env._perception_pipeline`` on first use.
+    Manages noise model and EKF instances, handles resets, and provides
+    filtered position and velocity estimates.
+    """
+
+    def __init__(
+        self,
+        num_envs: int,
+        device: str | torch.device,
+        noise_cfg: BallObsNoiseCfg,
+    ):
+        self.num_envs = num_envs
+        self.device = torch.device(device)
+        self.cfg = noise_cfg
+
+        self.noise_model = D435iNoiseModel(
+            num_envs=num_envs,
+            device=device,
+            cfg=noise_cfg.noise_model_cfg,
+        )
+        self.ekf = BallEKF(
+            num_envs=num_envs,
+            device=device,
+            cfg=noise_cfg.ekf_cfg,
+        )
+
+        # Track which step we're on (for deduplication within a single step)
+        self._last_step_count = -1
+
+    def step(
+        self,
+        gt_pos_b: torch.Tensor,
+        env_step_count: int,
+    ) -> None:
+        """Run one noise→EKF cycle. Idempotent within a single env step.
+
+        Called by both ball_pos_perceived and ball_vel_perceived; only
+        runs the actual predict+update once per step.
+        """
+        if env_step_count == self._last_step_count:
+            return  # already ran this step (pos called before vel)
+
+        self._last_step_count = env_step_count
+
+        # Generate noisy measurement
+        noisy_pos, detected = self.noise_model.sample(gt_pos_b)
+
+        # EKF predict + update
+        self.ekf.step(noisy_pos, detected, dt=self.cfg.policy_dt)
+
+    def reset(
+        self,
+        env_ids: torch.Tensor,
+        init_pos: torch.Tensor,
+        init_vel: torch.Tensor | None = None,
+    ) -> None:
+        """Reset noise model and EKF for specified environments."""
+        self.noise_model.reset(env_ids, init_pos)
+        self.ekf.reset(env_ids, init_pos, init_vel)
+
+    @property
+    def pos(self) -> torch.Tensor:
+        """EKF-filtered ball position estimate (N, 3)."""
+        return self.ekf.pos
+
+    @property
+    def vel(self) -> torch.Tensor:
+        """EKF-filtered ball velocity estimate (N, 3)."""
+        return self.ekf.vel
+
+
+def _get_or_create_pipeline(
+    env: "ManagerBasedRLEnv",
+    noise_cfg: BallObsNoiseCfg,
+) -> PerceptionPipeline:
+    """Get or lazily create the PerceptionPipeline on the env object."""
+    if not hasattr(env, "_perception_pipeline") or env._perception_pipeline is None:
+        env._perception_pipeline = PerceptionPipeline(
+            num_envs=env.num_envs,
+            device=env.device,
+            noise_cfg=noise_cfg,
+        )
+    return env._perception_pipeline
 
 
 # ---------------------------------------------------------------------------
@@ -150,9 +254,9 @@ def ball_pos_perceived(
         return _apply_d435i_pos_noise(pos_b, noise_cfg.d435i)
 
     if noise_cfg.mode == "ekf":
-        raise NotImplementedError(
-            "EKF noise mode not yet implemented — coming in a future iteration."
-        )
+        pipeline = _get_or_create_pipeline(env, noise_cfg)
+        pipeline.step(pos_b, env.common_step_counter)
+        return pipeline.pos.clone()
 
     raise ValueError(f"Unknown noise mode: {noise_cfg.mode!r}")
 
@@ -182,9 +286,13 @@ def ball_vel_perceived(
         return _apply_d435i_vel_noise(vel_b, noise_cfg.d435i)
 
     if noise_cfg.mode == "ekf":
-        raise NotImplementedError(
-            "EKF noise mode not yet implemented — coming in a future iteration."
+        pipeline = _get_or_create_pipeline(env, noise_cfg)
+        # step() is idempotent — if pos was called first, this is a no-op
+        pipeline.step(
+            _ball_pos_paddle_frame_gt(env, ball_cfg, robot_cfg, (0.0, 0.0, 0.070)),
+            env.common_step_counter,
         )
+        return pipeline.vel.clone()
 
     raise ValueError(f"Unknown noise mode: {noise_cfg.mode!r}")
 
@@ -266,3 +374,39 @@ def _apply_d435i_vel_noise(
         noise = noise * (~dropout_mask).float()
 
     return vel_b + noise
+
+
+# ---------------------------------------------------------------------------
+# Reset event for EKF pipeline (call from env_cfg reset events)
+# ---------------------------------------------------------------------------
+
+def reset_perception_pipeline(
+    env: "ManagerBasedRLEnv",
+    env_ids: torch.Tensor,
+    ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    paddle_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.070),
+) -> None:
+    """Reset the perception pipeline (noise model + EKF) for reset environments.
+
+    Add this as an EventTerm in the env_cfg reset events when using mode="ekf"::
+
+        reset_perception = EventTerm(
+            func=reset_perception_pipeline,
+            mode="reset",
+            params={
+                "ball_cfg": SceneEntityCfg("ball"),
+                "robot_cfg": SceneEntityCfg("robot"),
+                "paddle_offset_b": _PADDLE_OFFSET_B,
+            },
+        )
+    """
+    pipeline: PerceptionPipeline | None = getattr(env, "_perception_pipeline", None)
+    if pipeline is None:
+        return  # pipeline not yet created (oracle mode or first step)
+
+    # Get current ball position in paddle frame for these envs
+    pos_b = _ball_pos_paddle_frame_gt(env, ball_cfg, robot_cfg, paddle_offset_b)
+    vel_b = _ball_vel_paddle_frame_gt(env, ball_cfg, robot_cfg)
+
+    pipeline.reset(env_ids, pos_b[env_ids], vel_b[env_ids])
