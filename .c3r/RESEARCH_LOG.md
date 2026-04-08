@@ -217,3 +217,22 @@ Change:     (1) Added `robot_acc_b` parameter to `BallEKF.predict()` and `step()
 Command:    4 CPU unit tests (torch only, no Isaac Lab). AST parse both files.
 Result:     All 4 tests PASS. Compensation produces correct physics: 5 m/s² robot acc → 1mm position delta over 0.02s (matches 0.5 * a * dt²). GPU validation blocked (policy agent holds lock). PERCEPTION_HANDOFF.md now clearly states d435i for training, EKF for deployment only.
 Decision:   Next iter: run NIS diagnostic with acceleration compensation enabled (256 envs × 100 steps). This is the critical validation — if NIS drops from 966 to near 3.0, the EKF is viable for deployment. If still high, the issue may be rotational pseudo-forces (Coriolis/centrifugal) which need separate modeling.
+
+---
+
+## iter_022b — NIS diagnostic with accel compensation: still broken (rotational pseudo-forces)  (2026-04-08T23:30:00Z)
+Hypothesis: Body-frame linear acceleration compensation (robot_acc_b) will reduce NIS from 966 to near 3.0 by removing the dominant pseudo-force term.
+Change:     (no code change — used iter_022 code to run GPU diagnostic)
+Command:    `gpu_lock.sh uv run --active python scripts/perception/nis_diagnostic.py --pi2-checkpoint .../model_best.pt --num_envs 256 --steps 100 --log_interval 10 --headless`
+Result:     **NIS = 1025** (was 966 without compensation). Linear acceleration compensation has negligible effect. EKF RMSE = 130mm vs raw = 4.4mm — identical to iter_021.
+  Root cause analysis: the EKF operates in the body (paddle) frame — a ROTATING non-inertial frame. Linear acceleration is only one pseudo-force term. The dominant terms are ROTATIONAL:
+  - Coriolis: -2ω×v (at ω=5 rad/s, v=1 m/s → 10 m/s²)
+  - Centrifugal: -ω×(ω×r) (at ω=5 rad/s, r=0.1m → 2.5 m/s²)
+  - Euler: -dω/dt×r (angular acceleration)
+  With random actions, trunk ω can reach 5+ rad/s → rotational pseudo-forces dominate.
+  Fundamental issue: ball follows ballistic dynamics in WORLD frame, not body frame. The EKF's dynamics model is structurally wrong for a rotating reference frame.
+Decision:   **EKF in body-frame is fundamentally incompatible with training.** Two options for deployment:
+  (A) Run EKF in world frame (requires camera-to-world transform from IMU — natural for real robot)
+  (B) Add full non-inertial dynamics (Coriolis+centrifugal+Euler) — complex, error-prone
+  Option A is cleaner. For training, d435i raw noise is confirmed as the right approach.
+  Next iter: either (1) implement world-frame EKF option for deployment, or (2) consider this module done and focus on other perception tasks (real camera integration, detection pipeline).
