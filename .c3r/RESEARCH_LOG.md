@@ -87,3 +87,25 @@ Decision:   Oracle baseline is now solid. Proceed to fix_plan Task 3: write comp
             eval infrastructure. Also flag that longer training (>500 iters) may be needed
             to advance past Stage D — the apex reward is plateauing at ~3/5. Consider
             running 1000-iter warm-start from iter_003 checkpoint in a future iteration.
+
+## iter_004 — integrate perception ball_obs_spec.py + smoke test d435i  (2026-04-08T03:50Z)
+Hypothesis: Swapping the oracle obs terms for perception's `ball_pos_perceived` / `ball_vel_perceived` (in oracle mode) will produce identical training behavior, and d435i mode will run without errors.
+Change:     (1) Copied perception's ball_obs_spec.py, ball_ekf.py, __init__.py to local branch.
+            (2) Replaced ball_pos/ball_vel ObsTerms in ball_juggle_hier_env_cfg.py with
+            `ball_pos_perceived` / `ball_vel_perceived` (default: oracle mode).
+            (3) Added `--noise-mode oracle|d435i` CLI flag to train_juggle_hier.py.
+            (4) Reinstalled go1_ball_balance package.
+Command:    # Smoke test oracle:
+            $C3R_BIN/gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+              --task Isaac-BallJuggleHier-Go1-v0 \
+              --pi2-checkpoint .../2026-03-12_09-04-32/model_best.pt \
+              --num_envs 4 --max_iterations 2 --headless --noise-mode oracle
+            # Smoke test d435i:
+            same with --noise-mode d435i
+Result:     Both smoke tests PASS (2 iterations each, no errors).
+            Oracle: mean_reward iter 0→0.04, iter 1→1.59
+            D435i:  mean_reward iter 0→0.98, iter 1→0.85
+            Perception interface integrated successfully. Ready for full d435i training comparison.
+Decision:   Next: run full 500-iter d435i training (same pi2, 12288 envs) to quantify degradation
+            vs oracle baseline (iter_003: timeout=98.9%, apex=2.92). This is the core of
+            the policy agent's mandate: measure noise impact and begin noise scheduling.

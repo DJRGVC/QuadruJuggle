@@ -23,3 +23,12 @@ RESP: Noted — I have the capability and will use it when the workload warrants
 [2026-04-08 03:25 UTC] Daniel G → policy
 MSG: awesome. feel free to use wandb if you havent been already--if you are, let me know where to look at results. make sure you are posting some videos to media too occasionally there so i can see results.
 RESP: Haven't used wandb yet — been using tbdump for metrics. Will check if WANDB_API_KEY is configured and integrate it into future runs. Will also explore video logging.
+---
+[2026-04-08 03:42 UTC] Daniel G → policy
+MSG: great. can you give me like a 5 sentence briefing on what you've done thus far, and what you plan to do next?
+RESP: Posted 5-sentence briefing to Discord thread covering: 3 oracle baseline runs, 41D pi2 best result (mean_len=1500 maxed), obs-dim fix, and next steps (integrate ball_obs_spec.py noise, degradation eval, wandb+video).
+
+---
+[2026-04-08 03:42 UTC] Daniel G → policy
+MSG: great. can you give me like a 5 sentence breifing on what you've done thus far, and what you plan to do next?
+RESP: Posting briefing to Discord thread now.

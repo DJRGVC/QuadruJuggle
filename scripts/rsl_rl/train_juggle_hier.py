@@ -47,6 +47,10 @@ parser.add_argument(
     choices=["oracle", "d435i"],
     help="Ball observation noise mode: 'oracle' (ground truth) or 'd435i' (structured camera noise).",
 )
+parser.add_argument(
+    "--wandb", action="store_true", default=False,
+    help="Log to Weights & Biases (project: quadrujuggle). Requires WANDB_API_KEY.",
+)
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
@@ -450,10 +454,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     start_time = time.time()
     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
+    runner_cfg = agent_cfg.to_dict()
+    if args_cli.wandb:
+        runner_cfg["logger"] = "wandb"
+        runner_cfg["wandb_project"] = "quadrujuggle"
+        print("[INFO] Logging to wandb project: quadrujuggle")
+
     if agent_cfg.class_name == "OnPolicyRunner":
-        runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+        runner = OnPolicyRunner(env, runner_cfg, log_dir=log_dir, device=agent_cfg.device)
     elif agent_cfg.class_name == "DistillationRunner":
-        runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+        runner = DistillationRunner(env, runner_cfg, log_dir=log_dir, device=agent_cfg.device)
     else:
         raise ValueError(f"Unsupported runner class: {agent_cfg.class_name}")
 
