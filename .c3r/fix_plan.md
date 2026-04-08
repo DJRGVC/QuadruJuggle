@@ -16,7 +16,8 @@
   # DONE iter_004: Integrated ball_obs_spec.py into pi1 env config. --noise-mode oracle|d435i CLI flag added. Both modes smoke-tested OK.
 - [x] Run full d435i noise training (500 iters, 12288 envs) and compare to oracle baseline (iter_003: timeout=98.9%, apex=2.92, mean_len=1500)
   # DONE iter_005: d435i causes ~8% reward degradation, same Stage D plateau. D435i+wandb rerun in progress.
-- [ ] Set up a degradation-comparison infrastructure: a script scripts/rsl_rl/compare_pi1.py that runs two checkpoints against each other on a fixed eval protocol and outputs relative metrics to stdout; commit to your branch
+- [x] Set up a degradation-comparison infrastructure: a script scripts/rsl_rl/compare_pi1.py that runs two checkpoints against each other on a fixed eval protocol and outputs relative metrics to stdout; commit to your branch
+  # DONE iter_007a: compare_pi1.py created + --noise-mode added to eval_juggle_hier.py
 - [x] Review the existing sigma curriculum in train_juggle_hier.py stages A-G from memory and propose how noise scheduling would interact with it; write the design to docs/noise_curriculum_plan.md without implementing yet
   # DONE iter_006: wrote docs/noise_curriculum_plan.md — 3-phase approach (oracle→scaled d435i→ekf). Stage D plateau is the blocker.
 - [ ] BLOCKER: Break Stage D apex plateau — warm-start from iter_003 oracle checkpoint for 1000+ more iters to see if longer training helps

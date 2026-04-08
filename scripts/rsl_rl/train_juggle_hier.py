@@ -458,7 +458,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if args_cli.wandb:
         runner_cfg["logger"] = "wandb"
         runner_cfg["wandb_project"] = "quadrujuggle"
-        print("[INFO] Logging to wandb project: quadrujuggle")
+        runner_cfg["wandb_entity"] = "d-grant-uc-berkeley"
+        # Descriptive run name: noise_mode-envs-pi2dim-maxiters
+        pi2_ckpt_tag = os.path.basename(os.path.dirname(args_cli.pi2_checkpoint or "unknown"))
+        noise_tag = args_cli.noise_mode if hasattr(args_cli, "noise_mode") else "oracle"
+        runner_cfg["wandb_name"] = (
+            f"pi1_{noise_tag}_{args_cli.num_envs or 4096}envs_{pi2_ckpt_tag[:10]}"
+            f"_{'resume' if agent_cfg.resume else 'fresh'}"
+            f"_{agent_cfg.max_iterations}iters"
+        )
+        print(f"[INFO] Logging to wandb: {runner_cfg['wandb_project']} / {runner_cfg['wandb_name']}")
 
     if agent_cfg.class_name == "OnPolicyRunner":
         runner = OnPolicyRunner(env, runner_cfg, log_dir=log_dir, device=agent_cfg.device)
@@ -486,6 +495,21 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print("[INFO] Saved early-stop checkpoint.")
 
     print(f"Training time: {round(time.time() - start_time, 2)} seconds")
+
+    # Upload training videos to wandb (if both --wandb and --video are set)
+    if args_cli.wandb and args_cli.video:
+        import glob as _glob
+        import wandb as _wandb
+        if _wandb.run is not None:
+            video_dir = os.path.join(log_dir, "videos", "train")
+            mp4_files = sorted(_glob.glob(os.path.join(video_dir, "*.mp4")))
+            if mp4_files:
+                print(f"[INFO] Uploading {len(mp4_files)} video(s) to wandb.")
+                for mp4 in mp4_files[-3:]:  # upload at most 3 most recent
+                    _wandb.log({"training_video": _wandb.Video(mp4, fps=30, format="mp4")})
+            else:
+                print("[INFO] No training videos found to upload.")
+
     env.close()
 
 
