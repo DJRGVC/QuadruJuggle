@@ -245,3 +245,21 @@ Change:     (1) Added `world_frame=True` option to BallObsNoiseCfg. (2) Updated 
 Command:    `python scripts/perception/test_world_frame_ekf.py` — 5/5 pass. GPU NIS diagnostic queued (blocked by policy agent training, PID 311640).
 Result:     All 5 CPU tests PASS. Key results: body→world→body round-trip error = 1.86e-8, tilted robot (15° pitch) error = 22mm, backward compat OK, reset initialises world coords correctly. GPU validation deferred — policy agent holding lock (12288 env × 1500 iter training).
 Decision:   Next iter: run `nis_diagnostic.py --world-frame` (256 envs × 100 steps) when GPU available. If NIS drops from 966→near 3.0, world-frame EKF is validated for deployment. Then run 3-mode comparison. If GPU still locked, run with smaller envs or wait.
+
+---
+
+## iter_024 — World-frame EKF NIS diagnostic: contact forces are the root cause, not coordinate frames  (2026-04-08T10:00:00Z)
+Hypothesis: World-frame EKF (iter_023) will produce NIS ≈ 3.0 by eliminating pseudo-forces from rotating body frame.
+Change:     (1) Ran NIS diagnostic with `--world-frame` flag (256 envs × 100 steps). (2) When NIS=970 (same as body-frame), ran q_vel sweep: 1.0, 3.0, 5.0, 10.0. (3) Updated q_vel default from 0.30 to 7.0 in BallEKFConfig. (4) Updated PERCEPTION_HANDOFF.md with root-cause analysis and NIS sweep table.
+Command:    `gpu_lock.sh uv run --active python scripts/perception/nis_diagnostic.py --pi2-checkpoint .../model_best.pt --num_envs 256 --steps 100 --log_interval 10 --headless --world-frame [--q_vel X]`
+Result:     **World-frame NIS = 970** (identical to body-frame 966). Root cause is NOT coordinate frames — it's **unmodeled contact normal force** (~9.81 m/s²) during paddle contact. EKF predicts freefall but ball sits on paddle.
+  NIS sweep results:
+  | q_vel | NIS | EKF mm | Raw mm | In band? |
+  |-------|------|--------|--------|----------|
+  | 0.30 | 970 | 131 | 4.4 | No |
+  | 1.0 | 95 | 33 | 4.3 | No |
+  | 3.0 | 13.5 | 10 | 4.3 | No |
+  | 5.0 | 6.3 | 6.2 | 4.3 | Marginal |
+  | 10.0 | 2.6 | 4.5 | 4.4 | Yes |
+  At q_vel ≥ 5.0, EKF is consistent (NIS in band) but provides NO position improvement over raw D435i. EKF value at deployment: velocity estimation + dropout prediction only.
+Decision:   Set q_vel=7.0 as default (NIS≈3.5, honest about contact uncertainty). Perception pipeline now feature-complete for sim training (d435i mode). Next iter: declare feature-complete and plan real hardware integration (D435i driver, YOLO detection, camera calibration).

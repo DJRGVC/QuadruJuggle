@@ -34,8 +34,8 @@
 - [x] Update PERCEPTION_HANDOFF.md with "no EKF for training" recommendation + NIS evidence + acceleration compensation docs
 - [x] Validate acceleration compensation: NIS=1025 (was 966) — linear accel compensation has negligible effect; rotational pseudo-forces (Coriolis/centrifugal/Euler) dominate in body frame
 - [x] Implement world-frame EKF option for deployment — `world_frame=True` on BallObsNoiseCfg; body→world measurement transform, world→body output transform. 5 CPU tests pass.
-- [ ] Validate world-frame EKF with NIS diagnostic (GPU) — target NIS ≈ 3.0 (was 966/1025 in body frame)
-- [ ] If NIS in band: re-run 3-mode comparison (oracle/d435i/ekf_world) to measure EKF benefit
+- [x] Validate world-frame EKF with NIS diagnostic (GPU) — DONE iter_024: NIS=970 with q_vel=0.30, NIS=2.6 with q_vel=10.0. Root cause: ballistic model wrong during contact (not coordinate frame). q_vel=7.0 set as default.
+- [x] NIS sweep: q_vel ∈ {0.30, 1.0, 3.0, 5.0, 10.0}. EKF provides no position benefit at any consistent q_vel — value is velocity estimation + dropout bridging only.
 - [ ] Declare perception pipeline feature-complete for sim training and shift to real hardware integration (D435i ROS driver, YOLO ball detection, camera-to-body calibration)
 - [x] Fix compare_perception_modes.py diagnostic capture — used base_env reference, added flush + warning
 - [x] Noise curriculum support: `noise_scale` field on BallObsNoiseCfg + `update_perception_noise_scale()` for runtime curriculum updates — DONE, 6 unit tests pass

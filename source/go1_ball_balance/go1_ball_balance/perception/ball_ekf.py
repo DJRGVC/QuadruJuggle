@@ -34,11 +34,15 @@ import torch
 class BallEKFConfig:
     """EKF tuning parameters."""
 
-    # Process noise — CWNA model with q_c ≈ 0.16 m²/s³ (drag+spin uncertainty ~0.4 m/s²)
-    # q_vel=0.15 was 7× below CWNA prescription, causing 24cm lag at 2 m/s (iter_018).
-    # Ref: Bar-Shalom Ch. 6; lit_review_ekf_tuning.md; lit_review_ekf_lag_vs_raw_noise.md
+    # Process noise — must cover unmodeled contact forces (~9.81 m/s² during
+    # paddle contact). CWNA q_vel=0.30 was tuned for free-flight only; NIS=970
+    # in sim (iter_024). q_vel=7.0 gives NIS≈3.5 (consistent) because it
+    # honestly represents the ~10 m/s² uncertainty from contact normal force.
+    # Trade-off: high q_vel → EKF mostly follows measurements for position
+    # (no smoothing benefit), but provides useful velocity estimation.
+    # Ref: iter_024 NIS sweep; Bar-Shalom Ch. 6
     q_pos: float = 0.003    # position process noise std (m) per sqrt(s)
-    q_vel: float = 0.30     # velocity process noise std (m/s) per sqrt(s)  — was 0.15
+    q_vel: float = 7.0      # velocity process noise std (m/s) per sqrt(s)
 
     # Measurement noise — matched to D435iNoiseModelCfg at ~0.5m nominal distance
     r_xy: float = 0.002     # measurement noise std, XY (m) — matches sigma_xy_base

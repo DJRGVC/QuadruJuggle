@@ -290,6 +290,44 @@ def test_reset_world_frame():
     print(f"  ✓ World-frame reset: EKF init pos matches expected world coords (err {err:.2e})")
 
 
+def test_reset_with_robot_pose_args():
+    """Reset with explicit robot pose should use those coords, not stale stored ones."""
+    ekf_cfg = BallEKFConfig(drag_coeff=0.0)
+    cfg = BallObsNoiseCfg(
+        mode="ekf", world_frame=True, ekf_cfg=ekf_cfg,
+        noise_model_cfg=D435iNoiseModelCfg(
+            sigma_xy_base=0.0, sigma_z_base=0.0, dropout_prob=0.0,
+        ),
+    )
+    pipe = PerceptionPipeline(N, "cpu", cfg)
+
+    # Start with robot at (0,0,0.4) — stale pose
+    pipe._robot_pos_w = torch.tensor([[0.0, 0.0, 0.4]]).expand(N, -1).clone()
+    pipe._robot_quat_w = IDENTITY_QUAT.clone()
+    pipe._paddle_offset_b = PADDLE_OFFSET.clone()
+
+    # Reset with NEW robot position (e.g. different env spawn)
+    new_robot_pos = torch.tensor([[3.0, 6.0, 0.4]]).expand(N, -1).clone()
+    init_pos_b = torch.zeros(N, 3)
+    env_ids = torch.arange(N)
+    pipe.reset(
+        env_ids, init_pos_b,
+        robot_quat_w=IDENTITY_QUAT,
+        robot_pos_w=new_robot_pos,
+    )
+
+    # EKF state should use NEW robot position
+    ekf_pos = pipe.ekf.pos
+    expected_w = new_robot_pos + torch.tensor([[0.0, 0.0, 0.070]])
+    err = (ekf_pos - expected_w).abs().max().item()
+    assert err < TOLERANCE, f"Reset with pose args error {err:.6f}"
+
+    # Stored robot pose should be updated
+    stored_err = (pipe._robot_pos_w - new_robot_pos).abs().max().item()
+    assert stored_err < TOLERANCE, f"Stored pose not updated: {stored_err:.6f}"
+    print(f"  ✓ Reset with explicit robot pose: uses new coords, not stale (err {err:.2e})")
+
+
 if __name__ == "__main__":
     print("\n=== World-Frame EKF Unit Tests ===\n")
     tests = [
@@ -298,6 +336,7 @@ if __name__ == "__main__":
         test_world_frame_tilted_robot,
         test_body_frame_backward_compat,
         test_reset_world_frame,
+        test_reset_with_robot_pose_args,
     ]
     passed = 0
     for t in tests:

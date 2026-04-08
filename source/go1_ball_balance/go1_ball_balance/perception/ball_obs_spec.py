@@ -330,11 +330,28 @@ class PerceptionPipeline:
         env_ids: torch.Tensor,
         init_pos: torch.Tensor,
         init_vel: torch.Tensor | None = None,
+        robot_quat_w: torch.Tensor | None = None,
+        robot_pos_w: torch.Tensor | None = None,
     ) -> None:
-        """Reset noise model and EKF for specified environments."""
+        """Reset noise model and EKF for specified environments.
+
+        Args:
+            env_ids: Indices of envs to reset (M,).
+            init_pos: Initial ball position in body frame (M, 3).
+            init_vel: Initial ball velocity in body frame (M, 3).
+            robot_quat_w: Current robot orientation (M, 4) wxyz. Required for
+                world_frame=True to correctly transform init pos to world.
+            robot_pos_w: Current robot position (M, 3). Required for world_frame=True.
+        """
         self.noise_model.reset(env_ids, init_pos)
 
         if self._world_frame:
+            # Update stored robot pose for the reset envs BEFORE transform
+            if robot_quat_w is not None:
+                self._robot_quat_w[env_ids] = robot_quat_w
+            if robot_pos_w is not None:
+                self._robot_pos_w[env_ids] = robot_pos_w
+
             # Transform body-frame init pos/vel to world frame for EKF
             init_pos_w = self._body_to_world_pos(init_pos, env_ids)
             init_vel_w = (
@@ -836,4 +853,13 @@ def reset_perception_pipeline(
     pos_b = _ball_pos_paddle_frame_gt(env, ball_cfg, robot_cfg, paddle_offset_b)
     vel_b = _ball_vel_paddle_frame_gt(env, ball_cfg, robot_cfg)
 
-    pipeline.reset(env_ids, pos_b[env_ids], vel_b[env_ids])
+    # For world-frame EKF, pass current robot pose so the body→world
+    # transform uses the post-reset position (not stale pre-reset pose)
+    robot: Articulation = env.scene[robot_cfg.name]
+    pipeline.reset(
+        env_ids,
+        pos_b[env_ids],
+        vel_b[env_ids],
+        robot_quat_w=robot.data.root_quat_w[env_ids],
+        robot_pos_w=robot.data.root_pos_w[env_ids],
+    )

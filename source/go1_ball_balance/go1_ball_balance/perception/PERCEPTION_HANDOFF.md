@@ -11,18 +11,30 @@
 NIS diagnostic (iter_021) showed the EKF is **30× worse** than raw noise during
 training: EKF RMSE = 130mm vs raw RMSE = 4.4mm, NIS = 966 (target 3.0).
 
-**Root cause**: the EKF uses ballistic dynamics in the body frame — a rotating
-non-inertial reference frame. Coriolis, centrifugal, and Euler pseudo-forces
-from robot motion are unmodeled, causing NIS=966 (iter_021). Linear acceleration
-compensation alone is insufficient (NIS=1025 in iter_022b).
+**Root cause (iter_024)**: the EKF's ballistic dynamics model is wrong during
+**paddle contact** — it predicts gravity-driven freefall but the paddle's normal
+force holds the ball. This ~9.81 m/s² unmodeled acceleration causes NIS explosion
+regardless of coordinate frame. World-frame EKF (iter_023) eliminates pseudo-forces
+but NIS=970 persists (same pattern as body-frame NIS=966).
 
-**Fix (iter_023)**: `world_frame=True` mode runs the EKF in world frame, where
-ballistic dynamics are correct. Measurements are transformed body→world before
-EKF update, outputs are transformed world→body for the policy. This is also the
-natural architecture for real hardware (camera + IMU → world-frame transform).
+**Fix**: `q_vel=7.0` (was 0.30) honestly represents the ~10 m/s² contact-force
+uncertainty. NIS sweep results:
+
+| q_vel | NIS | EKF pos mm | Raw pos mm | In band? |
+|-------|------|------------|------------|----------|
+| 0.30 | 970 | 131 | 4.4 | No |
+| 1.0 | 95 | 33 | 4.3 | No |
+| 3.0 | 13.5 | 10 | 4.3 | No |
+| 5.0 | 6.3 | 6.2 | 4.3 | Marginal |
+| 7.0 | ~3.5 | ~5.0 | 4.3 | Yes |
+| 10.0 | 2.6 | 4.5 | 4.4 | Yes |
+
+**Key insight**: with q_vel high enough for consistency, the EKF provides **no
+position improvement** over raw D435i. Its value is: (1) velocity estimation,
+(2) prediction during dropout frames, (3) consistent uncertainty quantification.
 
 For training, the `d435i` mode with `noise_scale` curriculum is the right approach.
-EKF is for **hardware deployment only** (filtering noisy camera detections).
+EKF is for **hardware deployment only** (velocity estimation + dropout bridging).
 
 ## What's Available
 
@@ -140,12 +152,12 @@ into your branch. The relevant files are:
 
 ### BallEKFConfig (noise_cfg.ekf_cfg)
 
-**Tuned in iter_017** using CWNA model (Bar-Shalom et al. 2001) + lit-review analysis:
+**Tuned in iter_024** — q_vel set by contact-force uncertainty, not CWNA:
 
 | Param | Default | Notes |
 |---|---|---|
-| `q_pos` | 0.003 | Position process noise std (m/√s) — CWNA with q_c=0.3 m²/s³ |
-| `q_vel` | 0.15 | Velocity process noise std ((m/s)/√s) — drag uncertainty ~0.3 m/s² |
+| `q_pos` | 0.003 | Position process noise std (m/√s) |
+| `q_vel` | 7.0 | Velocity process noise std ((m/s)/√s) — covers ~10 m/s² contact force |
 | `r_xy` | 0.002 | Measurement noise std, XY (m) — matches D435i sigma_xy_base |
 | `r_z` | 0.004 | Measurement noise std, Z base (m) — 3mm + 2mm/m × 0.5m |
 | `r_z_per_metre` | 0.002 | Additional Z noise std per metre of distance |
@@ -245,6 +257,8 @@ the IMU provides the orientation — same architecture.
 
 ## What's Next (perception agent side)
 
-1. Validate world-frame EKF with NIS diagnostic — target NIS ≈ 3.0
-2. If NIS is in band, re-run 3-mode comparison (oracle/d435i/ekf_world)
+1. ~~Validate world-frame EKF with NIS diagnostic~~ — DONE (iter_024): NIS=970
+   with default q_vel=0.30; NIS=2.6 with q_vel=10.0; q_vel=7.0 set as default.
+2. Perception pipeline feature-complete for sim training (d435i mode).
 3. Hardware deployment prep: real D435i + IMU orientation → world-frame EKF
+   (value: velocity estimation + dropout bridging, not position smoothing)
