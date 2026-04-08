@@ -125,25 +125,28 @@ torch.backends.cudnn.benchmark = False
 # per env, maintaining the target/σ invariant regardless of sampled height.
 _BJ_STAGES = [
     # tgt_min  tgt_max  σ_ratio  xy_std  vel_xy_std  noise_scale
-    (0.05,     0.05,    2.0,     0.020,  0.00,       0.00),  # A  — oracle, bootstrap bounce
-    (0.10,     0.10,    2.5,     0.022,  0.00,       0.00),  # B  — oracle
-    (0.15,     0.15,    2.5,     0.025,  0.00,       0.00),  # C  — oracle
-    (0.20,     0.20,    2.5,     0.028,  0.00,       0.25),  # D  — 25% d435i noise
-    (0.25,     0.25,    2.5,     0.030,  0.00,       0.50),  # E  — 50% d435i noise
-    (0.30,     0.30,    2.5,     0.033,  0.00,       0.75),  # F  — 75% d435i noise
-    (0.36,     0.36,    2.5,     0.036,  0.00,       1.00),  # G  — full d435i noise
-    (0.42,     0.42,    2.5,     0.040,  0.00,       1.00),  # H  — full d435i noise
-    (0.30,     0.48,    2.5,     0.045,  0.02,       1.00),  # I  — range begins + lateral vel
-    (0.30,     0.55,    2.5,     0.050,  0.04,       1.00),  # J
-    (0.30,     0.62,    2.5,     0.055,  0.06,       1.00),  # K
-    (0.30,     0.70,    2.5,     0.060,  0.08,       1.00),  # L
-    (0.30,     0.78,    2.5,     0.068,  0.10,       1.00),  # M
-    (0.30,     0.86,    2.5,     0.075,  0.12,       1.00),  # N
-    (0.30,     0.92,    2.5,     0.082,  0.15,       1.00),  # O
-    (0.30,     1.00,    2.5,     0.090,  0.18,       1.00),  # P  — full range, full noise
+    # σ_ratio=3.5 makes ball-at-rest earn only 0.2% of max apex reward (was 4.4% with 2.5),
+    # forcing active throwing to earn meaningful reward. Root cause of Stage F plateau fixed.
+    (0.05,     0.05,    2.5,     0.020,  0.00,       0.00),  # A  — oracle, bootstrap bounce (wider for initial learning)
+    (0.10,     0.10,    3.0,     0.022,  0.00,       0.00),  # B  — oracle, tighten sigma
+    (0.15,     0.15,    3.5,     0.025,  0.00,       0.00),  # C  — oracle, target sigma ratio
+    (0.20,     0.20,    3.5,     0.028,  0.00,       0.25),  # D  — 25% d435i noise
+    (0.25,     0.25,    3.5,     0.030,  0.00,       0.50),  # E  — 50% d435i noise
+    (0.30,     0.30,    3.5,     0.033,  0.00,       0.75),  # F  — 75% d435i noise
+    (0.36,     0.36,    3.5,     0.036,  0.00,       1.00),  # G  — full d435i noise
+    (0.42,     0.42,    3.5,     0.040,  0.00,       1.00),  # H  — full d435i noise
+    (0.30,     0.48,    3.5,     0.045,  0.02,       1.00),  # I  — range begins + lateral vel
+    (0.30,     0.55,    3.5,     0.050,  0.04,       1.00),  # J
+    (0.30,     0.62,    3.5,     0.055,  0.06,       1.00),  # K
+    (0.30,     0.70,    3.5,     0.060,  0.08,       1.00),  # L
+    (0.30,     0.78,    3.5,     0.068,  0.10,       1.00),  # M
+    (0.30,     0.86,    3.5,     0.075,  0.12,       1.00),  # N
+    (0.30,     0.92,    3.5,     0.082,  0.15,       1.00),  # O
+    (0.30,     1.00,    3.5,     0.090,  0.18,       1.00),  # P  — full range, full noise
 ]
 _BJ_THRESHOLD      = 0.75
-_BJ_APEX_THRESHOLD = 2.0     # was 5.0; lowered to let curriculum advance past Stage D plateau
+_BJ_APEX_THRESHOLD = 0.5     # with sigma_ratio=3.5, ball at rest earns ~0.05/step × 1500 = ~75 total
+                              # so natural bounce (h≈5cm) earns ~0.1/step; threshold=0.5 requires active throwing
 _BJ_SUSTAIN    = 20    # was 15 — require stronger mastery before advancing
 _BJ_TRANSITION = 15    # was 10 — slower parameter blending
 

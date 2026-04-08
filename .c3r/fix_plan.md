@@ -30,8 +30,11 @@
   # DONE iter_008: ran to 1199 iters. apex_rew=1.87 (needs 2.0), timeout=95.8%. Outperforms oracle iter_007 (apex 1.87 vs 1.1).
   # Checkpoint: logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_23-20-25/model_1199.pt
   # KEY FINDING: Noise-curriculum acts as implicit regularizer → better apex performance than pure oracle
-- [ ] ACTIVE (iter_009): Resume noise-curriculum from model_1199 for 1000 more iters — apex_rew=1.87 needs ~200-400 more iters to reach 2.0 threshold and advance Stage F→G
-  # Command: --resume --load_run 2026-04-07_23-20-25 --checkpoint model_1199.pt --start-stage 5 --noise-mode d435i
+- [x] ACTIVE (iter_009): Fresh d435i 1500-iter run with threshold=1.5 → same Stage F plateau apex_rew≈1.09
+  # ROOT CAUSE FOUND: sigma_ratio=2.5 → ball-at-rest earns 4.4% max apex reward per step (1650/ep guaranteed).
+  # Policy never learns to juggle — balancing earns more than risky throwing.
+  # FIX: sigma_ratio=3.5 in all stages → ball-at-rest earns only 0.2% (82/ep). APPLIED.
+- [ ] iter_010: Fresh run with sigma_ratio=3.5 + _BJ_APEX_THRESHOLD=0.5 to break balance-not-bounce local optimum
 - [x] Add wandb logging to train_juggle_hier.py (entity: d-grant-uc-berkeley) + video recording for play visualization
   # DONE iter_007b/008: wandb entity + descriptive run naming added; video upload at end of training added.
 - [x] BUG: action_term.py builds 41D pi2 obs (missing last_action=12D) but pi2 checkpoints from 2026-03-12_14-31-45 onward have 53D input; fix action_term.py to include last joint targets then retrain pi2 and pi1 from scratch

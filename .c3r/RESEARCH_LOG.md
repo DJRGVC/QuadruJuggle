@@ -254,3 +254,35 @@ Result:     1036 iterations completed in ~62 min before process killed (iteratio
 Decision:   Queued iter_009: resume from model_1199.pt for 1000 more iters to push apex_rew to 2.0.
             With apex_rew=1.87 and rising slowly, ~200-400 more iters may be sufficient.
             Noise_scale at Stage F = 0.75 (75% d435i) — full noise at Stage G.
+
+## iter_009 — fresh d435i 1500-iter with threshold=1.5  (2026-04-08T01:00Z)
+Hypothesis: Fresh run with _BJ_APEX_THRESHOLD=1.5 (lowered from 2.0) and d435i noise will
+advance further than iter_007 oracle run (Stage F plateau, apex≈1.1).
+Change:     User ran fresh training with --noise-mode d435i, 12288 envs, 1500 max iters,
+            _BJ_APEX_THRESHOLD=1.5 (lowered automatically from train_juggle_hier.py state).
+            Checkpoint dir: logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_00-55-03/
+Command:    gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+              --task Isaac-BallJuggleHier-Go1-v0 \
+              --pi2-checkpoint .../2026-03-12_09-04-32/model_best.pt \
+              --num_envs 12288 --max_iterations 1500 --headless --noise-mode d435i --wandb
+Result:     Early stopped at iter 1127 (700-iter patience exhausted at Stage F).
+            Curriculum: A→B→C→D (fast, first ~300 iters), then stuck at Stage F.
+            Final metrics:
+              mean_episode_length: 1381, timeout: 94.7%, apex_rew: 1.09, ball_below: 5.3%
+              mean_reward: 55.3, noise_std: 0.375
+            Same Stage F plateau at apex_rew≈1.09 — identical to iter_007 oracle (apex=1.10).
+            
+            ROOT CAUSE IDENTIFIED: sigma_ratio=2.5 means ball AT REST earns
+            exp(-sigma_ratio²/2) = exp(-3.125) = 4.4% of max apex reward per step.
+            With weight=25 and 1500 steps: ball at rest earns 25×0.044×1500=1650 apex reward.
+            The policy converges to balance (certain survival+1650 apex) vs risky juggling.
+            
+            math: Gaussian(h=0, target=T, sigma=T/2.5) = exp(-(T/(T/2.5))²/2) = exp(-2.5²/2) = 0.044
+            This is STAGE-INDEPENDENT — ball at rest always earns 4.4% regardless of target height!
+            
+            FIX: sigma_ratio=3.5 gives exp(-3.5²/2) = 0.0022 (0.2%) per step.
+            Ball-at-rest apex contribution = 25×0.0022×1500 = 82.5 (down from 1650, 20× less).
+            Now juggling is worth ~20× more relative to balancing → should break plateau.
+            Also lowered _BJ_APEX_THRESHOLD to 0.5 (appropriate for tighter sigma).
+Decision:   Next iter_010: fresh run with sigma_ratio=3.5 (all stages) + d435i noise.
+            Checkpoint dir for iter_009: logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_00-55-03/model_best.pt
