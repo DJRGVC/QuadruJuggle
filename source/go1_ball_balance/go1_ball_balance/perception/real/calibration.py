@@ -62,11 +62,20 @@ class CameraCalibrator:
         Returns:
             CameraExtrinsics with loaded transform.
         """
-        raise NotImplementedError(
-            "CameraCalibrator.from_yaml() is a stub — implement when "
-            "extrinsics YAML format is finalised. "
-            "See docs/hardware_pipeline_architecture.md §3.3."
-        )
+        import yaml
+
+        with open(path) as f:
+            data = yaml.safe_load(f)
+
+        R = np.array(data["R_cam_body"], dtype=np.float64)
+        t = np.array(data["t_cam_body"], dtype=np.float64)
+
+        if R.shape != (3, 3):
+            raise ValueError(f"R_cam_body must be 3x3, got {R.shape}")
+        if t.shape != (3,):
+            raise ValueError(f"t_cam_body must be (3,), got {t.shape}")
+
+        return CameraExtrinsics(R_cam_body=R, t_cam_body=t)
 
     @staticmethod
     def from_checkerboard(

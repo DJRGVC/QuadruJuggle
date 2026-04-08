@@ -7,10 +7,12 @@
 # Lit-review + vel-cmd-survey subagents killed
 
 # Phase 3: Real Hardware Integration (blocked on Go1 + D435i access)
-- [ ] Implement D435iCamera wrapper (pyrealsense2, depth-only 848x480 @ 90fps)
-- [ ] Implement BallDetector (YOLOv8n+P2 TRT FP16 + median-depth 3D localisation)
-- [ ] Implement CameraCalibrator.from_yaml() and from_checkerboard()
-- [ ] Implement RealPerceptionPipeline (threaded: camera+YOLO 90Hz, EKF 200Hz, obs 50Hz)
+- [x] Implement BallDetector Hough circle fallback (_detect_hough)
+- [x] Implement CameraCalibrator.from_yaml()
+- [ ] Implement D435iCamera wrapper (pyrealsense2, depth-only 848x480 @ 90fps) — needs hardware
+- [ ] Implement BallDetector._detect_yolo (TRT FP16 inference) — needs YOLO model
+- [ ] Implement CameraCalibrator.from_checkerboard() — needs hardware
+- [ ] Implement RealPerceptionPipeline (threaded: camera+YOLO 90Hz, EKF 200Hz, obs 50Hz) — needs hardware
 - [ ] YOLO training data collection + fine-tune on real Go1
 - [ ] End-to-end hardware test: perception -> pi1 on real Go1
 

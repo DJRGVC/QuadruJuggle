@@ -157,3 +157,23 @@ Result:     Log shrunk from 323->~155 lines. Archive now has 35 verbatim entries
 Decision:   Next iter: write handoff note to policy agent INBOX about Method 2 requirements
             (obs 40->42D, vel_tracking reward, hot-start from Stage G). GPU NIS validation
             (IMU on/off, 9D spin) when GPU available.
+
+---
+
+## iter_045 — Hough circle fallback detector + from_yaml (15/15 new tests, 191/191 total)  (2026-04-08T19:15:00Z)
+Hypothesis: Hough circle detection on depth frames provides robust ball detection
+            when YOLO is unavailable or low-confidence, with <10mm error at 0.3-1.0m.
+Change:     Implemented `BallDetector._detect_hough()` using cv2.HoughCircles on
+            normalised 8-bit depth images. Circle scoring by radius-ratio vs expected
+            ball size at detected depth. Implemented `BallDetector.detect()` fallback
+            chain (YOLO→Hough→low-conf YOLO). Also implemented
+            `CameraCalibrator.from_yaml()` (YAML extrinsics loader with validation).
+            Wrote policy agent handoff note about Method 2 velocity commands.
+Command:    `uv run --active python scripts/perception/test_hough_detector.py -v` → 15/15
+            Full suite: 191/191 pass (174 pytest + 17 real_utils).
+Result:     **15/15 new tests pass.** Hough detects ball at 30cm/50cm/1m with <10mm error.
+            Works with 2mm depth noise. Empty-frame correctly returns None. Bbox/confidence
+            valid. from_yaml loads identity + non-trivial extrinsics, validates shape.
+            Wrote handoff to policy INBOX re: Method 2 (obs 40→42D, vel_tracking reward).
+Decision:   GPU NIS with IMU on/off when GPU available. Else: implement more mock-testable
+            real pipeline pieces (e.g. threaded pipeline integration with MockCamera+Hough).
