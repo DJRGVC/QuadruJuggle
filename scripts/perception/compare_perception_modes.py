@@ -244,10 +244,12 @@ def _run_single_mode(args):
                 if diag:
                     diag["iteration"] = iteration_count[0]
                     perception_diags.append(diag)
+                    nis_str = f", NIS: {diag['mean_nis']:.2f}" if 'mean_nis' in diag else ""
                     print(f"  [DIAG iter {iteration_count[0]}] "
                           f"EKF pos RMSE: {diag['pos_rmse_ekf_mm']:.1f}mm, "
                           f"raw: {diag['pos_rmse_raw_mm']:.1f}mm, "
-                          f"improvement: {diag['ekf_improvement_pct']:.0f}%")
+                          f"improvement: {diag['ekf_improvement_pct']:.0f}%"
+                          f"{nis_str}")
 
     runner.log = _metric_log
 

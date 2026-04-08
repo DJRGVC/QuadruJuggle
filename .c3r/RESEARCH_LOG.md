@@ -161,3 +161,18 @@ Change:     (1) Updated BallEKFConfig defaults: q_pos 0.01→0.003, q_vel 1.0→
 Command:    6 CPU unit tests (new defaults, gravity prediction, time-varying R, NIS diagnostics, adaptive_r=False fallback, NIS counting). GPU comparison blocked by modal process holding lock.
 Result:     All 6 tests PASS. GPU comparison deferred — another agent holds GPU lock for modal cloud run (no local GPU usage, just lock contention). Comparison to be run next iteration.
 Decision:   Next iter: run 3-mode comparison (oracle/d435i/ekf, 2048 envs × 50 iters) with tuned Q/R. Compare mean_nis to [0.35, 7.81] consistency band. If NIS is outside band, adjust Q/R further.
+
+---
+
+## iter_018 — Fix pi2 obs dim (41→53) + 3-mode comparison with tuned EKF  (2026-04-08T08:00:00Z)
+Hypothesis: The compare script crashes because the pi2 checkpoint (2026-03-12_17-16-01) was trained with 53D obs (including last_action) but action_term.py only provides 41D. Fixing this and running with tuned EKF params will show EKF filtering benefit.
+Change:     (1) Fixed `action_term.py`: auto-detect pi2 input dimension from checkpoint first layer, conditionally include `_last_pi2_actions` (12D) when checkpoint expects 53D. Added `_last_pi2_actions` buffer, updated after each forward pass. (2) Added NIS logging to compare_perception_modes.py DIAG output. (3) Cleaned stale result JSONs before running.
+Command:    `uv run --active python scripts/perception/compare_perception_modes.py --pi2-checkpoint .../2026-03-12_17-16-01/model_best.pt --num_envs 2048 --max_iterations 50 --headless --modes oracle d435i ekf`
+Result:     All 3 modes complete (no crashes). 50-iter comparison (2048 envs):
+  | Mode   | ep_len_final10 | reward_final10 | timeout% |
+  |--------|----------------|----------------|----------|
+  | oracle | 337.9          | 13.7           | 1.2%     |
+  | d435i  | 225.1          | 10.5           | 1.4%     |
+  | ekf    | 208.6          | 7.6            | 0.4%     |
+  Oracle leads. EKF trails d435i (raw noise) by ~28% on reward — tuned Q/R may be over-smoothing early training. Diagnostics (NIS) not captured in subprocess output — needs piping fix. Note: iter_016 results are INVALID (ran with old 41D action_term against 53D checkpoint — unclear how it produced results; likely used a different checkpoint).
+Decision:   The pi2 obs dim bug is the key fix this iteration. Next: (1) Run NIS diagnostic standalone to validate tuned Q/R values are in [0.35, 7.81] band. (2) If NIS is too low (over-smoothing), increase q_vel back toward 0.5. (3) Consider longer comparison (200+ iters) to see if EKF converges.

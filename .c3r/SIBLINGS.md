@@ -25,16 +25,16 @@ Siblings will see it in their next SIBLINGS.md refresh.
 ## policy
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
-- **status**: running · iter #3 · ctx 0%
-- **last iter**: 2h ago
+- **status**: running · iter #4 · ctx 0%
+- **last iter**: 16m ago
 
 ### Recent commits on `agent/policy`
 ```
+9ca60cc sync perception pipeline from perception branch: EKF mode + noise_scale curriculum
+f2feadd update RESEARCH_LOG iter_008: corrected to 1199 iters (apex_rew=1.87), queue iter_009
+69c9cd1 process inbox: c3r spawn note from perception; update RESEARCH_LOG iter_008 state
+c67e0d3 iter_008: noise-curriculum training — d435i ramp 0→75% reaches Stage F, outperforms oracle
 ac2fa7f update fix_plan: mark noise_scale done, add noise-curriculum training task
-e1e4ee6 add noise_scale curriculum: d435i noise ramps 0%→100% across stages A→G
-ce23add iter_007: warm-start oracle breaks Stage D plateau — curriculum advances to Stage F
-83f62ad add wandb video upload + descriptive run naming to train_juggle_hier.py
-2dec634 add compare_pi1.py eval comparison infrastructure + --noise-mode to eval script
 ```
 ### Files modified on `agent/policy` (relative to `c3r/QuadruJuggle`)
 ```
@@ -55,6 +55,7 @@ scripts/rsl_rl/train_juggle_hier.py
 source/go1_ball_balance/go1_ball_balance/perception/__init__.py
 source/go1_ball_balance/go1_ball_balance/perception/ball_ekf.py
 source/go1_ball_balance/go1_ball_balance/perception/ball_obs_spec.py
+source/go1_ball_balance/go1_ball_balance/perception/noise_model.py
 source/go1_ball_balance/go1_ball_balance/tasks/ball_juggle_hier/ball_juggle_hier_env_cfg.py
 source/go1_ball_balance/go1_ball_balance/tasks/torso_tracking/action_term.py
 ```
@@ -70,17 +71,17 @@ git show agent/policy:.c3r/SIBLINGS.md
 ## lit-review
 - **role**: generic
 - **focus**: survey perception-for-manipulation papers (ETH noise injection, teacher-student distillation, event cameras, learned state estimators) and critique our D435i+EKF approach
-- **status**: running · iter #3 · ctx 0%
+- **status**: running · iter #5 · ctx 0%
 - **last iter**: 3m ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/lit-review`
 ```
+e2facbe iter_005: noise-outperforms-oracle lit survey → docs/lit_review_noise_outperforms_oracle.md
+5a4c9ab iter_004: ball spin survey → docs/lit_review_ball_spin.md (Q-inflation sufficient for Stage A-D; upgrade path at Stage E+)
 16c8cf4 iter_003: EKF Q/R tuning + ANEES diagnostic → docs/lit_review_ekf_tuning.md
 ac06c8c iter_002: noise curriculum + latency injection literature → docs/lit_review_noise_curriculum.md
 cfa644b iter_001: literature survey — 8 papers + D435i+EKF critique → docs/lit_review_perception.md
-aab3845 torso tracking edit
-9c4793a pi_2 with v trackign works
 ```
 ### Files modified on `agent/lit-review` (relative to `c3r/QuadruJuggle`)
 ```
@@ -93,8 +94,10 @@ aab3845 torso tracking edit
 .c3r/env.sh
 .c3r/fix_plan.md
 .claude/settings.json
+docs/lit_review_ball_spin.md
 docs/lit_review_ekf_tuning.md
 docs/lit_review_noise_curriculum.md
+docs/lit_review_noise_outperforms_oracle.md
 docs/lit_review_perception.md
 ```
 ### Read one with:

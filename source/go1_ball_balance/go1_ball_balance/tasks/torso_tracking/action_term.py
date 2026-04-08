@@ -59,7 +59,8 @@ class TorsoCommandAction(ActionTerm):
     applies 12D joint position targets.
 
     The 8D input actions (from pi1) are in [-1, 1] and are scaled to physical
-    units before being fed as part of pi2's 41D observation vector.
+    units before being fed as part of pi2's observation vector (41D or 53D
+    depending on whether the checkpoint was trained with last_action obs).
     """
 
     cfg: "TorsoCommandActionCfg"
@@ -81,6 +82,7 @@ class TorsoCommandAction(ActionTerm):
         # Action buffers
         self._raw_actions = torch.zeros(self._num_envs, 8, device=self._device)
         self._joint_targets = torch.zeros(self._num_envs, self._num_joints, device=self._device)
+        self._last_pi2_actions = torch.zeros(self._num_envs, self._num_joints, device=self._device)
 
         # Default joint positions (for offset)
         self._default_joint_pos = self._robot.data.default_joint_pos[:, self._joint_ids].clone()
@@ -162,8 +164,13 @@ class TorsoCommandAction(ActionTerm):
                 "count": count,
             }
 
+        # Detect obs dimension from first layer input size
+        self._pi2_obs_dim = layers[0][0] if layers else 41
+        self._pi2_include_last_action = (self._pi2_obs_dim == 53)
+
         print(f"[TorsoCommandAction] Loaded pi2 from {checkpoint_path}")
         print(f"  Actor architecture: {[f'{in_d}→{out_d}' for in_d, out_d in layers]}")
+        print(f"  Obs dim: {self._pi2_obs_dim} (last_action={'yes' if self._pi2_include_last_action else 'no'})")
         print(f"  Normalizer: {'yes' if self._obs_normalizer else 'no'}")
 
     @property
@@ -188,9 +195,10 @@ class TorsoCommandAction(ActionTerm):
         # Scale [-1, 1] → physical units
         torso_cmd = actions * self._cmd_scales + self._cmd_offsets
 
-        # Build pi2's 41D observation vector (must match training order exactly):
+        # Build pi2's observation vector (must match training order exactly):
         # [torso_command_normalized(8), base_lin_vel(3), base_ang_vel(3),
-        #  projected_gravity(3), joint_pos_rel(12), joint_vel_rel(12)]
+        #  projected_gravity(3), joint_pos_rel(12), joint_vel_rel(12),
+        #  last_action(12)]  ← only if pi2 checkpoint expects 53D
 
         # Normalize torso command (same as torso_command_obs)
         torso_cmd_norm = (torso_cmd + self._obs_offset) * self._obs_norm
@@ -206,14 +214,17 @@ class TorsoCommandAction(ActionTerm):
         joint_vel = self._robot.data.joint_vel[:, self._joint_ids]
 
         # Concatenate in training order
-        pi2_obs = torch.cat([
+        obs_parts = [
             torso_cmd_norm,    # 8
             base_lin_vel,      # 3
             base_ang_vel,      # 3
             projected_gravity, # 3
             joint_pos_rel,     # 12
             joint_vel,         # 12
-        ], dim=-1)  # (N, 41)
+        ]
+        if self._pi2_include_last_action:
+            obs_parts.append(self._last_pi2_actions)  # 12
+        pi2_obs = torch.cat(obs_parts, dim=-1)
 
         # Apply normalizer if available
         if self._obs_normalizer is not None:
@@ -224,6 +235,9 @@ class TorsoCommandAction(ActionTerm):
         # Run frozen pi2 actor (no grad)
         with torch.no_grad():
             pi2_actions = self._pi2_actor(pi2_obs)  # (N, 12)
+
+        # Store for next step's last_action obs
+        self._last_pi2_actions[:] = pi2_actions
 
         # Apply same scaling as JointPositionAction: target = default + scale * action
         self._joint_targets[:] = self._default_joint_pos + 0.25 * pi2_actions

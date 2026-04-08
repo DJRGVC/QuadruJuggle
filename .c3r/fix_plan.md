@@ -26,7 +26,10 @@
 - [x] Handoff to policy agent: document how to enable EKF mode in env_cfg (swap noise_cfg, add reset event), provide example config diff — PERCEPTION_HANDOFF.md committed
 - [x] Perception diagnostics: added _PerceptionDiagnostics to PerceptionPipeline (pos/vel RMSE, detection rate, EKF improvement %)
 - [x] Tune EKF parameters (process noise Q, measurement noise R) based on CWNA analysis + lit-review — q_pos 0.01→0.003, q_vel 1.0→0.15, r_xy 0.003→0.002, time-varying r_z, ANEES diagnostic added
-- [ ] Run tuned EKF comparison test (oracle/d435i/ekf, 2048 envs × 50 iters) — blocked by GPU lock this iter
+- [x] Run tuned EKF comparison test (oracle/d435i/ekf, 2048 envs × 50 iters) — DONE: oracle 13.7, d435i 10.5, ekf 7.6. EKF trails d435i; may be over-smoothing. Fixed pi2 obs dim bug (41→53).
+- [ ] Run NIS diagnostic standalone to validate tuned EKF Q/R values are in [0.35, 7.81] band
+- [ ] If NIS too low: increase q_vel (currently 0.15) back toward 0.5 and re-run comparison
+- [ ] Fix compare_perception_modes.py to capture EKF diagnostics from subprocess (pipe stdout)
 - [x] Noise curriculum support: `noise_scale` field on BallObsNoiseCfg + `update_perception_noise_scale()` for runtime curriculum updates — DONE, 6 unit tests pass
 - [x] Monitor lit-review subagent — 3 iterations complete, all 3 docs committed (perception, noise_curriculum, ekf_tuning). Attempted kill (c3r binary path issue).
 - [x] Review lit-review findings — EKF Q/R values applied this iter; ANEES diagnostic from Bar-Shalom Ch. 5 added; Sage-Husa deferred to real deployment
