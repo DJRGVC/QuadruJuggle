@@ -119,3 +119,12 @@ Change:     (1) Added `noise_scale: float = 1.0` field to `BallObsNoiseCfg`. (2)
 Command:    6 CPU unit tests: scaling at 0.5/0.25/1.0/0.0, identity at 1.0, round-trip update_noise_scale, scale=0.0 zeroes noise.
 Result:     All 6 tests PASS. Key API for policy agent: `BallObsNoiseCfg(mode="d435i", noise_scale=0.25)` for static config, or `update_perception_noise_scale(env, 0.5)` for runtime curriculum transitions. Matches noise_curriculum_plan.md stages D-F design exactly.
 Decision:   Next iter: run compare_perception_modes.py if GPU frees. Otherwise, update PERCEPTION_HANDOFF.md with noise_scale API docs for policy agent.
+
+---
+
+## iter_014 — Body-frame gravity in EKF + HANDOFF noise_scale docs  (2026-04-08T06:00:00Z)
+Hypothesis: The EKF's hardcoded gravity=[0,0,-9.81] is wrong in the body frame when the robot tilts; at 5° tilt this introduces ~0.86 m/s² lateral prediction error. Passing the actual `projected_gravity_b * 9.81` will improve EKF accuracy during active balancing.
+Change:     (1) `ball_ekf.py`: `predict()` and `step()` now accept optional `gravity_b: Tensor(N,3)` — backward-compatible (None→default downward). (2) `ball_obs_spec.py`: `PerceptionPipeline.step()` accepts `gravity_b`; `ball_pos_perceived` and `ball_vel_perceived` read `robot.data.projected_gravity_b * 9.81` and pass it through in EKF mode. (3) Updated `PERCEPTION_HANDOFF.md` with full `noise_scale` curriculum API docs (static config table, runtime `update_perception_noise_scale()` example, EKF+noise_scale interaction).
+Command:    3 CPU unit tests: (1) backward compat predict without gravity_b, (2) tilted 10° gravity produces lateral displacement, (3) step() with explicit gravity. AST parse both files.
+Result:     All 3 tests PASS. Isaac Lab `projected_gravity_b` confirmed as unit vector in body frame (articulation_data.py:790). GPU smoke test for compare_perception_modes.py still blocked behind policy agent's training run (~10 min elapsed when checked).
+Decision:   Next iter: run the comparison test (oracle vs d435i vs ekf, 50 iters each). GPU should be free by then. The body-frame gravity fix will be validated as part of the EKF comparison.

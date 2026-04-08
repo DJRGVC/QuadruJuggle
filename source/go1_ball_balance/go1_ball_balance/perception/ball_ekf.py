@@ -97,8 +97,8 @@ class BallEKF:
             device=self.device,
         ))
 
-        # Gravity vector in state-change form (affects velocity only)
-        self._gravity = torch.tensor(
+        # Default gravity vector (used when no body-frame gravity is provided)
+        self._gravity_default = torch.tensor(
             [0.0, 0.0, self.cfg.gravity_z], device=self.device
         )
 
@@ -121,20 +121,31 @@ class BallEKF:
 
     # --- Core EKF operations ---
 
-    def predict(self, dt: float) -> None:
+    def predict(self, dt: float, gravity_b: torch.Tensor | None = None) -> None:
         """Predict step: propagate state and covariance forward by dt.
 
         Dynamics: ballistic with quadratic drag.
             pos_new = pos + vel * dt + 0.5 * a * dt^2
             vel_new = vel + a * dt
         where a = gravity + drag(vel).
+
+        Args:
+            dt: Time step (seconds).
+            gravity_b: Gravity vector in body frame (N, 3). If None, uses
+                default [0, 0, -9.81] (valid only when trunk is level).
+                Pass ``robot.data.projected_gravity_b * 9.81`` to account
+                for trunk tilt.
         """
         vel = self._x[:, 3:]  # (N, 3)
 
         # Acceleration: gravity + drag
+        if gravity_b is not None:
+            g = gravity_b  # (N, 3) — already in body frame
+        else:
+            g = self._gravity_default.unsqueeze(0)  # (1, 3) broadcasts
         speed = vel.norm(dim=-1, keepdim=True).clamp(min=1e-8)  # (N, 1)
         a_drag = -self.cfg.drag_coeff * speed * vel  # quadratic drag
-        a = self._gravity.unsqueeze(0) + a_drag  # (N, 3)
+        a = g + a_drag  # (N, 3)
 
         # State prediction
         self._x[:, :3] += vel * dt + 0.5 * a * dt**2
@@ -203,15 +214,22 @@ class BallEKF:
         # Blend: detected envs get new P, undetected keep old P
         self._P = torch.where(detected.view(-1, 1, 1), P_new, self._P)
 
-    def step(self, z: torch.Tensor, detected: torch.Tensor, dt: float) -> None:
+    def step(
+        self,
+        z: torch.Tensor,
+        detected: torch.Tensor,
+        dt: float,
+        gravity_b: torch.Tensor | None = None,
+    ) -> None:
         """Combined predict + update step.
 
         Args:
             z: Measured ball position (N, 3).
             detected: Boolean mask (N,) — True where measurement available.
             dt: Time step (seconds).
+            gravity_b: Gravity in body frame (N, 3). See :meth:`predict`.
         """
-        self.predict(dt)
+        self.predict(dt, gravity_b=gravity_b)
         self.update(z, detected)
 
     def reset(

@@ -151,6 +151,7 @@ class PerceptionPipeline:
         gt_pos_b: torch.Tensor,
         env_step_count: int,
         gt_vel_b: torch.Tensor | None = None,
+        gravity_b: torch.Tensor | None = None,
     ) -> None:
         """Run one noise→EKF cycle. Idempotent within a single env step.
 
@@ -162,6 +163,9 @@ class PerceptionPipeline:
             env_step_count: Current env step counter.
             gt_vel_b: GT ball velocity in trunk frame (N, 3). Only needed
                 for diagnostics — pass None to skip velocity error tracking.
+            gravity_b: Gravity vector in body frame (N, 3). If provided,
+                the EKF uses the actual gravity direction accounting for
+                trunk tilt. Otherwise defaults to [0, 0, -9.81].
         """
         if env_step_count == self._last_step_count:
             return  # already ran this step (pos called before vel)
@@ -171,8 +175,8 @@ class PerceptionPipeline:
         # Generate noisy measurement
         noisy_pos, detected = self.noise_model.sample(gt_pos_b)
 
-        # EKF predict + update
-        self.ekf.step(noisy_pos, detected, dt=self.cfg.policy_dt)
+        # EKF predict + update (with body-frame gravity if available)
+        self.ekf.step(noisy_pos, detected, dt=self.cfg.policy_dt, gravity_b=gravity_b)
 
         # Diagnostics
         if self._diag is not None:
@@ -453,7 +457,10 @@ def ball_pos_perceived(
 
     if noise_cfg.mode == "ekf":
         pipeline = _get_or_create_pipeline(env, noise_cfg)
-        pipeline.step(pos_b, env.common_step_counter)
+        # Pass body-frame gravity so EKF accounts for trunk tilt
+        robot: Articulation = env.scene[robot_cfg.name]
+        gravity_b = robot.data.projected_gravity_b * 9.81  # (N, 3)
+        pipeline.step(pos_b, env.common_step_counter, gravity_b=gravity_b)
         return pipeline.pos.clone()
 
     raise ValueError(f"Unknown noise mode: {noise_cfg.mode!r}")
@@ -487,10 +494,13 @@ def ball_vel_perceived(
     if noise_cfg.mode == "ekf":
         pipeline = _get_or_create_pipeline(env, noise_cfg)
         # step() is idempotent — if pos was called first, this is a no-op
+        robot: Articulation = env.scene[robot_cfg.name]
+        gravity_b = robot.data.projected_gravity_b * 9.81  # (N, 3)
         pipeline.step(
             _ball_pos_paddle_frame_gt(env, ball_cfg, robot_cfg, (0.0, 0.0, 0.070)),
             env.common_step_counter,
             gt_vel_b=vel_b if pipeline._diagnostics_enabled else None,
+            gravity_b=gravity_b,
         )
         return pipeline.vel.clone()
 

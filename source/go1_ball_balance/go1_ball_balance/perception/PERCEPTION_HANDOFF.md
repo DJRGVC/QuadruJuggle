@@ -152,8 +152,50 @@ The current `train_juggle_hier.py` on `agent/policy` needs two changes to suppor
 
 Without the reset event, the EKF state will carry over between episodes and diverge.
 
+## Noise Curriculum API (iter_013)
+
+The `noise_scale` field on `BallObsNoiseCfg` lets you ramp D435i noise gradually
+across curriculum stages. This matches Section 4.3 of `noise_curriculum_plan.md`.
+
+### Static config (set once before training)
+
+```python
+noise_cfg = BallObsNoiseCfg(mode="d435i", noise_scale=0.25)  # 25% of full D435i noise
+```
+
+Scale multiplies all noise sigmas and dropout probability proportionally.
+Latency is unchanged (always 1 step).
+
+| `noise_scale` | XY σ (mm) | Z σ base (mm) | dropout % |
+|---|---|---|---|
+| 0.25 | 0.5 | 0.75 | 0.5% |
+| 0.50 | 1.0 | 1.5 | 1.0% |
+| 0.75 | 1.5 | 2.25 | 1.5% |
+| 1.00 | 2.0 | 3.0 | 2.0% |
+
+### Runtime curriculum update (during training)
+
+```python
+from go1_ball_balance.perception import update_perception_noise_scale
+
+# In your curriculum callback (e.g., after stage transition):
+update_perception_noise_scale(env, 0.5)  # ramp to 50%
+```
+
+This updates the live `PerceptionPipeline` instance on `env` — no env restart
+needed. Works with both `d435i` and `ekf` modes.
+
+### EKF mode with noise_scale
+
+```python
+noise_cfg = BallObsNoiseCfg(mode="ekf", noise_scale=0.5)
+```
+
+The EKF's measurement noise adapts to the scaled sensor noise. At `noise_scale=0`,
+observations are noiseless (but still pass through the EKF dynamics model).
+
 ## What's Next (perception agent side)
 
-1. Oracle vs EKF comparison (when GPU frees)
-2. EKF parameter tuning based on training gap
+1. Oracle vs EKF comparison (when GPU frees) — quantify EKF filtering benefit
+2. EKF parameter tuning based on comparison results
 3. Noise curriculum coordination (perception noise schedule synced with juggle curriculum)

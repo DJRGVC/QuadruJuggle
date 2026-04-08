@@ -26,7 +26,7 @@ Siblings will see it in their next SIBLINGS.md refresh.
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
 - **status**: running · iter #3 · ctx 0%
-- **last iter**: 24m ago
+- **last iter**: 28m ago
 
 ### Recent commits on `agent/policy`
 ```
