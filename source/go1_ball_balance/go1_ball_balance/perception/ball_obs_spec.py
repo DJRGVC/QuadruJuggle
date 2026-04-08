@@ -114,6 +114,15 @@ class BallObsNoiseCfg:
     On real hardware, this comes from the IMU — natural architecture.
     """
 
+    enable_spin: bool = False
+    """Enable 9D EKF with spin estimation (Magnus effect).
+
+    When True, the EKF state expands to [pos, vel, spin] (9D) and models
+    Magnus force (a_M = Cm * spin × vel) plus viscous spin decay. Spin is
+    estimated from trajectory curvature — no direct spin sensor needed.
+    Useful for Stage F/G where high-energy bounces impart significant spin.
+    """
+
 
 # ---------------------------------------------------------------------------
 # Perception pipeline: stateful noise + EKF (lazy-initialized on env)
@@ -146,10 +155,19 @@ class PerceptionPipeline:
             device=device,
             cfg=noise_cfg.noise_model_cfg,
         )
+
+        # Propagate enable_spin from high-level cfg to EKF config
+        ekf_cfg = noise_cfg.ekf_cfg
+        if noise_cfg.enable_spin and not ekf_cfg.enable_spin:
+            ekf_cfg = BallEKFConfig(
+                **{k: getattr(ekf_cfg, k) for k in ekf_cfg.__dataclass_fields__}
+            )
+            ekf_cfg.enable_spin = True
+
         self.ekf = BallEKF(
             num_envs=num_envs,
             device=device,
-            cfg=noise_cfg.ekf_cfg,
+            cfg=ekf_cfg,
         )
 
         # Track which step we're on (for deduplication within a single step)
@@ -389,6 +407,16 @@ class PerceptionPipeline:
             return self._world_to_body_vel(self.ekf.vel)
         return self.ekf.vel
 
+    @property
+    def spin(self) -> torch.Tensor | None:
+        """EKF-estimated ball spin in body frame (N, 3), or None if spin disabled."""
+        if not self.ekf._spin_enabled:
+            return None
+        spin_val = self.ekf.spin
+        if self._world_frame:
+            return self._world_to_body_vel(spin_val)  # rotation-only transform
+        return spin_val
+
     def update_noise_scale(self, scale: float) -> None:
         """Update noise amplitudes in the live noise model (for curriculum).
 
@@ -556,6 +584,16 @@ def _get_or_create_pipeline(
 ) -> PerceptionPipeline:
     """Get or lazily create the PerceptionPipeline on the env object."""
     if not hasattr(env, "_perception_pipeline") or env._perception_pipeline is None:
+        # Propagate enable_spin from BallObsNoiseCfg to BallEKFConfig
+        ekf_cfg = noise_cfg.ekf_cfg
+        if noise_cfg.enable_spin and not ekf_cfg.enable_spin:
+            # Copy the config and enable spin so the caller doesn't need
+            # to set it in two places
+            ekf_cfg = BallEKFConfig(
+                **{k: getattr(ekf_cfg, k) for k in ekf_cfg.__dataclass_fields__}
+            )
+            ekf_cfg.enable_spin = True
+
         # Apply noise_scale to the noise model config before creating pipeline
         scaled_cfg = BallObsNoiseCfg(
             mode=noise_cfg.mode,
@@ -564,8 +602,9 @@ def _get_or_create_pipeline(
             noise_model_cfg=_scaled_noise_model_cfg(
                 noise_cfg.noise_model_cfg, noise_cfg.noise_scale
             ),
-            ekf_cfg=noise_cfg.ekf_cfg,
+            ekf_cfg=ekf_cfg,
             policy_dt=noise_cfg.policy_dt,
+            enable_spin=noise_cfg.enable_spin,
         )
         # Enable diagnostics if env has the flag (set by test scripts)
         enable_diag = getattr(env, "_perception_diagnostics_enabled", False)

@@ -208,3 +208,24 @@ Decision:   Next iteration: GPU NIS validation comparing body-frame+IMU (iter_03
             world-frame. Also try 9D spin mode in NIS diagnostic if GPU available. If GPU
             still locked, integrate spin mode into ball_obs_spec.py pipeline (wire enable_spin
             through BallObsNoiseCfg so sim can toggle it).
+
+---
+
+## iter_039 — Wire enable_spin + spawn vel-cmd-survey subagent (12/12 new tests, 127/127 total)  (2026-04-08T15:00:00Z)
+Hypothesis: BallObsNoiseCfg.enable_spin should propagate to EKF via PerceptionPipeline so users
+            can toggle spin estimation from the env config without touching EKF internals.
+Change:     (1) Added `enable_spin: bool = False` field to BallObsNoiseCfg.
+            (2) PerceptionPipeline.__init__ propagates enable_spin to BallEKFConfig (copies config
+                if needed, sets enable_spin=True). Redundant propagation also in _get_or_create_pipeline.
+            (3) Added `spin` property to PerceptionPipeline (returns body-frame spin or None).
+            (4) Created test_pipeline_config.py: 12 tests covering spin wiring (7), world_frame (2),
+                noise_scale (3). All config flags validated.
+            (5) Spawned vel-cmd-survey subagent (sonnet, max 5 iters) per Daniel's request to
+                research user-defined velocity input methods from 2023-2026 papers.
+            (6) Forwarded velocity input request to policy agent's INBOX.
+Command:    `python -m pytest scripts/perception/test_*.py -v` (excluding test_ekf_integration.py)
+Result:     **127/127 tests pass** (12 new config tests + 115 existing). No regressions.
+            GPU locked by policy agent — no NIS validation this iter.
+Decision:   Next: monitor vel-cmd-survey subagent (kill after 5 iters or findings).
+            GPU NIS validation of body-frame+IMU vs world-frame when GPU available.
+            Check vel-cmd-survey progress and policy agent status.

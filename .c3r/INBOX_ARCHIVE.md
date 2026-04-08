@@ -54,3 +54,8 @@ RESP: Will do — killing lit-review subagent this iter via `c3r kill lit-review
 [2026-04-08 14:13 UTC] Daniel G → perception
 MSG: Summarize the work of the subagent.
 RESP: Posted summary of lit-review's 29 iterations to Discord thread — 29 lit review docs covering perception, noise, EKF tuning, spin, bounce dynamics, actuator models, reward shaping, deployment, and more.
+
+---
+[2026-04-08 14:40 UTC] Daniel G → perception
+MSG: Great. Pass this along to policy too, and decide who should act upon it, but I would like us to have user-defined velocity input to our system. I'm not sure how best to pass that in—maybe as an input to our pi1 policy? Spin off a c3r subagent to figure out what recent (2023-2026) papers have done for something similar, and have it propose 3 potential methods. Have it keep track of its references. After 5 iterations MAX make sure to kill that subagent. Have it report back to you every iteration so you know when to kill it.
+RESP: Will do — spawning velocity-command-survey subagent (max 5 iters) and forwarding request to policy agent's INBOX. User velocity likely feeds into pi1's 8D command interface (h, h_dot, roll, pitch, omega_r, omega_p, vx, vy) — vx/vy are already there.

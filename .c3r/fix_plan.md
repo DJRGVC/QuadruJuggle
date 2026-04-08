@@ -16,5 +16,11 @@
 # Phase 5: Sim perception refinements (while waiting for policy/hardware)
 - [x] IMU-aided EKF: use robot angular velocity to compensate platform motion during predict (iter_037)
 - [x] Spin estimation: extend state to [x,y,z,vx,vy,vz,wx,wy,wz] for Magnus effect (iter_038)
+- [x] Wire enable_spin through BallObsNoiseCfg → PerceptionPipeline → EKF (iter_039)
 - [ ] GPU NIS validation: body-frame+IMU vs world-frame comparison (blocked on GPU lock)
 - [ ] Support policy agent with noise curriculum tuning if/when they reach that stage
+
+# Phase 6: User-defined velocity input (Daniel request 2026-04-08)
+- [ ] vel-cmd-survey subagent: 5 iters MAX, then kill. Researching 2023-2026 papers on velocity commands for legged manipulation
+- [ ] Decide on velocity input method based on subagent findings
+- [ ] Implement chosen method (likely pi1 obs extension or pi2 command passthrough)
