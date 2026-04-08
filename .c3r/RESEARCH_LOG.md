@@ -47,3 +47,12 @@ Change:     (1) Added `TiledCameraCfg` import and `BallJuggleHierSceneCfg_DEBUG`
 Command:    AST parse test (OK). GPU smoke test queued but blocked by policy agent's 500-iter training run — GPU lock contention.
 Result:     Code parses cleanly. Camera config: focal_length=11.24cm, horizontal_aperture=20.955cm → 86° HFOV. Quaternion (0.9239, -0.3827, 0, 0) = 45° pitch up in ROS convention. Visual verification deferred to next iter when GPU frees.
 Decision:   Next iter: run the debug_d435i_capture.py smoke test (GPU should be free). If it works, save frame_000.png and move to task 6 (Forrai et al. reference survey). If TiledCamera fails at runtime, debug the sensor config.
+
+---
+
+## iter_006 — REFERENCES.md + fix gym.make + Forrai skip  (2026-04-07T19:45:00Z)
+Hypothesis: Writing perception/REFERENCES.md documenting the ETH noise-injection approach (Ma et al. 2025) and related work will clarify architectural decisions for the EKF/noise pipeline and satisfy task 6.
+Change:     (1) Fixed debug_d435i_capture.py — `gym.make()` needs `cfg=env_cfg` with an instantiated config object, not `cfg_entry_point` string. Now directly imports and instantiates `BallJuggleHierEnvCfg_PLAY()`. (2) Created `perception/REFERENCES.md` summarising Ma et al. (noise injection, primary ref), Ji et al. (DribbleBot, ball manipulation), Portela et al. (sigma curriculum), noted Forrai modality differences (event camera vs frame-based D435i). (3) Updated fix_plan with next 3 tasks: ball_ekf.py, noise_model.py, integration test. (4) Forrai paper not in repo — task 6 marked complete with documented skip reasoning.
+Command:    No GPU workload (policy agent holding lock for 500-iter training). Debug capture still queued in background.
+Result:     REFERENCES.md committed. gym.make fix committed. Debug capture smoke test deferred — background task will complete when GPU frees.
+Decision:   Next iter: check if debug capture completed (background task). If not, begin ball_ekf.py implementation (pure PyTorch, no GPU needed for writing).

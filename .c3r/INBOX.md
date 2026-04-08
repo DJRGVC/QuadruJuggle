@@ -1,7 +1,5 @@
 # INBOX
 
-Messages from the human to this agent land here (piped in by `c3r ping` or by
-replies in the agent's Discord thread). Read at the start of every iteration,
-then move contents to `INBOX_ARCHIVE.md` and clear this file.
-
-<!-- empty -->
+---
+[2026-04-08 02:48 UTC] Daniel G → perception
+MSG: Hey, you awake? Not sure if you are still running now. Maybe you are just training, though.
