@@ -26,7 +26,7 @@ Siblings will see it in their next SIBLINGS.md refresh.
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
 - **status**: running · iter #8 · ctx 0%
-- **last iter**: 15m ago
+- **last iter**: 25m ago
 
 ### Recent commits on `agent/policy`
 ```
@@ -166,5 +166,42 @@ git show agent/vel-cmd-survey:.c3r/INBOX_ARCHIVE.md
 git show agent/vel-cmd-survey:.c3r/PROMPT.md
 git show agent/vel-cmd-survey:.c3r/RESEARCH_LOG.md
 git show agent/vel-cmd-survey:.c3r/SIBLINGS.md
+```
+
+## report-writer
+- **role**: generic
+- **focus**: Create a nicely formatted project report (HTML or Markdown with embedded images/graphs) covering the QuadruJuggle project: perception pipeline, policy training, architecture, and results. Max 10 iterations.
+- **status**: idle · iter #1 · ctx 0%
+- **last iter**: 3s ago
+- **parent**: perception (this is a sub-agent)
+
+### Recent commits on `agent/report-writer`
+```
+d8ed014 iter_001: initial HTML project report — architecture, training, perception, results, sim2real
+aab3845 torso tracking edit
+9c4793a pi_2 with v trackign works
+3841f54 working on pi_1 + pi_2
+085e457 frank-proofed requirements.txt
+```
+### Files modified on `agent/report-writer` (relative to `c3r/QuadruJuggle`)
+```
+.c3r/INBOX.md
+.c3r/INBOX_ARCHIVE.md
+.c3r/PROMPT.md
+.c3r/RESEARCH_LOG.md
+.c3r/SIBLINGS.md
+.c3r/agent.conf
+.c3r/env.sh
+.c3r/fix_plan.md
+.claude/settings.json
+report.html
+```
+### Read one with:
+```
+git show agent/report-writer:.c3r/INBOX.md
+git show agent/report-writer:.c3r/INBOX_ARCHIVE.md
+git show agent/report-writer:.c3r/PROMPT.md
+git show agent/report-writer:.c3r/RESEARCH_LOG.md
+git show agent/report-writer:.c3r/SIBLINGS.md
 ```
 

@@ -69,6 +69,8 @@ def main():
 
         # Parse summary from stdout
         mean_nis = None
+        nis_flight = None
+        nis_contact = None
         in_band = None
         diagnosis = None
         for line in stdout.split("\n"):
@@ -84,10 +86,22 @@ def main():
                     pass
             if "DIAGNOSIS:" in line:
                 diagnosis = line.split("DIAGNOSIS:")[1].strip()
+            if "Flight:" in line and "intervals" in line:
+                try:
+                    nis_flight = float(line.split("Flight:")[1].split("(")[0].strip())
+                except (ValueError, IndexError):
+                    pass
+            if "Contact:" in line and "intervals" in line:
+                try:
+                    nis_contact = float(line.split("Contact:")[1].split("(")[0].strip())
+                except (ValueError, IndexError):
+                    pass
 
         result = {
             "q_vel": q_vel,
             "mean_nis": mean_nis,
+            "nis_flight": nis_flight,
+            "nis_contact": nis_contact,
             "in_band": in_band,
             "diagnosis": diagnosis,
             "returncode": proc.returncode,
@@ -107,13 +121,15 @@ def main():
     print(f"\n{'='*70}")
     print(f"  NIS SWEEP SUMMARY")
     print(f"{'='*70}")
-    print(f"  {'q_vel':>8s}  {'mean_NIS':>10s}  {'band':>15s}  {'diagnosis'}")
-    print(f"  {'-'*8}  {'-'*10}  {'-'*15}  {'-'*30}")
+    print(f"  {'q_vel':>8s}  {'mean_NIS':>10s}  {'flight':>10s}  {'contact':>10s}  {'band':>15s}  {'diagnosis'}")
+    print(f"  {'-'*8}  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*15}  {'-'*30}")
     for r in results:
         nis_str = f"{r['mean_nis']:.3f}" if r["mean_nis"] is not None else "FAIL"
+        flight_str = f"{r['nis_flight']:.3f}" if r.get("nis_flight") is not None else "N/A"
+        contact_str = f"{r['nis_contact']:.3f}" if r.get("nis_contact") is not None else "N/A"
         band_str = r["in_band"] or "N/A"
         diag_str = r["diagnosis"] or ("ERROR rc=" + str(r["returncode"]))
-        print(f"  {r['q_vel']:8.2f}  {nis_str:>10s}  {band_str:>15s}  {diag_str}")
+        print(f"  {r['q_vel']:8.2f}  {nis_str:>10s}  {flight_str:>10s}  {contact_str:>10s}  {band_str:>15s}  {diag_str}")
 
     # Save results
     out_path = os.path.join(os.path.dirname(__file__), "..", "..", "logs", "nis_sweep_results.json")

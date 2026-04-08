@@ -201,3 +201,19 @@ Result:     Agents: 3/5 (perception, policy, report-writer). GPU unavailable thi
 Decision:   GPU NIS phase-separated validation next iter (when GPU free). Monitor report-writer
             progress. If GPU still busy, do more non-GPU improvements (e.g. documentation,
             test cleanup, or data preparation for report).
+
+---
+
+## iter_052 — nis_sweep phase-separated output + test verification  (2026-04-08T18:10:00Z)
+Hypothesis: Updating nis_sweep.py to parse and display phase-separated NIS (flight vs contact)
+            will make Q-tuning sweeps immediately actionable.
+Change:     Updated nis_sweep.py: now parses Flight/Contact NIS from nis_diagnostic.py stdout
+            and displays them in the summary table (new columns: flight, contact). Also verified
+            full test suite: 239/239 pass (CPU). GPU NIS validation blocked by policy training
+            (step 6300/7248, ~55 min remaining — exceeds iteration budget).
+Command:    `uv run --active python -m pytest scripts/perception/ --ignore=... -v` → 239/239 pass
+Result:     nis_sweep.py improved. GPU still locked by policy (iter_016 training, 12288 envs).
+            Report-writer completed iter_001 (880-line HTML report). Policy at step 6300 with
+            sustained juggling (apex ~10, curriculum advancing through stages).
+Decision:   GPU NIS phase-separated validation FIRST PRIORITY next iter. Policy run should finish
+            within ~55 min. If GPU still busy, run nis_sweep with reduced q_vel values once free.
