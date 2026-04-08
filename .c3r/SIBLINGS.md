@@ -26,7 +26,7 @@ Siblings will see it in their next SIBLINGS.md refresh.
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
 - **status**: running · iter #8 · ctx 0%
-- **last iter**: 34m ago
+- **last iter**: 39m ago
 
 ### Recent commits on `agent/policy`
 ```
@@ -132,7 +132,7 @@ git show agent/lit-review:.c3r/SIBLINGS.md
 - **role**: generic
 - **focus**: Survey 2023-2026 papers on user-defined velocity command input for legged robots doing manipulation while walking. Our Go1 has hierarchical pi2 torso tracker (8D: h,hdot,roll,pitch,omega_r,omega_p,vx,vy) and pi1 ball planner. Propose 3 methods for adding user velocity commands. Track references. Report to parent perception every iter via INBOX. Complete in 5 iters MAX then stop.
 - **status**: stopped · iter #5 · ctx 0%
-- **last iter**: 2h ago
+- **last iter**: 3h ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/vel-cmd-survey`
@@ -171,17 +171,17 @@ git show agent/vel-cmd-survey:.c3r/SIBLINGS.md
 ## report-writer
 - **role**: generic
 - **focus**: Create a nicely formatted project report (HTML or Markdown with embedded images/graphs) covering the QuadruJuggle project: perception pipeline, policy training, architecture, and results. Max 10 iterations.
-- **status**: running · iter #3 · ctx 0%
-- **last iter**: 1m ago
+- **status**: running · iter #5 · ctx 0%
+- **last iter**: 2m ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/report-writer`
 ```
+0b6df27 iter_005: velocity commands section — Method 1/2/3 comparison table + architecture diagram
+556195e iter_004: lessons learned section — 6 before/after cards (crouching, entropy, Gaussian, joints, noise, termination)
 f547f3c iter_003: scene constants card + ball_release callout + pi2 curriculum table A→H
 25c3245 iter_002: dual-line training chart (apex+timeout%) + NIS validation table from GPU iter_049
 d8ed014 iter_001: initial HTML project report — architecture, training, perception, results, sim2real
-aab3845 torso tracking edit
-9c4793a pi_2 with v trackign works
 ```
 ### Files modified on `agent/report-writer` (relative to `c3r/QuadruJuggle`)
 ```

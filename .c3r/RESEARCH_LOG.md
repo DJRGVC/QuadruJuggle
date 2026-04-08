@@ -236,3 +236,24 @@ Result:     Script ready. Cannot GPU-validate until policy training completes.
 Decision:   GPU phase-separated NIS validation FIRST when GPU frees up. Then run
             eval_perception_live.py with policy's best checkpoint to compare NIS under
             realistic vs random trajectories.
+
+---
+
+## iter_054 — eval_perception_live.py improvements: JSON output + RMSE tracking  (2026-04-08T21:20:00Z)
+Hypothesis: eval_perception_live.py needs JSON output and per-interval RMSE averaging to
+            enable systematic comparison across EKF parameter sweeps.
+Change:     (1) Added `--output` arg for JSON summary file. (2) Added per-interval EKF/raw
+            RMSE tracking with running averages in summary. (3) Results dict includes EKF
+            config, episode stats, and all key metrics. (4) Verified all 239 tests still pass
+            (14 test files, run standalone; test_ekf_integration.py excluded as GPU-only).
+            GPU blocked by policy training (iter_016, step ~6550/7248, ~40 min remaining).
+            Report-writer at iter_006 (1394-line HTML report, nearly complete — 1 task left).
+            Policy agent at iter_015 with curriculum advancing (Stage B, apex=10.5, timeout=68%).
+Command:    AST parse + manual test suite run (no GPU). 14/14 test files pass (239 tests).
+Result:     Script improved, ready for GPU eval. Policy checkpoints available at
+            QuadruJuggle-policy/logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_10-36-50/.
+            Pi2 checkpoint at QuadruJuggle/logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/.
+Decision:   GPU phase-separated NIS validation + eval_perception_live.py run NEXT iter when
+            GPU frees up. Policy training should complete within ~40 min. Prepare exact GPU
+            commands: (1) nis_diagnostic.py 2048 envs × 500 steps, (2) eval_perception_live.py
+            512 envs × 1000 steps with policy's model_best.pt.

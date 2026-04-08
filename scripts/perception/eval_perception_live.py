@@ -67,6 +67,8 @@ def main():
                         help="Fixed target apex height for all envs (metres)")
     parser.add_argument("--sigma-ratio", type=float, default=3.5,
                         help="sigma = target / sigma_ratio")
+    parser.add_argument("--output", type=str, default=None,
+                        help="Path to write JSON summary (for comparison across runs)")
 
     args = parser.parse_args()
 
@@ -85,6 +87,7 @@ def main():
     app_launcher = AppLauncher(launcher_args)
     simulation_app = app_launcher.app
 
+    import json
     import gymnasium as gym
     import torch
     from rsl_rl.runners import OnPolicyRunner
@@ -244,6 +247,8 @@ def main():
     all_nis = []
     all_nis_flight = []
     all_nis_contact = []
+    all_ekf_rmse = []
+    all_raw_rmse = []
     total_gate_rejected = 0
     total_gate_total = 0
     total_timeouts = 0
@@ -300,6 +305,13 @@ def main():
             if nis_contact > 0:
                 all_nis_contact.append(nis_contact)
 
+            ekf_mm = diag.get("pos_rmse_ekf_mm", 0)
+            raw_mm = diag.get("pos_rmse_raw_mm", 0)
+            if ekf_mm > 0:
+                all_ekf_rmse.append(ekf_mm)
+            if raw_mm > 0:
+                all_raw_rmse.append(raw_mm)
+
             gate_rate = diag.get("gate_rejection_rate", 0.0)
             gate_count = diag.get("gate_rejected", 0)
             total_gate_rejected += gate_count
@@ -328,10 +340,13 @@ def main():
     _print(f"  Episodes: {total_episodes}  |  Timeout: {100*total_timeouts/max(total_episodes,1):.1f}%")
     _print(f"{'='*100}")
 
+    results = {}
     if all_nis:
         mean_nis = sum(all_nis) / len(all_nis)
         in_band = sum(1 for n in all_nis if 0.35 <= n <= 7.81)
         _print(f"\n  Overall NIS: {mean_nis:.3f}  (target ≈ 3.0, in-band: {in_band}/{len(all_nis)})")
+        results["mean_nis"] = round(mean_nis, 3)
+        results["nis_in_band"] = f"{in_band}/{len(all_nis)}"
 
         if all_nis_flight:
             mean_f = sum(all_nis_flight) / len(all_nis_flight)
@@ -342,6 +357,7 @@ def main():
                 _print(f"    → Overconfident: increase q_vel")
             else:
                 _print(f"    → Well-tuned")
+            results["mean_nis_flight"] = round(mean_f, 3)
 
         if all_nis_contact:
             mean_c = sum(all_nis_contact) / len(all_nis_contact)
@@ -352,20 +368,42 @@ def main():
                 _print(f"    → Overconfident: increase q_vel_contact")
             else:
                 _print(f"    → Well-tuned")
+            results["mean_nis_contact"] = round(mean_c, 3)
 
         overall_gate_rate = (total_gate_rejected / total_gate_total * 100
                              if total_gate_total > 0 else 0)
         _print(f"\n  Gate rejections: {total_gate_rejected}/{total_gate_total} ({overall_gate_rate:.2f}%)")
+        results["gate_rejected"] = total_gate_rejected
+        results["gate_total"] = total_gate_total
 
-        # Last interval's RMSE for final summary
-        if pipeline is not None and pipeline.diagnostics is not None:
-            d = pipeline.diagnostics
-            _print(f"  EKF RMSE: {d.get('pos_rmse_ekf_mm', 0):.2f} mm  "
-                   f"(raw: {d.get('pos_rmse_raw_mm', 0):.2f} mm, "
-                   f"improvement: {d.get('ekf_improvement_pct', 0):.1f}%)")
-            _print(f"  Detection rate: {d.get('detection_rate', 0)*100:.1f}%")
+        # Average RMSE across all intervals
+        if all_ekf_rmse:
+            avg_ekf = sum(all_ekf_rmse) / len(all_ekf_rmse)
+            avg_raw = sum(all_raw_rmse) / len(all_raw_rmse) if all_raw_rmse else 0
+            improvement = (1 - avg_ekf / avg_raw) * 100 if avg_raw > 0 else 0
+            _print(f"\n  Avg EKF RMSE: {avg_ekf:.2f} mm  (raw: {avg_raw:.2f} mm, "
+                   f"improvement: {improvement:.1f}%)")
+            results["avg_ekf_rmse_mm"] = round(avg_ekf, 2)
+            results["avg_raw_rmse_mm"] = round(avg_raw, 2)
+            results["avg_improvement_pct"] = round(improvement, 1)
     else:
         _print("\n  No NIS data collected!")
+
+    results["total_episodes"] = total_episodes
+    results["timeout_pct"] = round(100 * total_timeouts / max(total_episodes, 1), 1)
+    results["target_height"] = target_h
+    results["pi1_checkpoint"] = pi1_path
+    results["ekf_config"] = {
+        "q_pos": ekf_cfg.q_pos, "q_vel": ekf_cfg.q_vel,
+        "q_vel_contact": ekf_cfg.q_vel_contact,
+        "r_xy": ekf_cfg.r_xy, "r_z": ekf_cfg.r_z,
+        "contact_aware": ekf_cfg.contact_aware,
+    }
+
+    if args.output:
+        with open(args.output, "w") as f:
+            json.dump(results, f, indent=2)
+        _print(f"\n  Results saved to: {args.output}")
 
     _print()
     env.close()
