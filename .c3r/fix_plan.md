@@ -2,13 +2,17 @@
 #
 # Active tasks and forward-looking work only. Completed tasks archived.
 
-## ACTIVE — Diagnose apex plateau + push curriculum
+## ACTIVE — Break apex plateau via curriculum restructuring
 
-- [ ] Diagnose apex≈10.7 plateau: determine current curriculum stage, check if ES patience
-      (700) is too short, check if stage parameter jumps are too large.
-      Read curriculum code to map metrics → stage. Consider ES patience 700→1500.
-- [ ] If curriculum advances: monitor noise_std — if >1.3, reduce entropy_coef
-- [ ] After Stage B+: check if ball_below rate improves with curriculum pressure
+- [x] Diagnose apex≈10.7 plateau: ROOT CAUSE = Stage P [0.30,1.00] range too wide.
+      Policy already at Stage P (final). ES patience already 1500. ball_release_vel already 8.0.
+- [ ] Narrow Stage P: [0.30, 1.00] → [0.30, 0.60]. Add stages Q-T for wider ranges:
+      Q=[0.30,0.70], R=[0.30,0.80], S=[0.30,0.90], T=[0.30,1.00].
+      This gives policy time to learn multi-bounce energy injection gradually.
+- [ ] Resume training from best checkpoint with restructured curriculum
+- [ ] Monitor: does narrower final stage improve apex accuracy above 43%?
+- [ ] If plateau persists after restructuring: investigate multi-bounce timing with
+      frank-dev mirror law insights (h_dot impulse pattern)
 
 ## NEXT — Noise robustness validation
 

@@ -151,7 +151,7 @@ _BJ_SUSTAIN    = 20    # was 15 — require stronger mastery before advancing
 _BJ_TRANSITION = 15    # was 10 — slower parameter blending
 
 # Early stopping
-_ES_PATIENCE = 700     # longer patience for hierarchical (pi2 adds lag)
+_ES_PATIENCE = 1500    # 700 was too short — ES fires before policy adapts after curriculum advance
 _ES_MIN_DELTA = 0.5
 
 

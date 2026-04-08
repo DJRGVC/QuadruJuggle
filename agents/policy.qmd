@@ -1,0 +1,89 @@
+---
+title: "policy"
+description: "retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling."
+date: today
+author: "policy (c3r agent)"
+---
+
+::: {.callout-tip appearance="simple"}
+**Role**: generic  ·  **Model**: `claude-opus-4-6`  ·  **Branch**: `agent/policy`
+
+retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
+:::
+
+## Current focus
+
+This page is maintained by the **policy** agent. Entries are in reverse chronological order.
+
+## Iteration 18 — Apex plateau diagnosis (GPU busy) {.unnumbered}
+*2026-04-08*
+
+Diagnosed the apex~10.7 reward plateau that has persisted since iter_016 (step 7198) through two
+unlogged continuation runs (steps 7198-9182 and 8141-8839). A training process is currently running
+on the GPU (`--start-stage 5`, `--max_iterations 2000`) and shows the same plateau: apex=10.79,
+timeout=69%, mean_reward=307.
+
+**Key analysis**: With `_BJ_THRESHOLD=0.30` and `_BJ_SUSTAIN=20`, the curriculum should advance every
+~35 iterations. Starting from Stage F (5), the running process (723+ iters) should be at Stage P (final).
+At Stage P, per-env targets span [0.30, 1.00] m. Pi2's h_dot command range is [-1.5, 1.5] m/s, giving
+a single-bounce height ceiling of ~0.80 m. However, with restitution=0.99, multi-bounce energy
+accumulation CAN reach 1.0 m+. The limitation is likely the policy's ability to time paddle
+movements for energy injection, not a hard physical ceiling.
+
+**Metrics snapshot (wandb, running process)**:
+
+| Metric | Value |
+|---|---|
+| ball_apex_height | 10.79 / 25.0 (43%) |
+| ball_release_vel | 1.61 / 8.0 (20%) |
+| timeout | 69% |
+| ball_below | 28.5% |
+| mean_ep_length | 982 |
+| noise_std | 1.17 |
+
+**ES patience already increased** from 700 to 1500 in code; `ball_release_vel` weight raised from 3.0 to 8.0.
+Neither has broken the plateau.
+
+**Decision**: Wait for running GPU job to complete, then try narrowing Stage P target range from
+[0.30, 1.00] to [0.30, 0.60] to make the final stage achievable, with new stages for higher targets.
+
+## Iteration 14 — Sustained juggling breakthrough {.unnumbered}
+*2026-04-08*
+
+Added `ball_release_velocity_reward` (weight=+3.0): a linear reward for upward ball velocity when
+the ball is airborne. This single change broke the "balance-not-bounce" local optimum that had
+plagued all previous runs. The policy sustained active juggling for 1500+ iterations with no
+collapse -- a first.
+
+**Result**: apex peaked at 15.4, settled to 9.7 stable. Timeout=63%, ball_below=34%. Policy found a
+stable equilibrium between throwing the ball (earning apex + release_vel reward) and occasionally
+losing it (ball_below termination).
+
+**Why it works**: Previous rewards (apex Gaussian + ball_low penalty) created a degenerate attractor --
+the policy could earn guaranteed alive reward (1.0/step x 1500 steps = 1500 total) by passively
+balancing the ball. `ball_release_vel` makes the "throw" action directly rewarding, tipping the
+balance toward active juggling.
+
+Commits: `f77d50e`, `dc7bb6f`
+
+## Iterations 1-13 — Oracle baseline and reward engineering {.unnumbered}
+*2026-04-08*
+
+Established oracle baseline (41D pi2, Stage D, timeout=98.9%), integrated perception agent's d435i
+noise model (only ~8% reward degradation), and iteratively refined rewards to break the "balance"
+local optimum. Key lessons:
+
+- **sigma_ratio=2.5 was too generous**: ball-at-rest earned 4.4% of max apex reward per step, enough
+  to sustain passive balancing. Fixed to 3.5 (0.2%).
+- **alive=1.0/step dominates at long episodes**: 1500 steps x 1.0 = 1500 total, dwarfing all other
+  rewards. Added `ball_low_penalty` to cancel alive during passive balance.
+- **ball_low=-2.0 causes death spiral**: too aggressive penalty collapses policy during curriculum
+  transitions. Settled on -1.0 + release_vel reward instead.
+- **Sustain-during-blend bug**: curriculum counter was ticking during parameter blending, causing
+  back-to-back stage advances without mastery.
+
+Commits: `206e928` (compaction), see RESEARCH_LOG_ARCHIVE.md for full details.
+
+---
+
+<!-- New entries go above this line -->

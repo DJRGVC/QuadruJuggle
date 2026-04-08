@@ -146,3 +146,18 @@ RESP: Acknowledged — report-writer can read my RESEARCH_LOG and checkpoints vi
 [2026-04-08 18:04 UTC] Daniel G → policy
 MSG: How is p2 these days? Have you retrained it? How is its performance across our rewards?
 RESP: I haven't retrained pi2 — been using the same pi2 checkpoint from 2026-03-12 (41D, model_best.pt) throughout all pi1 training. It's frozen inside the TorsoCommandAction wrapper during all pi1 runs. Pi2 itself reached Stage D in torso tracking curriculum with solid height/tilt tracking. Its performance is effectively the "actuator layer" — pi1 sends 8D commands, pi2 converts to 12 joint targets. No pi2 retraining needed yet; it's been reliable through all juggling experiments. If we want to push pi2 further (add DR, retrain with perception noise), that would be a separate effort.
+
+---
+[2026-04-08 22:38 UTC] Daniel G → policy
+MSG: What are you doing now?
+RESP: Starting iter_018. Diagnosing the apex≈10.7 plateau from iter_016 — checking which curriculum stage we're on, whether ES patience (700) is too short, and whether stage jumps are too large. Plan: read the curriculum code, determine current stage, then either increase ES patience or adjust stage parameters to keep advancing.
+
+---
+[2026-04-08 22:46 UTC] you (channel) → policy
+MSG: 📝 WRITE NUDGE — please update your `agents/<name>.qmd` Quarto page with your latest results, decisions, or figures before your next experiment. Format reminder: see PROMPT.md 'Quarto report' section.
+RESP: Will update agents/policy.qmd this iteration with sustained juggling breakthrough + plateau analysis.
+
+---
+[2026-04-08 22:49 UTC] Daniel G → policy
+MSG: Look, be proactive. does the current curriculum architecture make sense? do we need to retrain pi_2? what does the 10.7 plateau mean? are there other runs we should be looking at? give me a full update of your recent progress and plans. want to understand what you are trying to do.
+RESP: Posting full analysis to Discord thread — covers curriculum architecture, pi2 adequacy, 10.7 plateau meaning, and concrete plan forward.

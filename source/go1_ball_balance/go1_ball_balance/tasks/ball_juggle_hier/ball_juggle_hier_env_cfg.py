@@ -390,7 +390,7 @@ class RewardsCfg:
 
     ball_release_vel = RewTerm(
         func=mdp.ball_release_velocity_reward,
-        weight=3.0,
+        weight=8.0,  # was 3.0 — increased to break passive-bounce plateau (apex≈10.7 for 1900+ iters)
         params={
             "max_vel": 3.0,
             "ball_cfg": SceneEntityCfg("ball"),

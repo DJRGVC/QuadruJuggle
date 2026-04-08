@@ -92,3 +92,28 @@ Result:     Log shrunk from 370→~75 lines. Archive preserved verbatim.
 Decision:   Next iteration (iter_018): diagnose the apex≈10.7 plateau. Read curriculum code to
             determine current stage, check if ES patience (700) is too short for curriculum to
             advance, and decide whether to increase patience or adjust stage parameters.
+
+## Iteration 18 — Apex plateau diagnosis (no GPU — active run)  (2026-04-08T22:50Z)
+Hypothesis: The apex≈10.7 plateau is caused by Stage P's target range [0.30, 1.00] being too wide,
+            with high targets unreachable without multi-bounce energy injection that pi1 hasn't learned.
+Change:     No config changes (GPU occupied by PID 805803, an unlogged continuation run).
+            Analysis-only iteration. Updated Quarto page. Processed INBOX (Daniel's status request).
+Command:    Examined TB data from 5 runs (steps 4249→9182). Read curriculum code, reward functions,
+            and pi2's h_dot command range.
+Result:     CONFIRMED plateau is consistent across ALL recent runs (apex 10.5-11.3, timeout 68-69%,
+            reward 300-360). Key findings:
+            (1) Curriculum threshold=0.30 with timeout=69% → curriculum advances every ~35 iters.
+                Running job (723 iters from Stage F) is almost certainly at Stage P (final).
+            (2) Pi2 h_dot max = 1.5 m/s → single-bounce ceiling ~0.80m. But with r=0.99, multi-bounce
+                CAN reach 1.0m+ (second bounce: paddle at 1.5 m/s + ball at 3.96 m/s → 2.43m).
+            (3) 43% apex accuracy at Stage P = policy reliably hits easy targets (0.30m) but not hard
+                ones (1.0m). Wide range drags average down.
+            (4) ball_release_vel already at 8.0 weight, ES already at 1500 patience. Neither broke plateau.
+            (5) Two unlogged continuation runs found: 2026-04-08_13-12-09 (1984 iters) and
+                2026-04-08_15-05-06 (running, 723+ iters). Same plateau.
+            Active GPU process: PID 805803, start-stage 5, 2000 max_iters, from model_best.pt of
+                2026-04-08_13-12-09. Log dir: 2026-04-08_15-05-06. Step ~8860.
+Decision:   Next iteration: once GPU is free, narrow Stage P target range from [0.30, 1.00] to
+            [0.30, 0.60] and add stages Q-T for progressively wider ranges. This gives the policy
+            time to learn multi-bounce energy injection gradually instead of facing the full range
+            immediately. Resume from model_best.pt of the most advanced run.

@@ -1,0 +1,23 @@
+---
+title: "perception"
+description: "implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline following ETH-style architecture, producing noisy ball observations usable by pi1 in Isaac Lab sim."
+date: today
+author: "perception (c3r agent)"
+---
+
+::: {.callout-tip appearance="simple"}
+**Role**: generic  ·  **Model**: `claude-opus-4-6`  ·  **Branch**: `agent/perception`
+
+implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline following ETH-style architecture, producing noisy ball observations usable by pi1 in Isaac Lab sim.
+:::
+
+## Current focus
+
+(This page is maintained by the **perception** agent. Append new
+entries below in reverse chronological order — newest first. Each entry
+should have a short title, a 1-paragraph summary, key findings, links to
+specific commits, and any figures the agent generated.)
+
+---
+
+<!-- New entries go above this line -->
