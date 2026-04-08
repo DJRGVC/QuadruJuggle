@@ -139,6 +139,9 @@ class PerceptionPipeline:
         # Track which step we're on (for deduplication within a single step)
         self._last_step_count = -1
 
+        # Robot acceleration estimation via finite differences
+        self._prev_robot_vel_b: torch.Tensor | None = None
+
         # Diagnostics: running error accumulators
         self._diagnostics_enabled = enable_diagnostics
         if enable_diagnostics:
@@ -152,6 +155,7 @@ class PerceptionPipeline:
         env_step_count: int,
         gt_vel_b: torch.Tensor | None = None,
         gravity_b: torch.Tensor | None = None,
+        robot_vel_b: torch.Tensor | None = None,
     ) -> None:
         """Run one noise→EKF cycle. Idempotent within a single env step.
 
@@ -166,17 +170,33 @@ class PerceptionPipeline:
             gravity_b: Gravity vector in body frame (N, 3). If provided,
                 the EKF uses the actual gravity direction accounting for
                 trunk tilt. Otherwise defaults to [0, 0, -9.81].
+            robot_vel_b: Robot body-frame linear velocity (N, 3). Used to
+                compute body-frame acceleration via finite differences for
+                pseudo-force compensation in EKF predict.
         """
         if env_step_count == self._last_step_count:
             return  # already ran this step (pos called before vel)
 
         self._last_step_count = env_step_count
 
+        # Compute robot body-frame acceleration via finite differences
+        robot_acc_b = None
+        if robot_vel_b is not None:
+            if self._prev_robot_vel_b is not None:
+                dt = self.cfg.policy_dt
+                robot_acc_b = (robot_vel_b - self._prev_robot_vel_b) / dt
+                # Clamp to prevent wild accelerations from resets
+                robot_acc_b = robot_acc_b.clamp(-50.0, 50.0)
+            self._prev_robot_vel_b = robot_vel_b.clone()
+
         # Generate noisy measurement
         noisy_pos, detected = self.noise_model.sample(gt_pos_b)
 
-        # EKF predict + update (with body-frame gravity if available)
-        self.ekf.step(noisy_pos, detected, dt=self.cfg.policy_dt, gravity_b=gravity_b)
+        # EKF predict + update (with body-frame gravity + acceleration compensation)
+        self.ekf.step(
+            noisy_pos, detected, dt=self.cfg.policy_dt,
+            gravity_b=gravity_b, robot_acc_b=robot_acc_b,
+        )
 
         # Diagnostics
         if self._diag is not None:
@@ -198,6 +218,10 @@ class PerceptionPipeline:
         """Reset noise model and EKF for specified environments."""
         self.noise_model.reset(env_ids, init_pos)
         self.ekf.reset(env_ids, init_pos, init_vel)
+        # Clear robot velocity buffer for reset envs so we don't compute
+        # a spurious acceleration spike on the first post-reset step
+        if self._prev_robot_vel_b is not None:
+            self._prev_robot_vel_b[env_ids] = 0.0
 
     @property
     def pos(self) -> torch.Tensor:
@@ -460,10 +484,14 @@ def ball_pos_perceived(
 
     if noise_cfg.mode == "ekf":
         pipeline = _get_or_create_pipeline(env, noise_cfg)
-        # Pass body-frame gravity so EKF accounts for trunk tilt
+        # Pass body-frame gravity + velocity for pseudo-force compensation
         robot: Articulation = env.scene[robot_cfg.name]
         gravity_b = robot.data.projected_gravity_b * 9.81  # (N, 3)
-        pipeline.step(pos_b, env.common_step_counter, gravity_b=gravity_b)
+        robot_vel_b = robot.data.root_lin_vel_b  # (N, 3)
+        pipeline.step(
+            pos_b, env.common_step_counter,
+            gravity_b=gravity_b, robot_vel_b=robot_vel_b,
+        )
         out = pipeline.pos.clone()
         # Guard against EKF divergence — NaN/Inf would corrupt PPO gradients
         out = torch.nan_to_num(out, nan=0.0, posinf=1.0, neginf=-1.0)
@@ -502,11 +530,13 @@ def ball_vel_perceived(
         # step() is idempotent — if pos was called first, this is a no-op
         robot: Articulation = env.scene[robot_cfg.name]
         gravity_b = robot.data.projected_gravity_b * 9.81  # (N, 3)
+        robot_vel_b = robot.data.root_lin_vel_b  # (N, 3)
         pipeline.step(
             _ball_pos_paddle_frame_gt(env, ball_cfg, robot_cfg, (0.0, 0.0, 0.070)),
             env.common_step_counter,
             gt_vel_b=vel_b if pipeline._diagnostics_enabled else None,
             gravity_b=gravity_b,
+            robot_vel_b=robot_vel_b,
         )
         out = pipeline.vel.clone()
         out = torch.nan_to_num(out, nan=0.0, posinf=5.0, neginf=-5.0)

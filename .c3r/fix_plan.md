@@ -29,9 +29,11 @@
 - [x] Run tuned EKF comparison test (oracle/d435i/ekf, 2048 envs × 50 iters) — DONE: oracle 13.7, d435i 10.5, ekf 7.6. EKF trails d435i; may be over-smoothing. Fixed pi2 obs dim bug (41→53).
 - [x] Increase q_vel from 0.15 to 0.30 based on CWNA analysis (lit_review_ekf_lag_vs_raw_noise.md: 0.15 was 7× too small)
 - [x] Run NIS diagnostic (256 envs × 100 steps, q_vel=0.30): NIS=966 (target 3.0), EKF RMSE=130mm vs raw=4.4mm — EKF 30× worse than raw noise. Root cause: body-frame pseudo-forces from robot motion (not modeled in EKF ballistic dynamics).
-- [ ] Adopt "train without EKF, deploy with EKF" pattern — EKF is harmful during training (confirmed empirically). Train pi1 on raw d435i noise only.
-- [ ] Add body-frame acceleration compensation to EKF predict() for deployment use: pass robot body lin_acc to EKF, model a_ball = gravity_body + drag - a_robot_body
-- [ ] Update PERCEPTION_HANDOFF.md with "no EKF for training" recommendation + NIS evidence
+- [x] Adopt "train without EKF, deploy with EKF" pattern — documented in PERCEPTION_HANDOFF.md with NIS evidence
+- [x] Add body-frame acceleration compensation to EKF predict() — robot_acc_b via finite-diff of root_lin_vel_b, ±50 m/s² clamp, reset-safe
+- [x] Update PERCEPTION_HANDOFF.md with "no EKF for training" recommendation + NIS evidence + acceleration compensation docs
+- [ ] Validate acceleration compensation: re-run NIS diagnostic (target NIS ≈ 3.0 vs previous 966)
+- [ ] If NIS improves, re-run 3-mode comparison (oracle/d435i/ekf) to quantify deployment EKF benefit
 - [x] Fix compare_perception_modes.py diagnostic capture — used base_env reference, added flush + warning
 - [x] Noise curriculum support: `noise_scale` field on BallObsNoiseCfg + `update_perception_noise_scale()` for runtime curriculum updates — DONE, 6 unit tests pass
 - [x] Monitor lit-review subagent — 3 iterations complete, all 3 docs committed (perception, noise_curriculum, ekf_tuning). Attempted kill (c3r binary path issue).

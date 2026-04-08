@@ -150,13 +150,23 @@ class BallEKF:
 
     # --- Core EKF operations ---
 
-    def predict(self, dt: float, gravity_b: torch.Tensor | None = None) -> None:
+    def predict(
+        self,
+        dt: float,
+        gravity_b: torch.Tensor | None = None,
+        robot_acc_b: torch.Tensor | None = None,
+    ) -> None:
         """Predict step: propagate state and covariance forward by dt.
 
-        Dynamics: ballistic with quadratic drag.
-            pos_new = pos + vel * dt + 0.5 * a * dt^2
-            vel_new = vel + a * dt
-        where a = gravity + drag(vel).
+        Dynamics: ballistic with quadratic drag, compensated for robot motion.
+            a_ball = gravity_body + drag(vel) - robot_acc_body
+            pos_new = pos + vel * dt + 0.5 * a_ball * dt^2
+            vel_new = vel + a_ball * dt
+
+        The ``-robot_acc_body`` term compensates for pseudo-forces that appear
+        in the body frame when the robot accelerates. Without this, the EKF's
+        prediction error grows with robot motion (NIS=966 vs target 3.0 in
+        iter_021 diagnostic).
 
         Args:
             dt: Time step (seconds).
@@ -164,10 +174,14 @@ class BallEKF:
                 default [0, 0, -9.81] (valid only when trunk is level).
                 Pass ``robot.data.projected_gravity_b * 9.81`` to account
                 for trunk tilt.
+            robot_acc_b: Robot body-frame linear acceleration (N, 3). If
+                provided, subtracted from ball acceleration to compensate
+                for pseudo-forces in the non-inertial body frame. Computed
+                by finite-differencing ``robot.data.root_lin_vel_b``.
         """
         vel = self._x[:, 3:].clone()  # (N, 3) — clone to avoid view mutation
 
-        # Acceleration: gravity + drag
+        # Acceleration: gravity + drag - robot_acceleration (pseudo-force)
         if gravity_b is not None:
             g = gravity_b  # (N, 3) — already in body frame
         else:
@@ -175,6 +189,10 @@ class BallEKF:
         speed = vel.norm(dim=-1, keepdim=True).clamp(min=1e-8)  # (N, 1)
         a_drag = -self.cfg.drag_coeff * speed * vel  # quadratic drag
         a = g + a_drag  # (N, 3)
+
+        # Subtract robot body-frame acceleration (pseudo-force compensation)
+        if robot_acc_b is not None:
+            a = a - robot_acc_b
 
         # Linearised state transition F = dxnew/dx (compute BEFORE state mutation)
         # F is identity + off-diagonal blocks from dynamics linearisation
@@ -274,6 +292,7 @@ class BallEKF:
         detected: torch.Tensor,
         dt: float,
         gravity_b: torch.Tensor | None = None,
+        robot_acc_b: torch.Tensor | None = None,
     ) -> None:
         """Combined predict + update step.
 
@@ -282,8 +301,9 @@ class BallEKF:
             detected: Boolean mask (N,) — True where measurement available.
             dt: Time step (seconds).
             gravity_b: Gravity in body frame (N, 3). See :meth:`predict`.
+            robot_acc_b: Robot body-frame acceleration (N, 3). See :meth:`predict`.
         """
-        self.predict(dt, gravity_b=gravity_b)
+        self.predict(dt, gravity_b=gravity_b, robot_acc_b=robot_acc_b)
         self.update(z, detected)
 
     def reset(

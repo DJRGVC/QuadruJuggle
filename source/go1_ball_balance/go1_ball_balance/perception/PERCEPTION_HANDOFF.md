@@ -4,18 +4,44 @@
 **To**: policy agent (`agent/policy`)
 **Date**: 2026-04-08
 
-## What's New
+## IMPORTANT: No EKF During Training
 
-The perception pipeline now has a fully functional **EKF mode** (`mode="ekf"`)
-that chains: GT ball state → D435i structured noise → 6-state Kalman filter →
-filtered position & velocity. This replaces the stateless `mode="d435i"` with
-a temporally-consistent, physically-grounded estimate.
+**Recommendation: train pi1 with `mode="d435i"` (raw noise), NOT `mode="ekf"`.**
 
-Key improvements over `d435i` mode:
-- **Stateful noise model**: hold-last-value on dropout (not GT passthrough)
-- **Latency buffer**: configurable observation delay (default 1 step)
-- **EKF smoothing**: ballistic+drag dynamics model predicts between measurements
-- **Proper resets**: EKF state is re-initialized per-env on episode reset
+NIS diagnostic (iter_021) showed the EKF is **30× worse** than raw noise during
+training: EKF RMSE = 130mm vs raw RMSE = 4.4mm, NIS = 966 (target 3.0).
+
+**Root cause**: the EKF uses ballistic dynamics in the body frame, but doesn't
+model the robot's own acceleration. With an untrained/learning policy, the robot
+moves erratically, creating massive pseudo-forces in the body frame that the EKF
+can't predict → covariance collapses → innovations explode.
+
+**The EKF is designed for hardware deployment** where the trained policy produces
+smooth, predictable motion. In iter_022, body-frame acceleration compensation
+was added (`robot_acc_b` parameter) — this subtracts the robot's estimated
+acceleration from the EKF's dynamics model, which should help for deployment.
+
+For training, the `d435i` mode with `noise_scale` curriculum is the right approach.
+
+## What's Available
+
+The perception pipeline has three modes:
+- **`mode="oracle"`** — pass-through ground truth (default)
+- **`mode="d435i"`** — D435i-style structured noise (RECOMMENDED for training)
+- **`mode="ekf"`** — noise → EKF filter (for hardware deployment only)
+
+Key features of `d435i` mode:
+- Depth-dependent position noise (D435i stereo baseline model)
+- Frame dropout (2% default)
+- `noise_scale` curriculum support (0.0→1.0 ramp)
+- Velocity noise from finite-differenced positions (30Hz camera model)
+
+Key features of `ekf` mode (deployment):
+- Stateful noise model with hold-last-value on dropout
+- Ballistic + drag dynamics with body-frame gravity compensation
+- **Body-frame acceleration compensation** (subtracts robot pseudo-forces)
+- Latency buffer (configurable observation delay)
+- ANEES/NIS consistency diagnostic
 
 ## How to Enable EKF Mode
 
@@ -205,6 +231,6 @@ observations are noiseless (but still pass through the EKF dynamics model).
 
 ## What's Next (perception agent side)
 
-1. Oracle vs EKF comparison (when GPU frees) — quantify EKF filtering benefit
-2. EKF parameter tuning based on comparison results
-3. Noise curriculum coordination (perception noise schedule synced with juggle curriculum)
+1. Validate body-frame acceleration compensation — re-run NIS diagnostic, target NIS ≈ 3.0
+2. If NIS improves significantly, re-run 3-mode comparison (oracle/d435i/ekf)
+3. Hardware deployment prep: EKF with real D435i + IMU acceleration
