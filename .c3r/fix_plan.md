@@ -14,6 +14,6 @@
 - [ ] End-to-end hardware test: perception -> pi1 on real Go1
 
 # Phase 5: Sim perception refinements (while waiting for policy/hardware)
-- [ ] IMU-aided EKF: use robot angular velocity to compensate platform motion during predict
+- [x] IMU-aided EKF: use robot angular velocity to compensate platform motion during predict (iter_037)
 - [ ] Spin estimation: extend state to [x,y,z,vx,vy,vz,wx,wy,wz] for Magnus effect
 - [ ] Support policy agent with noise curriculum tuning if/when they reach that stage

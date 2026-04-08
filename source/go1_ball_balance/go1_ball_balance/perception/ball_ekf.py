@@ -68,6 +68,26 @@ class BallEKFConfig:
     gravity_z: float = -9.81  # gravity in paddle frame Z (downward when paddle level)
 
 
+def _batch_skew(v: torch.Tensor) -> torch.Tensor:
+    """Build batched skew-symmetric matrix [v]_x from (N, 3) vectors.
+
+    Returns (N, 3, 3) such that [v]_x @ u = v x u (cross product).
+    """
+    # v = (v0, v1, v2)
+    # [v]_x = [[  0, -v2,  v1],
+    #          [ v2,   0, -v0],
+    #          [-v1,  v0,   0]]
+    N = v.shape[0]
+    S = torch.zeros(N, 3, 3, device=v.device, dtype=v.dtype)
+    S[:, 0, 1] = -v[:, 2]
+    S[:, 0, 2] = v[:, 1]
+    S[:, 1, 0] = v[:, 2]
+    S[:, 1, 2] = -v[:, 0]
+    S[:, 2, 0] = -v[:, 1]
+    S[:, 2, 1] = v[:, 0]
+    return S
+
+
 class BallEKF:
     """GPU-batched 6-state Kalman filter for ball position + velocity.
 
@@ -167,18 +187,27 @@ class BallEKF:
         dt: float,
         gravity_b: torch.Tensor | None = None,
         robot_acc_b: torch.Tensor | None = None,
+        robot_ang_vel_b: torch.Tensor | None = None,
     ) -> None:
         """Predict step: propagate state and covariance forward by dt.
 
         Dynamics: ballistic with quadratic drag, compensated for robot motion.
-            a_ball = gravity_body + drag(vel) - robot_acc_body
-            pos_new = pos + vel * dt + 0.5 * a_ball * dt^2
-            vel_new = vel + a_ball * dt
+        In the non-inertial body frame, three pseudo-force corrections apply:
 
-        The ``-robot_acc_body`` term compensates for pseudo-forces that appear
-        in the body frame when the robot accelerates. Without this, the EKF's
-        prediction error grows with robot motion (NIS=966 vs target 3.0 in
-        iter_021 diagnostic).
+            a_ball = gravity_b + drag(vel) - robot_acc_b
+                     - 2 * omega x vel       (Coriolis)
+                     - omega x (omega x pos)  (centrifugal)
+
+        The linear acceleration term (``robot_acc_b``) compensates for
+        translational platform acceleration. The Coriolis and centrifugal
+        terms (from ``robot_ang_vel_b``) compensate for rotational platform
+        motion. Without both, body-frame NIS diverges (966 in iter_021).
+
+        The Euler force (``-alpha x pos``, where alpha = d(omega)/dt) is
+        omitted because angular acceleration is not directly measured and
+        finite-differencing gyro data is noisy. Its magnitude at typical
+        Go1 angular accelerations (~10 rad/s^2) and ball distances (~0.1m)
+        is ~1 m/s^2 — small compared to gravity and covered by process noise.
 
         Args:
             dt: Time step (seconds).
@@ -190,7 +219,12 @@ class BallEKF:
                 provided, subtracted from ball acceleration to compensate
                 for pseudo-forces in the non-inertial body frame. Computed
                 by finite-differencing ``robot.data.root_lin_vel_b``.
+            robot_ang_vel_b: Robot body-frame angular velocity (N, 3), rad/s.
+                If provided, Coriolis and centrifugal pseudo-force corrections
+                are applied. On real hardware, this comes from the IMU gyroscope
+                (D435i built-in IMU or robot onboard IMU).
         """
+        pos = self._x[:, :3].clone()  # (N, 3) — clone for Jacobian computation
         vel = self._x[:, 3:].clone()  # (N, 3) — clone to avoid view mutation
 
         # Acceleration: gravity + drag - robot_acceleration (pseudo-force)
@@ -206,6 +240,15 @@ class BallEKF:
         if robot_acc_b is not None:
             a = a - robot_acc_b
 
+        # Coriolis + centrifugal corrections from robot angular velocity
+        # Coriolis: -2 * omega x vel  (velocity-dependent)
+        # Centrifugal: -omega x (omega x pos)  (position-dependent)
+        if robot_ang_vel_b is not None:
+            omega = robot_ang_vel_b  # (N, 3)
+            a_coriolis = -2.0 * torch.linalg.cross(omega, vel)  # (N, 3)
+            a_centrifugal = -torch.linalg.cross(omega, torch.linalg.cross(omega, pos))  # (N, 3)
+            a = a + a_coriolis + a_centrifugal
+
         # Linearised state transition F = dxnew/dx (compute BEFORE state mutation)
         # F is identity + off-diagonal blocks from dynamics linearisation
         F = torch.eye(6, device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1).clone()
@@ -218,6 +261,22 @@ class BallEKF:
         I3 = torch.eye(3, device=self.device).unsqueeze(0)
         da_dv = -c * (speed.unsqueeze(-1) * I3 + torch.bmm(vel.unsqueeze(-1), v_hat.unsqueeze(-2)))
         F[:, 3:, 3:] += da_dv * dt  # d(vel_new)/d(vel) = I + da_dv * dt
+
+        # Angular velocity Jacobians for Coriolis + centrifugal
+        if robot_ang_vel_b is not None:
+            # Coriolis: a_cor = -2 * omega x vel
+            #   d(a_cor)/d(vel) = -2 * [omega]_x  (skew-symmetric matrix)
+            # Centrifugal: a_cent = -omega x (omega x pos)
+            #   d(a_cent)/d(pos) = -[omega]_x @ [omega]_x = -(omega⊗omega - |omega|^2 * I)
+            omega_skew = _batch_skew(omega)  # (N, 3, 3)
+            # d(vel_new)/d(vel) += d(a_cor)/d(vel) * dt = -2 * [omega]_x * dt
+            F[:, 3:, 3:] += -2.0 * omega_skew * dt
+            # d(vel_new)/d(pos) += d(a_cent)/d(pos) * dt = -[omega]_x^2 * dt
+            F[:, 3:, :3] += -torch.bmm(omega_skew, omega_skew) * dt
+            # d(pos_new)/d(pos) += 0.5 * d(a_cent)/d(pos) * dt^2  (second-order position term)
+            F[:, :3, :3] += -0.5 * torch.bmm(omega_skew, omega_skew) * dt**2
+            # d(pos_new)/d(vel) += 0.5 * d(a_cor)/d(vel) * dt^2
+            F[:, :3, 3:] += -1.0 * omega_skew * dt**2  # -2 * 0.5 = -1.0
 
         # State prediction (mutates self._x)
         self._x[:, :3] += vel * dt + 0.5 * a * dt**2
@@ -324,6 +383,7 @@ class BallEKF:
         dt: float,
         gravity_b: torch.Tensor | None = None,
         robot_acc_b: torch.Tensor | None = None,
+        robot_ang_vel_b: torch.Tensor | None = None,
     ) -> None:
         """Combined predict + update step.
 
@@ -333,8 +393,10 @@ class BallEKF:
             dt: Time step (seconds).
             gravity_b: Gravity in body frame (N, 3). See :meth:`predict`.
             robot_acc_b: Robot body-frame acceleration (N, 3). See :meth:`predict`.
+            robot_ang_vel_b: Robot angular velocity (N, 3). See :meth:`predict`.
         """
-        self.predict(dt, gravity_b=gravity_b, robot_acc_b=robot_acc_b)
+        self.predict(dt, gravity_b=gravity_b, robot_acc_b=robot_acc_b,
+                     robot_ang_vel_b=robot_ang_vel_b)
         self.update(z, detected)
 
     def reset(

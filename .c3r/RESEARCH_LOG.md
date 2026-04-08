@@ -152,3 +152,27 @@ Decision:   Next iter: check policy agent status. If they've moved past reward s
             noise robustness, provide perception support. If not, start IMU-aided EKF (Phase 5)
             — compensate platform angular motion during EKF predict step for improved real-world
             accuracy. This is the highest-value sim-side work remaining.
+
+---
+
+## iter_037 — IMU-aided EKF: Coriolis + centrifugal corrections (16/16 tests pass)  (2026-04-08T16:30:00Z)
+Hypothesis: Adding Coriolis (-2ω×v) and centrifugal (-ω×(ω×r)) pseudo-force corrections
+            using robot angular velocity will make body-frame EKF physically correct under
+            platform rotation, improving tracking accuracy without requiring world-frame mode.
+Change:     Added `robot_ang_vel_b` parameter to `BallEKF.predict()` and `.step()`.
+            When provided, computes Coriolis + centrifugal accelerations and adds them to the
+            prediction dynamics. Linearised Jacobian F updated: d(a_cor)/d(vel) = -2[ω]_x,
+            d(a_cent)/d(pos) = -[ω]_x² for correct covariance propagation. Added `_batch_skew()`
+            helper. Pipeline (`ball_obs_spec.py`) now passes `robot.data.root_ang_vel_b` through
+            to EKF in body-frame mode. Euler force omitted (would need noisy gyro finite-diff;
+            ~1 m/s² at typical Go1 rates — covered by process noise).
+Command:    `python scripts/perception/test_imu_aided_ekf.py -v` (16 tests)
+            Full suite: 90/90 tests pass (7+6+15+13+16+17+16).
+Result:     **16/16 new tests pass.** Coriolis magnitude exact to 3 decimal places.
+            Centrifugal magnitude exact. 3D omega analytical match. Multi-step tracking
+            under 1.5 rad/s rotation: pos RMSE <10mm, vel RMSE <0.5 m/s.
+            Tracking degrades without IMU (controlled comparison). Per-env omega works.
+            90/90 total tests pass — no regressions.
+Decision:   GPU NIS validation of body-frame+IMU vs world-frame next iteration. If body-frame
+            NIS comes in-band with IMU corrections, it becomes the simpler default (no full
+            robot pose needed). Also need to check if policy agent needs perception support.

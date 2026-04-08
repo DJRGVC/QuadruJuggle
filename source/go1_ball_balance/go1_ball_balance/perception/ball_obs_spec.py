@@ -185,6 +185,7 @@ class PerceptionPipeline:
         gt_vel_b: torch.Tensor | None = None,
         gravity_b: torch.Tensor | None = None,
         robot_vel_b: torch.Tensor | None = None,
+        robot_ang_vel_b: torch.Tensor | None = None,
         robot_quat_w: torch.Tensor | None = None,
         robot_pos_w: torch.Tensor | None = None,
         paddle_offset_b: torch.Tensor | None = None,
@@ -207,6 +208,9 @@ class PerceptionPipeline:
                 compute body-frame acceleration via finite differences for
                 pseudo-force compensation in EKF predict.
                 Ignored when world_frame=True.
+            robot_ang_vel_b: Robot body-frame angular velocity (N, 3), rad/s.
+                If provided, EKF applies Coriolis + centrifugal corrections.
+                Ignored when world_frame=True. On real hardware, from IMU gyro.
             robot_quat_w: Robot orientation in world frame (N, 4), wxyz.
                 Required when world_frame=True.
             robot_pos_w: Robot root position in world frame (N, 3).
@@ -278,6 +282,7 @@ class PerceptionPipeline:
             self.ekf.step(
                 noisy_pos_b, detected, dt=self.cfg.policy_dt,
                 gravity_b=gravity_b, robot_acc_b=robot_acc_b,
+                robot_ang_vel_b=robot_ang_vel_b,
             )
 
             # Diagnostics
@@ -663,9 +668,11 @@ def ball_pos_perceived(
             # Body-frame EKF: pass gravity + velocity for pseudo-force comp
             gravity_b_vec = robot.data.projected_gravity_b * 9.81  # (N, 3)
             robot_vel_b = robot.data.root_lin_vel_b  # (N, 3)
+            robot_ang_vel_b = robot.data.root_ang_vel_b  # (N, 3)
             pipeline.step(
                 pos_b, env.common_step_counter,
                 gravity_b=gravity_b_vec, robot_vel_b=robot_vel_b,
+                robot_ang_vel_b=robot_ang_vel_b,
             )
 
         out = pipeline.pos.clone()
@@ -720,15 +727,17 @@ def ball_vel_perceived(
                 paddle_offset_b=paddle_offset_t,
             )
         else:
-            # Body-frame EKF: pass gravity + velocity
+            # Body-frame EKF: pass gravity + velocity + angular velocity
             gravity_b_vec = robot.data.projected_gravity_b * 9.81  # (N, 3)
-            robot_vel_b = robot.data.root_lin_vel_b  # (N, 3)
+            robot_vel_b_lin = robot.data.root_lin_vel_b  # (N, 3)
+            robot_ang_vel_b = robot.data.root_ang_vel_b  # (N, 3)
             pipeline.step(
                 _ball_pos_paddle_frame_gt(env, ball_cfg, robot_cfg, paddle_offset_b),
                 env.common_step_counter,
                 gt_vel_b=vel_b if pipeline._diagnostics_enabled else None,
                 gravity_b=gravity_b_vec,
-                robot_vel_b=robot_vel_b,
+                robot_vel_b=robot_vel_b_lin,
+                robot_ang_vel_b=robot_ang_vel_b,
             )
 
         out = pipeline.vel.clone()
