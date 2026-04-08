@@ -25,4 +25,4 @@
 - [x] Handoff to policy agent: document how to enable EKF mode in env_cfg (swap noise_cfg, add reset event), provide example config diff — PERCEPTION_HANDOFF.md committed
 - [x] Perception diagnostics: added _PerceptionDiagnostics to PerceptionPipeline (pos/vel RMSE, detection rate, EKF improvement %)
 - [ ] Tune EKF parameters (process noise Q, measurement noise R) based on comparison results
-- [ ] Noise curriculum support: parameterize noise model scaling so policy agent can ramp noise across stages
+- [x] Noise curriculum support: `noise_scale` field on BallObsNoiseCfg + `update_perception_noise_scale()` for runtime curriculum updates — DONE, 6 unit tests pass

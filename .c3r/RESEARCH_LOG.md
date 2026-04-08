@@ -110,3 +110,12 @@ Change:     (1) Added `_PerceptionDiagnostics` class to `ball_obs_spec.py` — t
 Command:    AST parse (both files OK). No GPU workload — policy agent holds lock.
 Result:     Code ready for comparison test. Diagnostics collect: pos_rmse_ekf_mm, pos_rmse_raw_mm, vel_rmse_ekf_mps, detection_rate, ekf_improvement_pct. Comparison script will produce a table like the one policy agent generated (iter_005/006) but with the EKF column added.
 Decision:   Next iter: run compare_perception_modes.py when GPU frees. If still blocked, begin noise curriculum support (parameterize noise scaling so policy can ramp d435i noise across stages — this is what their noise_curriculum_plan.md calls for).
+
+---
+
+## iter_013 — noise_scale curriculum support  (2026-04-08T05:15:00Z)
+Hypothesis: Adding a `noise_scale` multiplier to BallObsNoiseCfg will let the policy agent ramp D435i noise gradually across curriculum stages (0.25→0.50→0.75→1.0), as specified in their noise_curriculum_plan.md Section 4.3.
+Change:     (1) Added `noise_scale: float = 1.0` field to `BallObsNoiseCfg`. (2) Created `_scaled_d435i_params()` and `_scaled_noise_model_cfg()` helpers that multiply sigma/dropout by scale (latency unchanged). (3) Updated `_get_or_create_pipeline()` to apply scale at creation. (4) Updated d435i inline mode (`ball_pos_perceived`/`ball_vel_perceived`) to apply scale via `_scaled_d435i_params`. (5) Added `PerceptionPipeline.update_noise_scale()` for live curriculum updates (recovers unscaled base on first call). (6) Added `update_perception_noise_scale(env, scale)` standalone function for policy agent's curriculum callback. (7) Exported from `__init__.py`.
+Command:    6 CPU unit tests: scaling at 0.5/0.25/1.0/0.0, identity at 1.0, round-trip update_noise_scale, scale=0.0 zeroes noise.
+Result:     All 6 tests PASS. Key API for policy agent: `BallObsNoiseCfg(mode="d435i", noise_scale=0.25)` for static config, or `update_perception_noise_scale(env, 0.5)` for runtime curriculum transitions. Matches noise_curriculum_plan.md stages D-F design exactly.
+Decision:   Next iter: run compare_perception_modes.py if GPU frees. Otherwise, update PERCEPTION_HANDOFF.md with noise_scale API docs for policy agent.

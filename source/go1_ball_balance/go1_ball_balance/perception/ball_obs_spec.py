@@ -78,6 +78,14 @@ class BallObsNoiseCfg:
     mode: str = "oracle"
     """Noise mode: "oracle", "d435i", or "ekf"."""
 
+    noise_scale: float = 1.0
+    """Multiplier for noise amplitudes (0.0 = oracle-equivalent, 1.0 = full noise).
+
+    Scales sigma_xy_base, sigma_z_base, sigma_z_per_metre, and dropout_prob
+    in both d435i and ekf modes. Useful for gradual noise introduction across
+    curriculum stages (e.g. 0.25 → 0.50 → 0.75 → 1.0).
+    """
+
     d435i: D435iNoiseParams = field(default_factory=D435iNoiseParams)
     """D435i noise parameters (only used when mode="d435i")."""
 
@@ -197,6 +205,38 @@ class PerceptionPipeline:
         """EKF-filtered ball velocity estimate (N, 3)."""
         return self.ekf.vel
 
+    def update_noise_scale(self, scale: float) -> None:
+        """Update noise amplitudes in the live noise model (for curriculum).
+
+        Modifies the D435iNoiseModel's config in-place so that subsequent
+        calls to ``sample()`` use the scaled parameters. Does not affect EKF
+        process/measurement noise (those are in BallEKFConfig).
+        """
+        base = self.cfg.noise_model_cfg  # already scaled at creation time
+        # We need to work from the UNSCALED base. Store it on first call.
+        if not hasattr(self, "_base_noise_model_cfg"):
+            # On first pipeline creation, cfg.noise_model_cfg was already
+            # scaled by noise_scale. Recover the unscaled version.
+            old_scale = self.cfg.noise_scale
+            if old_scale > 0:
+                self._base_noise_model_cfg = D435iNoiseModelCfg(
+                    sigma_xy_base=base.sigma_xy_base / old_scale,
+                    sigma_z_base=base.sigma_z_base / old_scale,
+                    sigma_z_per_metre=base.sigma_z_per_metre / old_scale,
+                    dropout_prob=base.dropout_prob / old_scale,
+                    latency_steps=base.latency_steps,
+                    camera_hz=base.camera_hz,
+                )
+            else:
+                self._base_noise_model_cfg = D435iNoiseModelCfg()
+
+        bm = self._base_noise_model_cfg
+        self.noise_model.cfg.sigma_xy_base = bm.sigma_xy_base * scale
+        self.noise_model.cfg.sigma_z_base = bm.sigma_z_base * scale
+        self.noise_model.cfg.sigma_z_per_metre = bm.sigma_z_per_metre * scale
+        self.noise_model.cfg.dropout_prob = bm.dropout_prob * scale
+        self.cfg.noise_scale = scale
+
     @property
     def diagnostics(self) -> dict[str, float] | None:
         """Return current diagnostic summary and reset accumulators.
@@ -281,18 +321,60 @@ class _PerceptionDiagnostics:
         return result
 
 
+def _scaled_d435i_params(
+    params: D435iNoiseParams, scale: float
+) -> D435iNoiseParams:
+    """Return a copy of D435i noise params with amplitudes multiplied by scale."""
+    if scale == 1.0:
+        return params
+    return D435iNoiseParams(
+        sigma_xy_base=params.sigma_xy_base * scale,
+        sigma_z_base=params.sigma_z_base * scale,
+        sigma_z_per_metre=params.sigma_z_per_metre * scale,
+        dropout_prob=params.dropout_prob * scale,
+        latency_steps=params.latency_steps,  # latency is not scaled
+    )
+
+
+def _scaled_noise_model_cfg(
+    cfg: D435iNoiseModelCfg, scale: float
+) -> D435iNoiseModelCfg:
+    """Return a copy of D435iNoiseModelCfg with amplitudes multiplied by scale."""
+    if scale == 1.0:
+        return cfg
+    return D435iNoiseModelCfg(
+        sigma_xy_base=cfg.sigma_xy_base * scale,
+        sigma_z_base=cfg.sigma_z_base * scale,
+        sigma_z_per_metre=cfg.sigma_z_per_metre * scale,
+        dropout_prob=cfg.dropout_prob * scale,
+        latency_steps=cfg.latency_steps,  # latency is not scaled
+        camera_hz=cfg.camera_hz,
+    )
+
+
 def _get_or_create_pipeline(
     env: "ManagerBasedRLEnv",
     noise_cfg: BallObsNoiseCfg,
 ) -> PerceptionPipeline:
     """Get or lazily create the PerceptionPipeline on the env object."""
     if not hasattr(env, "_perception_pipeline") or env._perception_pipeline is None:
+        # Apply noise_scale to the noise model config before creating pipeline
+        scaled_cfg = BallObsNoiseCfg(
+            mode=noise_cfg.mode,
+            noise_scale=noise_cfg.noise_scale,
+            d435i=noise_cfg.d435i,
+            noise_model_cfg=_scaled_noise_model_cfg(
+                noise_cfg.noise_model_cfg, noise_cfg.noise_scale
+            ),
+            ekf_cfg=noise_cfg.ekf_cfg,
+            policy_dt=noise_cfg.policy_dt,
+        )
         # Enable diagnostics if env has the flag (set by test scripts)
         enable_diag = getattr(env, "_perception_diagnostics_enabled", False)
         env._perception_pipeline = PerceptionPipeline(
             num_envs=env.num_envs,
             device=env.device,
-            noise_cfg=noise_cfg,
+            noise_cfg=scaled_cfg,
             enable_diagnostics=enable_diag,
         )
     return env._perception_pipeline
@@ -366,7 +448,8 @@ def ball_pos_perceived(
         return pos_b
 
     if noise_cfg.mode == "d435i":
-        return _apply_d435i_pos_noise(pos_b, noise_cfg.d435i)
+        scaled_params = _scaled_d435i_params(noise_cfg.d435i, noise_cfg.noise_scale)
+        return _apply_d435i_pos_noise(pos_b, scaled_params)
 
     if noise_cfg.mode == "ekf":
         pipeline = _get_or_create_pipeline(env, noise_cfg)
@@ -398,7 +481,8 @@ def ball_vel_perceived(
         return vel_b
 
     if noise_cfg.mode == "d435i":
-        return _apply_d435i_vel_noise(vel_b, noise_cfg.d435i)
+        scaled_params = _scaled_d435i_params(noise_cfg.d435i, noise_cfg.noise_scale)
+        return _apply_d435i_vel_noise(vel_b, scaled_params)
 
     if noise_cfg.mode == "ekf":
         pipeline = _get_or_create_pipeline(env, noise_cfg)
@@ -495,6 +579,24 @@ def _apply_d435i_vel_noise(
 # ---------------------------------------------------------------------------
 # Reset event for EKF pipeline (call from env_cfg reset events)
 # ---------------------------------------------------------------------------
+
+def update_perception_noise_scale(
+    env: "ManagerBasedRLEnv",
+    noise_scale: float,
+) -> None:
+    """Update the noise scale on a live perception pipeline (for curriculum).
+
+    Call this from the curriculum callback when advancing stages::
+
+        from go1_ball_balance.perception import update_perception_noise_scale
+        update_perception_noise_scale(env, noise_scale=0.5)
+
+    No-op if the pipeline hasn't been created yet (oracle mode).
+    """
+    pipeline: PerceptionPipeline | None = getattr(env, "_perception_pipeline", None)
+    if pipeline is not None:
+        pipeline.update_noise_scale(noise_scale)
+
 
 def reset_perception_pipeline(
     env: "ManagerBasedRLEnv",

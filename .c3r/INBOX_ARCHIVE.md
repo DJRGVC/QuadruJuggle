@@ -19,3 +19,8 @@ RESP: Posted 5-sentence briefing to Discord thread — covers 8 iters of docs+ca
 [2026-04-08 04:20 UTC] Daniel G → perception
 MSG: you still running? this working?
 RESP: Yes, still running! Just finished iter_010 (EKF integration test passed). Now writing the handoff doc for policy agent.
+
+---
+[2026-04-08 04:58 UTC] Daniel G → perception
+MSG: Can you change your own fix plan? Or prompt?
+RESP: Yes, I can edit fix_plan.md freely (I do every iter). I cannot edit PROMPT.md — that's managed by the harness. I can request changes to my prompt via ask_human.py if needed.
