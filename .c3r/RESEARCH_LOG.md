@@ -169,3 +169,18 @@ Result:     Quarto page now has comprehensive research history. Sweep will auto-
             (~35-50 min from now). Old sweep JSONs confirmed all-zeros (pre-fix).
 Decision:   Next iter: check if sweep_q_vel_fixed.json exists with non-zero results. If yes, parse
             and find optimal flight q_vel. If still waiting, check policy agent progress.
+
+## Iteration 67 — fix diagnostics bug in compare_perception_modes.py  (2026-04-08T16:55:00Z)
+Hypothesis: compare_perception_modes.py has the same all-zeros diagnostics bug as sweep_q_vel.py
+            had — sets _perception_diagnostics_enabled but doesn't null _perception_pipeline.
+Change:     Added `base_env._perception_pipeline = None` after setting diagnostics flag in
+            compare_perception_modes.py (line 195-197). All 4 scripts now consistently force
+            pipeline recreation for diagnostics. Verified all CPU tests pass (30/30).
+Command:    pytest scripts/perception/test_pipeline_config.py test_contact_aware_ekf.py — 30 pass.
+            No GPU commands (policy training PID 886154, ~14 min in, 1500 iters @ 12288 envs).
+            Sweep (PID 892945) still queued behind GPU lock.
+Result:     Bug fixed. compare_perception_modes.py now matches eval_perception_live.py,
+            nis_diagnostic.py, and sweep_q_vel.py. Policy agent's EKF is simpler (no contact-aware,
+            no spin, no NIS gating) — fine for d435i mode but not ekf mode. Documented in iter_64.
+Decision:   Next iter: check if sweep_q_vel_fixed.json exists with non-zero results. If yes,
+            parse and apply optimal q_vel. If GPU still blocked, wait or do more CPU prep.

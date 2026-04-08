@@ -192,6 +192,9 @@ def _run_single_mode(args):
 
     if mode == "ekf":
         base_env._perception_diagnostics_enabled = True
+        # Force pipeline recreation so diagnostics flag is picked up
+        if hasattr(base_env, "_perception_pipeline"):
+            base_env._perception_pipeline = None
 
     agent_cfg = BallJuggleHierPPORunnerCfg()
     agent_cfg.max_iterations = args.max_iterations
