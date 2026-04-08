@@ -236,3 +236,12 @@ Decision:   **EKF in body-frame is fundamentally incompatible with training.** T
   (B) Add full non-inertial dynamics (Coriolis+centrifugal+Euler) — complex, error-prone
   Option A is cleaner. For training, d435i raw noise is confirmed as the right approach.
   Next iter: either (1) implement world-frame EKF option for deployment, or (2) consider this module done and focus on other perception tasks (real camera integration, detection pipeline).
+
+---
+
+## iter_023 — World-frame EKF implementation  (2026-04-08T23:55:00Z)
+Hypothesis: Running EKF in world frame (where ballistic dynamics are correct) will eliminate the pseudo-force problem that caused NIS=966/1025 in body-frame mode. The lit-review agent (iter_016) identified the root cause as coordinate frame mismatch, not body-frame acceleration — Coriolis/centrifugal/Euler forces dominate in the rotating body frame. World-frame EKF is also the natural architecture for real hardware (camera + IMU → world transform).
+Change:     (1) Added `world_frame=True` option to BallObsNoiseCfg. (2) Updated PerceptionPipeline to transform body-frame measurements → world frame before EKF update (using robot_quat_w + robot_pos_w + paddle_offset_b), and transform world-frame EKF outputs → body frame for policy consumption. (3) Added _body_to_world_pos/vel and _world_to_body_pos/vel helper methods. (4) Reset transforms init pos/vel to world frame when world_frame=True. (5) Updated ball_pos_perceived/ball_vel_perceived to pass robot pose in world-frame mode. (6) Added `--world-frame` flag to nis_diagnostic.py. (7) Updated PERCEPTION_HANDOFF.md with world-frame EKF docs. (8) 5 CPU unit tests: round-trip transform, stationary ball, tilted robot, backward compat, reset.
+Command:    `python scripts/perception/test_world_frame_ekf.py` — 5/5 pass. GPU NIS diagnostic queued (blocked by policy agent training, PID 311640).
+Result:     All 5 CPU tests PASS. Key results: body→world→body round-trip error = 1.86e-8, tilted robot (15° pitch) error = 22mm, backward compat OK, reset initialises world coords correctly. GPU validation deferred — policy agent holding lock (12288 env × 1500 iter training).
+Decision:   Next iter: run `nis_diagnostic.py --world-frame` (256 envs × 100 steps) when GPU available. If NIS drops from 966→near 3.0, world-frame EKF is validated for deployment. Then run 3-mode comparison. If GPU still locked, run with smaller envs or wait.

@@ -11,17 +11,18 @@
 NIS diagnostic (iter_021) showed the EKF is **30× worse** than raw noise during
 training: EKF RMSE = 130mm vs raw RMSE = 4.4mm, NIS = 966 (target 3.0).
 
-**Root cause**: the EKF uses ballistic dynamics in the body frame, but doesn't
-model the robot's own acceleration. With an untrained/learning policy, the robot
-moves erratically, creating massive pseudo-forces in the body frame that the EKF
-can't predict → covariance collapses → innovations explode.
+**Root cause**: the EKF uses ballistic dynamics in the body frame — a rotating
+non-inertial reference frame. Coriolis, centrifugal, and Euler pseudo-forces
+from robot motion are unmodeled, causing NIS=966 (iter_021). Linear acceleration
+compensation alone is insufficient (NIS=1025 in iter_022b).
 
-**The EKF is designed for hardware deployment** where the trained policy produces
-smooth, predictable motion. In iter_022, body-frame acceleration compensation
-was added (`robot_acc_b` parameter) — this subtracts the robot's estimated
-acceleration from the EKF's dynamics model, which should help for deployment.
+**Fix (iter_023)**: `world_frame=True` mode runs the EKF in world frame, where
+ballistic dynamics are correct. Measurements are transformed body→world before
+EKF update, outputs are transformed world→body for the policy. This is also the
+natural architecture for real hardware (camera + IMU → world-frame transform).
 
 For training, the `d435i` mode with `noise_scale` curriculum is the right approach.
+EKF is for **hardware deployment only** (filtering noisy camera detections).
 
 ## What's Available
 
@@ -38,8 +39,10 @@ Key features of `d435i` mode:
 
 Key features of `ekf` mode (deployment):
 - Stateful noise model with hold-last-value on dropout
-- Ballistic + drag dynamics with body-frame gravity compensation
-- **Body-frame acceleration compensation** (subtracts robot pseudo-forces)
+- **World-frame EKF** (`world_frame=True`): ballistic dynamics in world frame,
+  body↔world transforms via robot IMU orientation. Avoids pseudo-force artifacts.
+- Body-frame EKF (legacy, `world_frame=False`): body-frame dynamics with
+  acceleration compensation. Not recommended (NIS=1025).
 - Latency buffer (configurable observation delay)
 - ANEES/NIS consistency diagnostic
 
@@ -229,8 +232,19 @@ noise_cfg = BallObsNoiseCfg(mode="ekf", noise_scale=0.5)
 The EKF's measurement noise adapts to the scaled sensor noise. At `noise_scale=0`,
 observations are noiseless (but still pass through the EKF dynamics model).
 
+### World-Frame EKF (Recommended for Deployment)
+
+```python
+noise_cfg = BallObsNoiseCfg(mode="ekf", world_frame=True)
+```
+
+This runs the EKF in world frame. Robot orientation (`root_quat_w`) and position
+(`root_pos_w`) are used to transform camera-frame measurements to world frame before
+EKF update, and EKF outputs back to body frame for the policy. On real hardware,
+the IMU provides the orientation — same architecture.
+
 ## What's Next (perception agent side)
 
-1. Validate body-frame acceleration compensation — re-run NIS diagnostic, target NIS ≈ 3.0
-2. If NIS improves significantly, re-run 3-mode comparison (oracle/d435i/ekf)
-3. Hardware deployment prep: EKF with real D435i + IMU acceleration
+1. Validate world-frame EKF with NIS diagnostic — target NIS ≈ 3.0
+2. If NIS is in band, re-run 3-mode comparison (oracle/d435i/ekf_world)
+3. Hardware deployment prep: real D435i + IMU orientation → world-frame EKF

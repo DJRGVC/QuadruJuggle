@@ -26,15 +26,15 @@ Siblings will see it in their next SIBLINGS.md refresh.
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
 - **status**: running · iter #4 · ctx 0%
-- **last iter**: 1h ago
+- **last iter**: 3h ago
 
 ### Recent commits on `agent/policy`
 ```
+a2852d2 fix root cause of Stage F plateau: sigma_ratio 2.5→3.5 breaks balance-not-bounce
 9ca60cc sync perception pipeline from perception branch: EKF mode + noise_scale curriculum
 f2feadd update RESEARCH_LOG iter_008: corrected to 1199 iters (apex_rew=1.87), queue iter_009
 69c9cd1 process inbox: c3r spawn note from perception; update RESEARCH_LOG iter_008 state
 c67e0d3 iter_008: noise-curriculum training — d435i ramp 0→75% reaches Stage F, outperforms oracle
-ac2fa7f update fix_plan: mark noise_scale done, add noise-curriculum training task
 ```
 ### Files modified on `agent/policy` (relative to `c3r/QuadruJuggle`)
 ```
@@ -71,17 +71,17 @@ git show agent/policy:.c3r/SIBLINGS.md
 ## lit-review
 - **role**: generic
 - **focus**: survey perception-for-manipulation papers (ETH noise injection, teacher-student distillation, event cameras, learned state estimators) and critique our D435i+EKF approach
-- **status**: running · iter #15 · ctx 0%
-- **last iter**: 1m ago
+- **status**: running · iter #18 · ctx 0%
+- **last iter**: 26m ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/lit-review`
 ```
-0118b69 iter_015: contact dynamics DR — PhysX solver validation + combine_mode precedence bug → docs/lit_review_contact_dynamics_dr.md
-0a69cbd iter_014: distributional latency injection survey → docs/lit_review_latency_injection.md
-47940e0 iter_013: learned state estimators survey → docs/lit_review_learned_state_estimators.md
-b74c1cb iter_012: event camera latency survey → docs/lit_review_event_cameras.md
-96602fd iter_011: teacher-student vs noise injection survey → docs/lit_review_teacher_student_vs_noise_injection.md
+2f79726 iter_018: EKF dropout-safe fallback survey — Skand CoRL 2024 + NIS gate + recenter spec → docs/lit_review_ekf_dropout_fallback.md
+43d963a iter_018: EKF dropout-safe fallback survey — training masking is load-bearing; NIS gate + recenter command spec → docs/lit_review_ekf_dropout_fallback.md
+736d0ec iter_017: spin-from-visual-texture feasibility — NOT feasible on D435i; defer to Stage G with joint-vel spin init → docs/lit_review_spin_estimation.md
+9b66b5d iter_016: update fix_plan — mark EKF root-cause analysis done, notified perception agent
+c7dcec3 iter_016: EKF NIS=966 root-cause — measurement frame mismatch not pseudo-forces → docs/lit_review_imu_aided_ekf_platform_motion.md
 ```
 ### Files modified on `agent/lit-review` (relative to `c3r/QuadruJuggle`)
 ```
@@ -99,15 +99,18 @@ docs/lit_review_actuator_dynamics.md
 docs/lit_review_ball_spin.md
 docs/lit_review_bounce_dynamics.md
 docs/lit_review_contact_dynamics_dr.md
+docs/lit_review_ekf_dropout_fallback.md
 docs/lit_review_ekf_lag_vs_raw_noise.md
 docs/lit_review_ekf_tuning.md
 docs/lit_review_event_cameras.md
+docs/lit_review_imu_aided_ekf_platform_motion.md
 docs/lit_review_integrated_sim2real.md
 docs/lit_review_latency_injection.md
 docs/lit_review_learned_state_estimators.md
 docs/lit_review_noise_curriculum.md
 docs/lit_review_noise_outperforms_oracle.md
 docs/lit_review_perception.md
+docs/lit_review_spin_estimation.md
 docs/lit_review_teacher_student_vs_noise_injection.md
 ```
 ### Read one with:

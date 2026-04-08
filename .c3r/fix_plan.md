@@ -33,8 +33,10 @@
 - [x] Add body-frame acceleration compensation to EKF predict() — robot_acc_b via finite-diff of root_lin_vel_b, ±50 m/s² clamp, reset-safe
 - [x] Update PERCEPTION_HANDOFF.md with "no EKF for training" recommendation + NIS evidence + acceleration compensation docs
 - [x] Validate acceleration compensation: NIS=1025 (was 966) — linear accel compensation has negligible effect; rotational pseudo-forces (Coriolis/centrifugal/Euler) dominate in body frame
-- [ ] Implement world-frame EKF option for deployment — ball follows ballistic dynamics in world frame, transform measurements from body→world using IMU orientation. This is the natural architecture for real hardware (camera + IMU).
-- [ ] Or: declare perception pipeline feature-complete for sim training (d435i mode works well) and shift focus to real hardware integration (D435i ROS driver, YOLO ball detection, camera-to-body calibration)
+- [x] Implement world-frame EKF option for deployment — `world_frame=True` on BallObsNoiseCfg; body→world measurement transform, world→body output transform. 5 CPU tests pass.
+- [ ] Validate world-frame EKF with NIS diagnostic (GPU) — target NIS ≈ 3.0 (was 966/1025 in body frame)
+- [ ] If NIS in band: re-run 3-mode comparison (oracle/d435i/ekf_world) to measure EKF benefit
+- [ ] Declare perception pipeline feature-complete for sim training and shift to real hardware integration (D435i ROS driver, YOLO ball detection, camera-to-body calibration)
 - [x] Fix compare_perception_modes.py diagnostic capture — used base_env reference, added flush + warning
 - [x] Noise curriculum support: `noise_scale` field on BallObsNoiseCfg + `update_perception_noise_scale()` for runtime curriculum updates — DONE, 6 unit tests pass
 - [x] Monitor lit-review subagent — 3 iterations complete, all 3 docs committed (perception, noise_curriculum, ekf_tuning). Attempted kill (c3r binary path issue).

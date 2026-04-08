@@ -98,6 +98,18 @@ class BallObsNoiseCfg:
     policy_dt: float = 0.02
     """Policy step period in seconds (50Hz default). Used by EKF predict step."""
 
+    world_frame: bool = False
+    """Run EKF in world frame instead of body frame.
+
+    When True, body-frame measurements are transformed to world frame before
+    EKF update, and EKF outputs are transformed back to body frame for the
+    policy. This avoids pseudo-force artifacts (Coriolis, centrifugal, Euler)
+    that make body-frame EKF diverge (NIS=966 in iter_021/022b).
+
+    Requires robot pose (quat_w, pos_w) to be passed through the pipeline.
+    On real hardware, this comes from the IMU — natural architecture.
+    """
+
 
 # ---------------------------------------------------------------------------
 # Perception pipeline: stateful noise + EKF (lazy-initialized on env)
@@ -139,7 +151,20 @@ class PerceptionPipeline:
         # Track which step we're on (for deduplication within a single step)
         self._last_step_count = -1
 
-        # Robot acceleration estimation via finite differences
+        # World-frame mode: store latest robot pose for output transform
+        self._world_frame = noise_cfg.world_frame
+        if self._world_frame:
+            self._robot_quat_w = torch.tensor(
+                [[1.0, 0.0, 0.0, 0.0]], device=self.device
+            ).expand(num_envs, -1).clone()
+            self._robot_pos_w = torch.zeros(num_envs, 3, device=self.device)
+            self._paddle_offset_b = torch.zeros(3, device=self.device)
+            # World-frame gravity — no body-frame projection needed
+            self._gravity_world = torch.tensor(
+                [0.0, 0.0, -9.81], device=self.device
+            ).unsqueeze(0)
+
+        # Robot acceleration estimation via finite differences (body-frame mode only)
         self._prev_robot_vel_b: torch.Tensor | None = None
 
         # Diagnostics: running error accumulators
@@ -156,6 +181,9 @@ class PerceptionPipeline:
         gt_vel_b: torch.Tensor | None = None,
         gravity_b: torch.Tensor | None = None,
         robot_vel_b: torch.Tensor | None = None,
+        robot_quat_w: torch.Tensor | None = None,
+        robot_pos_w: torch.Tensor | None = None,
+        paddle_offset_b: torch.Tensor | None = None,
     ) -> None:
         """Run one noise→EKF cycle. Idempotent within a single env step.
 
@@ -170,44 +198,132 @@ class PerceptionPipeline:
             gravity_b: Gravity vector in body frame (N, 3). If provided,
                 the EKF uses the actual gravity direction accounting for
                 trunk tilt. Otherwise defaults to [0, 0, -9.81].
+                Ignored when world_frame=True.
             robot_vel_b: Robot body-frame linear velocity (N, 3). Used to
                 compute body-frame acceleration via finite differences for
                 pseudo-force compensation in EKF predict.
+                Ignored when world_frame=True.
+            robot_quat_w: Robot orientation in world frame (N, 4), wxyz.
+                Required when world_frame=True.
+            robot_pos_w: Robot root position in world frame (N, 3).
+                Required when world_frame=True.
+            paddle_offset_b: Paddle offset in body frame (3,).
+                Required when world_frame=True (first call sets it).
         """
         if env_step_count == self._last_step_count:
             return  # already ran this step (pos called before vel)
 
         self._last_step_count = env_step_count
 
-        # Compute robot body-frame acceleration via finite differences
-        robot_acc_b = None
-        if robot_vel_b is not None:
-            if self._prev_robot_vel_b is not None:
-                dt = self.cfg.policy_dt
-                robot_acc_b = (robot_vel_b - self._prev_robot_vel_b) / dt
-                # Clamp to prevent wild accelerations from resets
-                robot_acc_b = robot_acc_b.clamp(-50.0, 50.0)
-            self._prev_robot_vel_b = robot_vel_b.clone()
+        # Generate noisy measurement in body frame
+        noisy_pos_b, detected = self.noise_model.sample(gt_pos_b)
 
-        # Generate noisy measurement
-        noisy_pos, detected = self.noise_model.sample(gt_pos_b)
+        if self._world_frame:
+            # --- World-frame EKF path ---
+            # Store robot pose for output transform (body→world→body)
+            if robot_quat_w is not None:
+                self._robot_quat_w = robot_quat_w.clone()
+            if robot_pos_w is not None:
+                self._robot_pos_w = robot_pos_w.clone()
+            if paddle_offset_b is not None:
+                self._paddle_offset_b = paddle_offset_b.clone()
 
-        # EKF predict + update (with body-frame gravity + acceleration compensation)
-        self.ekf.step(
-            noisy_pos, detected, dt=self.cfg.policy_dt,
-            gravity_b=gravity_b, robot_acc_b=robot_acc_b,
-        )
-
-        # Diagnostics
-        if self._diag is not None:
-            self._diag.record(
-                gt_pos=gt_pos_b,
-                gt_vel=gt_vel_b,
-                noisy_pos=noisy_pos,
-                ekf_pos=self.ekf.pos,
-                ekf_vel=self.ekf.vel,
-                detected=detected,
+            # Transform noisy body-frame measurement → world frame
+            # paddle_pos_w = robot_pos_w + quat_apply(robot_quat_w, paddle_offset_b)
+            # ball_pos_w = paddle_pos_w + quat_apply(robot_quat_w, noisy_pos_b)
+            offset_b = self._paddle_offset_b.unsqueeze(0).expand(self.num_envs, -1)
+            paddle_pos_w = self._robot_pos_w + math_utils.quat_apply(
+                self._robot_quat_w, offset_b
             )
+            noisy_pos_w = paddle_pos_w + math_utils.quat_apply(
+                self._robot_quat_w, noisy_pos_b
+            )
+
+            # EKF predict + update in world frame (simple ballistic dynamics)
+            self.ekf.step(
+                noisy_pos_w, detected, dt=self.cfg.policy_dt,
+                gravity_b=self._gravity_world,  # [0, 0, -9.81] world gravity
+                robot_acc_b=None,  # no pseudo-force compensation needed
+            )
+
+            # Diagnostics: compare against GT in body frame
+            if self._diag is not None:
+                # Transform EKF world-frame estimate back to body frame
+                ekf_pos_b = self._world_to_body_pos(self.ekf.pos)
+                ekf_vel_b = self._world_to_body_vel(self.ekf.vel)
+                self._diag.record(
+                    gt_pos=gt_pos_b,
+                    gt_vel=gt_vel_b,
+                    noisy_pos=noisy_pos_b,
+                    ekf_pos=ekf_pos_b,
+                    ekf_vel=ekf_vel_b,
+                    detected=detected,
+                )
+        else:
+            # --- Body-frame EKF path (original) ---
+            # Compute robot body-frame acceleration via finite differences
+            robot_acc_b = None
+            if robot_vel_b is not None:
+                if self._prev_robot_vel_b is not None:
+                    dt = self.cfg.policy_dt
+                    robot_acc_b = (robot_vel_b - self._prev_robot_vel_b) / dt
+                    robot_acc_b = robot_acc_b.clamp(-50.0, 50.0)
+                self._prev_robot_vel_b = robot_vel_b.clone()
+
+            # EKF predict + update in body frame
+            self.ekf.step(
+                noisy_pos_b, detected, dt=self.cfg.policy_dt,
+                gravity_b=gravity_b, robot_acc_b=robot_acc_b,
+            )
+
+            # Diagnostics
+            if self._diag is not None:
+                self._diag.record(
+                    gt_pos=gt_pos_b,
+                    gt_vel=gt_vel_b,
+                    noisy_pos=noisy_pos_b,
+                    ekf_pos=self.ekf.pos,
+                    ekf_vel=self.ekf.vel,
+                    detected=detected,
+                )
+
+    def _world_to_body_pos(self, pos_w: torch.Tensor) -> torch.Tensor:
+        """Transform world-frame position to paddle (body) frame."""
+        offset_b = self._paddle_offset_b.unsqueeze(0).expand(self.num_envs, -1)
+        paddle_pos_w = self._robot_pos_w + math_utils.quat_apply(
+            self._robot_quat_w, offset_b
+        )
+        diff_w = pos_w - paddle_pos_w
+        return math_utils.quat_apply_inverse(self._robot_quat_w, diff_w)
+
+    def _world_to_body_vel(self, vel_w: torch.Tensor) -> torch.Tensor:
+        """Transform world-frame velocity to body frame (rotation only)."""
+        return math_utils.quat_apply_inverse(self._robot_quat_w, vel_w)
+
+    def _body_to_world_pos(
+        self, pos_b: torch.Tensor, env_ids: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Transform body-frame position to world frame (for EKF reset)."""
+        if env_ids is not None:
+            quat = self._robot_quat_w[env_ids]
+            rpos = self._robot_pos_w[env_ids]
+        else:
+            quat = self._robot_quat_w
+            rpos = self._robot_pos_w
+        n = pos_b.shape[0]
+        offset_b = self._paddle_offset_b.unsqueeze(0).expand(n, -1)
+        paddle_pos_w = rpos + math_utils.quat_apply(quat, offset_b)
+        return paddle_pos_w + math_utils.quat_apply(quat, pos_b)
+
+    def _body_to_world_vel(
+        self, vel_b: torch.Tensor, env_ids: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Transform body-frame velocity to world frame (rotation only)."""
+        if env_ids is not None:
+            quat = self._robot_quat_w[env_ids]
+        else:
+            quat = self._robot_quat_w
+        return math_utils.quat_apply(quat, vel_b)
 
     def reset(
         self,
@@ -217,20 +333,34 @@ class PerceptionPipeline:
     ) -> None:
         """Reset noise model and EKF for specified environments."""
         self.noise_model.reset(env_ids, init_pos)
-        self.ekf.reset(env_ids, init_pos, init_vel)
-        # Clear robot velocity buffer for reset envs so we don't compute
-        # a spurious acceleration spike on the first post-reset step
-        if self._prev_robot_vel_b is not None:
-            self._prev_robot_vel_b[env_ids] = 0.0
+
+        if self._world_frame:
+            # Transform body-frame init pos/vel to world frame for EKF
+            init_pos_w = self._body_to_world_pos(init_pos, env_ids)
+            init_vel_w = (
+                self._body_to_world_vel(init_vel, env_ids)
+                if init_vel is not None else None
+            )
+            self.ekf.reset(env_ids, init_pos_w, init_vel_w)
+        else:
+            self.ekf.reset(env_ids, init_pos, init_vel)
+            # Clear robot velocity buffer for reset envs so we don't compute
+            # a spurious acceleration spike on the first post-reset step
+            if self._prev_robot_vel_b is not None:
+                self._prev_robot_vel_b[env_ids] = 0.0
 
     @property
     def pos(self) -> torch.Tensor:
-        """EKF-filtered ball position estimate (N, 3)."""
+        """EKF-filtered ball position estimate in body frame (N, 3)."""
+        if self._world_frame:
+            return self._world_to_body_pos(self.ekf.pos)
         return self.ekf.pos
 
     @property
     def vel(self) -> torch.Tensor:
-        """EKF-filtered ball velocity estimate (N, 3)."""
+        """EKF-filtered ball velocity estimate in body frame (N, 3)."""
+        if self._world_frame:
+            return self._world_to_body_vel(self.ekf.vel)
         return self.ekf.vel
 
     def update_noise_scale(self, scale: float) -> None:
@@ -484,14 +614,28 @@ def ball_pos_perceived(
 
     if noise_cfg.mode == "ekf":
         pipeline = _get_or_create_pipeline(env, noise_cfg)
-        # Pass body-frame gravity + velocity for pseudo-force compensation
         robot: Articulation = env.scene[robot_cfg.name]
-        gravity_b = robot.data.projected_gravity_b * 9.81  # (N, 3)
-        robot_vel_b = robot.data.root_lin_vel_b  # (N, 3)
-        pipeline.step(
-            pos_b, env.common_step_counter,
-            gravity_b=gravity_b, robot_vel_b=robot_vel_b,
-        )
+
+        if noise_cfg.world_frame:
+            # World-frame EKF: pass robot pose for body↔world transforms
+            paddle_offset_t = torch.tensor(
+                paddle_offset_b, device=env.device
+            )
+            pipeline.step(
+                pos_b, env.common_step_counter,
+                robot_quat_w=robot.data.root_quat_w,
+                robot_pos_w=robot.data.root_pos_w,
+                paddle_offset_b=paddle_offset_t,
+            )
+        else:
+            # Body-frame EKF: pass gravity + velocity for pseudo-force comp
+            gravity_b_vec = robot.data.projected_gravity_b * 9.81  # (N, 3)
+            robot_vel_b = robot.data.root_lin_vel_b  # (N, 3)
+            pipeline.step(
+                pos_b, env.common_step_counter,
+                gravity_b=gravity_b_vec, robot_vel_b=robot_vel_b,
+            )
+
         out = pipeline.pos.clone()
         # Guard against EKF divergence — NaN/Inf would corrupt PPO gradients
         out = torch.nan_to_num(out, nan=0.0, posinf=1.0, neginf=-1.0)
@@ -504,6 +648,7 @@ def ball_vel_perceived(
     env: ManagerBasedRLEnv,
     ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    paddle_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.070),
     noise_cfg: BallObsNoiseCfg | None = None,
 ) -> torch.Tensor:
     """Ball velocity in trunk frame, optionally with perception noise.
@@ -527,17 +672,33 @@ def ball_vel_perceived(
 
     if noise_cfg.mode == "ekf":
         pipeline = _get_or_create_pipeline(env, noise_cfg)
-        # step() is idempotent — if pos was called first, this is a no-op
         robot: Articulation = env.scene[robot_cfg.name]
-        gravity_b = robot.data.projected_gravity_b * 9.81  # (N, 3)
-        robot_vel_b = robot.data.root_lin_vel_b  # (N, 3)
-        pipeline.step(
-            _ball_pos_paddle_frame_gt(env, ball_cfg, robot_cfg, (0.0, 0.0, 0.070)),
-            env.common_step_counter,
-            gt_vel_b=vel_b if pipeline._diagnostics_enabled else None,
-            gravity_b=gravity_b,
-            robot_vel_b=robot_vel_b,
-        )
+
+        if noise_cfg.world_frame:
+            # World-frame EKF: pass robot pose (step is idempotent)
+            paddle_offset_t = torch.tensor(
+                paddle_offset_b, device=env.device
+            )
+            pipeline.step(
+                _ball_pos_paddle_frame_gt(env, ball_cfg, robot_cfg, paddle_offset_b),
+                env.common_step_counter,
+                gt_vel_b=vel_b if pipeline._diagnostics_enabled else None,
+                robot_quat_w=robot.data.root_quat_w,
+                robot_pos_w=robot.data.root_pos_w,
+                paddle_offset_b=paddle_offset_t,
+            )
+        else:
+            # Body-frame EKF: pass gravity + velocity
+            gravity_b_vec = robot.data.projected_gravity_b * 9.81  # (N, 3)
+            robot_vel_b = robot.data.root_lin_vel_b  # (N, 3)
+            pipeline.step(
+                _ball_pos_paddle_frame_gt(env, ball_cfg, robot_cfg, paddle_offset_b),
+                env.common_step_counter,
+                gt_vel_b=vel_b if pipeline._diagnostics_enabled else None,
+                gravity_b=gravity_b_vec,
+                robot_vel_b=robot_vel_b,
+            )
+
         out = pipeline.vel.clone()
         out = torch.nan_to_num(out, nan=0.0, posinf=5.0, neginf=-5.0)
         return out.clamp(-10.0, 10.0)
