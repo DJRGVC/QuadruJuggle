@@ -388,6 +388,19 @@ class RewardsCfg:
         },
     )
 
+    ball_release_vel = RewTerm(
+        func=mdp.ball_release_velocity_reward,
+        weight=3.0,
+        params={
+            "max_vel": 3.0,
+            "ball_cfg": SceneEntityCfg("ball"),
+            "robot_cfg": SceneEntityCfg("robot"),
+            "paddle_offset_b": _PADDLE_OFFSET_B,
+            "ball_radius": _BALL_RADIUS,
+            "min_height": 0.20,
+        },
+    )
+
 
 # ---------------------------------------------------------------------------
 # MDP: Terminations (same as flat juggle)
