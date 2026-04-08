@@ -83,3 +83,12 @@ Change:     (1) Created `perception/noise_model.py` — `D435iNoiseModel` class 
 Command:    AST parse (OK). CPU unit tests for noise_model: 4/4 pass (sampling stats, dropout hold, latency buffer, reset).
 Result:     Full pipeline code complete. The "ekf" mode in ball_obs_spec.py now chains: GT pos → D435iNoiseModel.sample() → (noisy_pos, detected) → BallEKF.step() → filtered pos/vel. Drop-in usage: change `BallObsNoiseCfg(mode="oracle")` to `BallObsNoiseCfg(mode="ekf")` and add `reset_perception_pipeline` EventTerm. No sim test yet (requires GPU + Isaac Lab env).
 Decision:   Next iter: integration test — modify ball_juggle_hier env_cfg to use mode="ekf", run 50-iter smoke test with GPU, verify mean_episode_length is reasonable (some degradation expected vs oracle).
+
+---
+
+## iter_010 — EKF integration test: full pipeline verified in Isaac Lab  (2026-04-08T03:50:00Z)
+Hypothesis: The EKF perception pipeline (GT→D435iNoiseModel→BallEKF→obs) integrates correctly with ball_juggle_hier env, producing valid observations that allow PPO training to proceed without crashes.
+Change:     Created `scripts/perception/test_ekf_integration.py` — standalone test script that patches env_cfg obs terms to use `ball_pos_perceived`/`ball_vel_perceived` with `BallObsNoiseCfg(mode="ekf")`, adds `reset_perception_pipeline` EventTerm, and runs PPO training with metric collection. Fixed `--headless` arg conflict with AppLauncher, and added sys.path worktree isolation (editable install points to policy agent's worktree).
+Command:    (1) Smoke test: 4 envs, 2 iters, 30s timeout — PASS. (2) Full test: 4096 envs, 50 iters — PASS.
+Result:     EKF mode works end-to-end in Isaac Lab. 50-iter metrics: mean_ep_len grew from 21→123 (learning curve normal for Stage A). Termination breakdown: 99.95% ball_below, 0.05% ball_off, 0% timeout. Rewards accumulating normally (alive=0.094, apex=0.632). No NaN, no dimension mismatch, no EKF divergence. Oracle comparison deferred — GPU queue blocked by policy agent's 500-iter training runs (2 jobs ahead in lock queue).
+Decision:   Next iter: handoff to policy agent — write PERCEPTION_HANDOFF.md documenting how to enable EKF mode (config diff, reset event, sys.path note). Then pursue oracle vs EKF comparison when GPU frees.

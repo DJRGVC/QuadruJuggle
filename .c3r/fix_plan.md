@@ -20,5 +20,7 @@
 - [x] Implement ball_ekf.py — batched 6-state (pos+vel) Kalman filter in PyTorch, ballistic+drag dynamics model, runs on GPU across all envs
 - [x] Implement noise_model.py — D435i-structured noise sampling (depth-dependent σ, dropout, latency) consumed by ball_obs_spec.py d435i mode
 - [x] Wire EKF mode into ball_obs_spec.py — PerceptionPipeline class (noise→EKF→filtered obs), lazy init on env, reset event, idempotent step dedup
-- [ ] Integration test: swap ball_juggle_hier obs to mode="ekf", run short training (50-100 iters), compare mean_episode_length vs oracle baseline
+- [x] Integration test: swap ball_juggle_hier obs to mode="ekf", run short training (50 iters) — PASSED, mean_len=123 at iter 50, pipeline stable
+- [ ] Oracle baseline comparison: run same test with mode="oracle" for apples-to-apples (deferred — GPU contention from policy agent training)
 - [ ] Handoff to policy agent: document how to enable EKF mode in env_cfg (swap noise_cfg, add reset event), provide example config diff
+- [ ] Tune EKF parameters (process noise Q, measurement noise R) based on training performance gap vs oracle
