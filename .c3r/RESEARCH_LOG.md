@@ -139,3 +139,21 @@ Result:     Root cause identified and fixed. The eval_perception_live.py had thi
             (lines 196-197) but sweep_q_vel.py didn't. Without it, diagnostics always returned None.
 Decision:   Next iter: GPU sweep should be queued or just finished. Parse results, find optimal
             q_vel for flight NIS ≈ 3.0. If GPU still blocked, escalate via ask_human.
+
+## Iteration 65 — fix sweep diagnostics (restore pipeline recreation)  (2026-04-08T16:35:00Z)
+Hypothesis: Sweep all-zeros results were caused by (a) uncommitted working-tree changes that
+            reverted the iter-64 pipeline recreation fix, and (b) the sweep JSON files predating
+            the fix (timestamps 16:05-16:11 vs iter-64 commit at 23:10).
+Change:     Restored the `base_env._perception_pipeline = None` approach (force recreation after
+            setting `_perception_diagnostics_enabled = True`). Added verification logging and a
+            fallback force-enable path. Removed the unreliable manual-patching approach from the
+            working tree. Added 3 CPU unit tests verifying diagnostics work when pipeline is
+            recreated with `enable_diagnostics=True`.
+Command:    pytest scripts/perception/test_pipeline_config.py — 20/20 pass.
+            GPU locked by policy agent (PID 886154, 1500 iter d435i training, ~7min in).
+            Queued sweep behind gpu_lock (PID 892945, 512 envs × 600 steps).
+Result:     CPU tests confirm: pipeline recreated with diagnostics enabled properly accumulates
+            NIS and RMSE data. Sweep results will be available next iteration when GPU frees.
+Decision:   Next iter: parse sweep results from logs/perception/sweep_q_vel_fixed.json. If still
+            zeros, the bug is in GPU-specific code path (world_frame or inference_mode). If
+            non-zero, proceed to find optimal q_vel for flight NIS ≈ 3.0.

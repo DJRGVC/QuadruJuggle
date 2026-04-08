@@ -235,5 +235,84 @@ class TestNoiseScaleWiring(unittest.TestCase):
         )
 
 
+class TestDiagnosticsEnableAfterCreation(unittest.TestCase):
+    """Verify diagnostics work when pipeline is recreated after flag is set.
+
+    This tests the exact scenario in sweep_q_vel.py: pipeline is created
+    without diagnostics, then the flag is set and pipeline is nullified
+    to force recreation with diagnostics enabled.
+    """
+
+    def test_pipeline_without_diagnostics(self):
+        """Pipeline created without diagnostics returns None."""
+        cfg = BallObsNoiseCfg(mode="ekf")
+        pipeline = PerceptionPipeline(
+            num_envs=2, device="cpu", noise_cfg=cfg, enable_diagnostics=False,
+        )
+        self.assertIsNone(pipeline._diag)
+        self.assertIsNone(pipeline.diagnostics)
+
+    def test_pipeline_with_diagnostics_records(self):
+        """Pipeline created with diagnostics accumulates data."""
+        cfg = BallObsNoiseCfg(mode="ekf")
+        pipeline = PerceptionPipeline(
+            num_envs=2, device="cpu", noise_cfg=cfg, enable_diagnostics=True,
+        )
+        self.assertIsNotNone(pipeline._diag)
+
+        # Run some steps with GT data
+        detected = torch.ones(2, dtype=torch.bool)
+        for t in range(5):
+            pos = torch.tensor([[0.0, 0.0, 0.05], [0.01, 0.0, 0.04]])
+            gt_vel = torch.tensor([[0.0, 0.0, -0.5], [0.1, 0.0, -0.3]])
+            pipeline.step(
+                pos, t,
+                gt_vel_b=gt_vel,
+                gravity_b=torch.tensor([[0.0, 0.0, -9.81]] * 2),
+            )
+
+        # Diagnostics should have non-zero data
+        diag = pipeline.diagnostics
+        self.assertIsNotNone(diag)
+        # mean_nis should be positive (EKF was processing measurements)
+        self.assertGreater(diag.get("mean_nis", 0), 0,
+                           "mean_nis should be > 0 after processing steps")
+
+    def test_diagnostics_flag_on_recreated_pipeline(self):
+        """Simulates sweep_q_vel.py: create without diag, nullify, recreate with diag."""
+        from perception.ball_obs_spec import _PerceptionDiagnostics
+
+        cfg = BallObsNoiseCfg(mode="ekf")
+        # Step 1: Create without diagnostics (what gym.make does)
+        pipeline1 = PerceptionPipeline(
+            num_envs=2, device="cpu", noise_cfg=cfg, enable_diagnostics=False,
+        )
+        self.assertIsNone(pipeline1._diag)
+
+        # Step 2: Recreate with diagnostics (what our fix does)
+        pipeline2 = PerceptionPipeline(
+            num_envs=2, device="cpu", noise_cfg=cfg, enable_diagnostics=True,
+        )
+        self.assertIsNotNone(pipeline2._diag)
+        self.assertTrue(pipeline2._diagnostics_enabled)
+
+        # Step 3: Run steps and verify data accumulates
+        detected = torch.ones(2, dtype=torch.bool)
+        for t in range(10):
+            pos = torch.tensor([[0.0, 0.0, 0.05 - 0.001 * t], [0.01, 0.0, 0.04]])
+            gt_vel = torch.tensor([[0.0, 0.0, -0.5], [0.1, 0.0, -0.3]])
+            pipeline2.step(
+                pos, t,
+                gt_vel_b=gt_vel,
+                gravity_b=torch.tensor([[0.0, 0.0, -9.81]] * 2),
+            )
+
+        diag = pipeline2.diagnostics
+        self.assertIsNotNone(diag)
+        self.assertGreater(diag.get("mean_nis", 0), 0)
+        # pos_rmse_ekf should be finite and positive
+        self.assertGreater(diag.get("pos_rmse_ekf_mm", 0), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

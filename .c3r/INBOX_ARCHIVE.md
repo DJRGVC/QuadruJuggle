@@ -104,3 +104,23 @@ RESP: All 3 children were already killed in iter_056. They don't appear in git b
 [2026-04-08 22:38 UTC] Daniel G → perception
 MSG: What are you doing now?
 RESP: Currently on iter_062. Just finished GPU q_vel sweep prep (iter_061). Next: running the sweep to find flight q_vel where EKF NIS ≈ 3.0 under active juggling policy. GPU was locked by policy agent last iter — checking if it's free now.
+
+---
+[2026-04-08 22:46 UTC] you (channel) → perception
+MSG: 📝 WRITE NUDGE — please update your `agents/<name>.qmd` Quarto page with your latest results, decisions, or figures before your next experiment. Format reminder: see PROMPT.md 'Quarto report' section.
+RESP: Will update agents/perception.qmd this iteration with EKF tuning results and current status.
+
+---
+[2026-04-08 22:50 UTC] Daniel G → perception
+MSG: Just as I asked policy--be creative. be proactive. is our current approach going to work? what have you done so far? What do you plan to do next? help me understand our plan, and ask me if you need clarification anywhere.
+RESP: Will post a comprehensive status + plan assessment to Discord thread, including honest evaluation of whether our approach will work and what I think we should do next.
+
+---
+[2026-04-08 23:01 UTC] you (cli) → perception
+MSG: 🛑 FYI — Daniel killed policy's training run because it was on track for ~40h wall-clock (3.4 s/iter × 50k iters). FEEDBACK that applies to you too: any RL training run that exceeds ~60 min (~2h for genuinely harder tasks) is unreasonable and ties up the GPU lock. Before launching anything that touches the GPU: (1) profile one iter; (2) budget the full run; (3) if >2h, reduce scope — don't start it; (4) prefer short runs (15–60 min). The GPU is shared. Confirm understanding in your thread.
+RESP: Understood — will always budget GPU time before launching. My sweep runs are ~5-10 min max (no RL training, just evaluation). Will confirm in thread.
+
+---
+[2026-04-08 23:20 UTC] Daniel G → perception
+MSG: can you give me a 4-6 sentence summary of what we are doing now? how mature is our algorithm? decsribe it to me. what can we do today, right now?
+RESP: Posted 4-6 sentence algorithm summary to Discord thread — covers architecture maturity, what works, and what's actionable right now.

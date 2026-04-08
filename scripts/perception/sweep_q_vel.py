@@ -180,8 +180,9 @@ def main():
     env = gym.make("Isaac-BallJuggleHier-Go1-v0", cfg=env_cfg)
     base_env = env.unwrapped
     base_env._perception_diagnostics_enabled = True
-    # Force pipeline recreation so diagnostics flag is picked up
-    # (gym.make may have created the pipeline without diagnostics during reset)
+    # Force pipeline recreation so diagnostics flag is picked up.
+    # gym.make() → reset() creates the pipeline BEFORE we set the flag above.
+    # Nullifying it forces _get_or_create_pipeline to recreate with diagnostics.
     if hasattr(base_env, "_perception_pipeline"):
         base_env._perception_pipeline = None
 
@@ -195,6 +196,19 @@ def main():
     )
 
     env_wrapped = RslRlVecEnvWrapper(env)
+
+    # Verify pipeline was recreated with diagnostics enabled
+    pipeline = getattr(base_env, "_perception_pipeline", None)
+    if pipeline is not None:
+        _print(f"[INFO] Pipeline diagnostics: enabled={pipeline._diagnostics_enabled}, "
+               f"diag={pipeline._diag is not None}")
+        if not pipeline._diagnostics_enabled:
+            _print(f"[WARN] Diagnostics still disabled — force-enabling")
+            from go1_ball_balance.perception.ball_obs_spec import _PerceptionDiagnostics
+            pipeline._diagnostics_enabled = True
+            pipeline._diag = _PerceptionDiagnostics(args.num_envs, base_env.device)
+    else:
+        _print(f"[INFO] Pipeline not yet created — will be created on first obs call")
 
     # --- Load policy ---
     pi1_path = os.path.abspath(_pi1_path)
@@ -226,10 +240,13 @@ def main():
         _print(f"{'='*80}")
 
         pipeline = getattr(base_env, "_perception_pipeline", None)
-        _print(f"  [debug] pipeline={pipeline is not None}, "
-               f"diag_flag={getattr(base_env, '_perception_diagnostics_enabled', 'MISSING')}, "
-               f"diag_obj={pipeline._diag is not None if pipeline else 'N/A'}")
-        if pipeline is not None and hasattr(pipeline, "ekf"):
+        if pipeline is None:
+            _print(f"  [WARN] No pipeline found on base_env!")
+        elif not hasattr(pipeline, "ekf"):
+            _print(f"  [WARN] Pipeline has no EKF!")
+        else:
+            _print(f"  [DEBUG] pipeline.diag_enabled={pipeline._diagnostics_enabled}, "
+                   f"diag={pipeline._diag is not None}")
             pipeline.ekf.cfg.q_vel = q_vel_val
             pipeline.ekf.cfg.q_vel_contact = args.q_vel_contact
             pipeline.ekf.cfg.q_vel_post_contact = args.q_vel_post_contact
