@@ -185,3 +185,12 @@ Change:     (1) Created `scripts/perception/nis_diagnostic.py` — runs env with
 Command:    AST parse both files (OK). Smoke test blocked — GPU held by policy agent's 1500-iter d435i training (PID 223622).
 Result:     Both scripts pass AST validation. GPU unavailable — NIS diagnostic deferred to next iteration. Compare script fix addresses the missing diagnostic data from iter_018.
 Decision:   Next iter: run NIS diagnostic (500 steps, 2048 envs, ~2 min GPU time). If GPU still busy, run with smaller num_envs (256) as fallback. Based on NIS result, adjust q_vel if needed.
+
+---
+
+## iter_020 — q_vel 0.15→0.30 (CWNA fix) + NIS sweep script  (2026-04-08T21:30:00Z)
+Hypothesis: q_vel=0.15 is 7× below CWNA prescription (lit_review_ekf_lag_vs_raw_noise.md), causing 24cm position lag at 2 m/s and explaining why EKF (7.6) trails raw d435i (10.5) by 28% in iter_018. Increasing to q_vel=0.30 (CWNA midpoint for Stage E–F) should halve the lag.
+Change:     (1) Updated BallEKFConfig.q_vel from 0.15 to 0.30 (comment updated with CWNA justification). (2) Created `scripts/perception/nis_sweep.py` — runs nis_diagnostic.py for q_vel=[0.15,0.25,0.30,0.35,0.50] sequentially, produces comparison table, saves JSON results. (3) Copied lit_review_ekf_lag_vs_raw_noise.md from lit-review branch.
+Command:    AST parse both files (OK). GPU locked by policy agent (PID 223622, 12288 envs × 1500 iters, ~10 min elapsed). NIS sweep deferred.
+Result:     Code changes ready; validation blocked on GPU. Lit-review iter_009 confirms diagnosis: D'Ambrosio 2024 (DeepMind TT) found latency > noise in sensitivity; CWNA prescribes q_vel ≈ 0.40; our 0.30 is conservative midpoint. Also flagged "train without EKF, deploy with EKF" as architecture option if EKF still trails raw noise after tuning.
+Decision:   Next iter: run NIS sweep (256 envs × 300 steps × 5 q_vel values, ~10 min GPU total). Pick q_vel with mean NIS closest to 3.0. Then re-run 3-mode comparison to see if reward gap closes.

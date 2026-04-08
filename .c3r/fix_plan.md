@@ -27,9 +27,10 @@
 - [x] Perception diagnostics: added _PerceptionDiagnostics to PerceptionPipeline (pos/vel RMSE, detection rate, EKF improvement %)
 - [x] Tune EKF parameters (process noise Q, measurement noise R) based on CWNA analysis + lit-review — q_pos 0.01→0.003, q_vel 1.0→0.15, r_xy 0.003→0.002, time-varying r_z, ANEES diagnostic added
 - [x] Run tuned EKF comparison test (oracle/d435i/ekf, 2048 envs × 50 iters) — DONE: oracle 13.7, d435i 10.5, ekf 7.6. EKF trails d435i; may be over-smoothing. Fixed pi2 obs dim bug (41→53).
-- [ ] Run NIS diagnostic: `gpu_lock.sh uv run --active python scripts/perception/nis_diagnostic.py --pi2-checkpoint .../2026-03-12_17-16-01/model_best.pt --num_envs 2048 --steps 500 --headless`
-- [ ] If NIS too low (< 0.35): increase q_vel from 0.15 toward 0.5 and re-run
-- [ ] If NIS too high (> 7.81): decrease q_vel or increase r_xy/r_z
+- [x] Increase q_vel from 0.15 to 0.30 based on CWNA analysis (lit_review_ekf_lag_vs_raw_noise.md: 0.15 was 7× too small)
+- [ ] Run NIS sweep: `gpu_lock.sh uv run --active python scripts/perception/nis_sweep.py --pi2-checkpoint .../2026-03-12_17-16-01/model_best.pt --num_envs 256 --steps 300 --headless` (tests q_vel=[0.15,0.25,0.30,0.35,0.50])
+- [ ] Based on NIS sweep: pick q_vel that puts mean NIS closest to 3.0; re-run 3-mode comparison
+- [ ] Decision point: if EKF still trails raw d435i by >15%, adopt "train without EKF, deploy with EKF" pattern (lit-review Rec 3)
 - [x] Fix compare_perception_modes.py diagnostic capture — used base_env reference, added flush + warning
 - [x] Noise curriculum support: `noise_scale` field on BallObsNoiseCfg + `update_perception_noise_scale()` for runtime curriculum updates — DONE, 6 unit tests pass
 - [x] Monitor lit-review subagent — 3 iterations complete, all 3 docs committed (perception, noise_curriculum, ekf_tuning). Attempted kill (c3r binary path issue).

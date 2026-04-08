@@ -34,10 +34,11 @@ import torch
 class BallEKFConfig:
     """EKF tuning parameters."""
 
-    # Process noise — CWNA model with q_c ≈ 0.3 m²/s³ (drag uncertainty ~0.3 m/s²)
-    # Ref: Bar-Shalom, Li, Kirubarajan (2001) Ch. 6; lit_review_ekf_tuning.md
+    # Process noise — CWNA model with q_c ≈ 0.16 m²/s³ (drag+spin uncertainty ~0.4 m/s²)
+    # q_vel=0.15 was 7× below CWNA prescription, causing 24cm lag at 2 m/s (iter_018).
+    # Ref: Bar-Shalom Ch. 6; lit_review_ekf_tuning.md; lit_review_ekf_lag_vs_raw_noise.md
     q_pos: float = 0.003    # position process noise std (m) per sqrt(s)
-    q_vel: float = 0.15     # velocity process noise std (m/s) per sqrt(s)
+    q_vel: float = 0.30     # velocity process noise std (m/s) per sqrt(s)  — was 0.15
 
     # Measurement noise — matched to D435iNoiseModelCfg at ~0.5m nominal distance
     r_xy: float = 0.002     # measurement noise std, XY (m) — matches sigma_xy_base
