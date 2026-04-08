@@ -297,3 +297,17 @@ Change:     (1) Implemented CameraCalibrator.from_known_mount() in calibration.p
 Command:    python scripts/perception/test_real_utils.py
 Result:     17/17 tests PASS. All utility methods verified correct. from_known_mount produces orthogonal rotation matrices with det=1.0 and correct pitch=45° mapping (camera Z → body X*cos45 + Z*sin45).
 Decision:   Next iter: consider writing a MockCamera class for integration testing without hardware (generates synthetic depth frames with a ball at known position), or check if policy agent has new needs. Sim pipeline + real stubs are now fully tested.
+
+---
+
+## iter_028 — MockCamera + MockDetector for hardware-free integration testing  (2026-04-08T14:45:00Z)
+Hypothesis: Creating mock implementations of D435iCamera and BallDetector will enable end-to-end integration testing of the real pipeline chain (camera → detector → calibration → EKF → body-frame output) without physical hardware.
+Change:     (1) Created `perception/real/mock.py` with MockCamera (renders synthetic depth frames with ball blob at specified 3D position, configurable noise) and MockDetector (finds ball blob in depth frame via centroid + median depth, configurable dropout/noise). (2) Created `scripts/perception/test_mock_pipeline.py` with 15 integration tests across 4 test classes: MockCamera (7 tests: start/stop, empty scene, ball at known position, off-centre projection, clear_ball, frame counter, not-started guard), MockDetector (4 tests: detection accuracy, off-centre, dropout, empty frame), FullChain (4 tests: stationary ball EKF convergence, known mount calibration, moving ball velocity tracking, dropout handling). (3) Updated `perception/real/__init__.py` to re-export mock classes.
+Command:    `uv run --active python scripts/perception/test_mock_pipeline.py`
+Result:     **15/15 tests PASS** (0.048s). Key results:
+  - MockCamera renders ball at correct pixel location (centroid within 2px of expected)
+  - MockDetector detects ball with <5mm error at 0.5m, <10mm at off-centre positions
+  - Full chain: EKF converges to <10mm error after 10 measurements
+  - Velocity tracking: EKF estimates vx=0.5m/s ball within [0.2, 0.8] range
+  - Dropout: 100ms (5 frames) dropout produces bounded drift, gravity-consistent
+Decision:   Mock infrastructure complete. All remaining fix_plan items are hardware-blocked (D435i driver, YOLO training, calibration). Next iter options: (1) check if policy agent needs perception support, (2) write a more comprehensive mock pipeline test that simulates ballistic trajectories, or (3) investigate if any other sim-side work would benefit the real deployment path.

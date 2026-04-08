@@ -42,6 +42,7 @@
 # Blocked on physical hardware access — spec is ready, implementation when Go1+D435i available.
 - [x] Update noise_model.py: increase sigma_z_per_metre 2→5mm/m and dropout_prob 0.02→0.10 (lit-review D435i audit found sim values 2.5× and 4-20× too low) — DONE iter_025, also updated EKF r_z to match
 - [x] Create perception/real/ directory with camera.py, detector.py, calibration.py, pipeline.py, config.py stubs (interfaces per hardware_pipeline_architecture.md)
+- [x] Create MockCamera + MockDetector for integration testing without hardware; 15 integration tests pass
 - [ ] Implement D435iCamera wrapper (pyrealsense2, depth-only 848×480 @ 90fps, non-blocking poll)
 - [ ] Implement BallDetector (YOLOv8n+P2 TRT FP16 inference + median-depth-in-bbox 3D localisation)
 - [x] Implement CameraCalibrator.from_known_mount() — RPY→rotation matrix, 4 unit tests pass
