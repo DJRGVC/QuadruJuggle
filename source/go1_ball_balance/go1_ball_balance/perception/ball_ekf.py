@@ -620,27 +620,31 @@ class BallEKF:
             init_spin: Initial ball angular velocity (M, 3). Defaults to zero.
                 Only used when enable_spin=True.
         """
-        if init_vel is None:
-            init_vel = torch.zeros_like(init_pos)
+        # Use inference_mode so reset works even when internal tensors
+        # (e.g. self._P) have been replaced by inference tensors during
+        # predict/update calls inside torch.inference_mode() contexts.
+        with torch.inference_mode():
+            if init_vel is None:
+                init_vel = torch.zeros_like(init_pos)
 
-        D = self._state_dim
-        self._x[env_ids, :3] = init_pos
-        self._x[env_ids, 3:6] = init_vel
-        if self._spin_enabled:
-            if init_spin is not None:
-                self._x[env_ids, 6:9] = init_spin
-            else:
-                self._x[env_ids, 6:9] = 0.0
+            D = self._state_dim
+            self._x[env_ids, :3] = init_pos
+            self._x[env_ids, 3:6] = init_vel
+            if self._spin_enabled:
+                if init_spin is not None:
+                    self._x[env_ids, 6:9] = init_spin
+                else:
+                    self._x[env_ids, 6:9] = 0.0
 
-        # Reset covariance to initial values
-        P_init = torch.eye(D, device=self.device)
-        P_init[:3, :3] *= 0.01
-        P_init[3:6, 3:6] *= 1.0
-        if self._spin_enabled:
-            P_init[6:9, 6:9] *= self.cfg.p_spin_init ** 2
-        self._P[env_ids] = P_init.unsqueeze(0).expand(len(env_ids), -1, -1)
+            # Reset covariance to initial values
+            P_init = torch.eye(D, device=self.device)
+            P_init[:3, :3] *= 0.01
+            P_init[3:6, 3:6] *= 1.0
+            if self._spin_enabled:
+                P_init[6:9, 6:9] *= self.cfg.p_spin_init ** 2
+            self._P[env_ids] = P_init.unsqueeze(0).expand(len(env_ids), -1, -1)
 
-        # Reset per-env update count so gating warm-up restarts
-        self._update_count[env_ids] = 0
-        # Reset post-contact countdown
-        self._post_contact_countdown[env_ids] = 0
+            # Reset per-env update count so gating warm-up restarts
+            self._update_count[env_ids] = 0
+            # Reset post-contact countdown
+            self._post_contact_countdown[env_ids] = 0

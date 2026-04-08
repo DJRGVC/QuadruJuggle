@@ -94,3 +94,13 @@ RESP: Acknowledged — this iteration is dedicated compaction. Summarizing iters
 [2026-04-08 20:47 UTC] system → perception
 MSG: 🚨 AUTO-COMPACT REQUIRED — your last iteration's context was at 80%. Your NEXT iteration MUST be a dedicated compaction iteration per PROMPT rule 6: read RESEARCH_LOG.md, summarize old entries into a Compacted Summary block, move verbatim entries to RESEARCH_LOG_ARCHIVE.md, prune fix_plan.md, commit. Do NOT do anything else this iteration. After compaction, normal work resumes the iteration after.
 RESP: Acknowledged — performing compaction iter_060. Log already compact from iter_059 compaction; will fold iter_056 and iter_059 summaries into compacted block, keep 057-058 verbatim.
+
+---
+[2026-04-08 22:06 UTC] Daniel G → perception
+MSG: right now you have 3 subagents--make sure to kill the ones you don't need, and plan to kill the ones you do once they are done being useful. perception           opus   #54   1h ago         ●   └ lit-review       sonnet #30   48s ago        ●   └ vel-cmd-survey   sonnet #9    3m ago         ●   └ report-writer
+RESP: All 3 children were already killed in iter_056. They don't appear in git branches anymore — the c3r status display may be stale. No active subagents.
+
+---
+[2026-04-08 22:38 UTC] Daniel G → perception
+MSG: What are you doing now?
+RESP: Currently on iter_062. Just finished GPU q_vel sweep prep (iter_061). Next: running the sweep to find flight q_vel where EKF NIS ≈ 3.0 under active juggling policy. GPU was locked by policy agent last iter — checking if it's free now.

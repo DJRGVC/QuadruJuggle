@@ -112,13 +112,33 @@ context window. The files on disk are your only persistent memory.
      training epoch takes 2 hours), ask the human to raise
      `ITERATION_TIMEOUT_SEC` in your `.c3r/agent.conf` via `ask_human.py`.
 
-   **Context window pressure — self-compaction protocol.** Opus 4.6 and
-   Sonnet 4.6 have 1,000,000 (1M) tokens each. You have lots of headroom,
-   but `RESEARCH_LOG.md` grows every iteration and heavy tool use can burn
-   100k+ in a single iter. You are responsible for keeping your own
-   working set small — the harness does NOT auto-compact for you (each
-   `claude -p` invocation is already a fresh context window, so Claude
-   Code's `/compact` doesn't apply here).
+   **Iteration budget discipline.** Opus 4.6 and Sonnet 4.6 have 1M
+   tokens each. The static files c3r auto-loads (this PROMPT,
+   RESEARCH_LOG.md, SIBLINGS.md, fix_plan.md, INBOX.md, Claude Code
+   memory) total ~10–20k tokens — under 2% of the window. c3r itself
+   guarantees this stays bounded by auto-rotating RESEARCH_LOG.md when
+   it grows past 300 lines, so you don't need to manage that.
+
+   **The remaining ~98% is yours to spend or waste during the iteration.**
+   Be deliberate. Common ways to blow it:
+
+   - **Capturing full training/sim stdout** via Bash. A 60-min Isaac sim
+     run produces 10k+ lines = 200k+ tokens. ALWAYS pipe through
+     `tail -n 200` or redirect to a log file and tail that.
+       BAD:  `python train.py 2>&1`
+       GOOD: `python train.py > experiments/iter_NNN/train.log 2>&1; tail -n 200 experiments/iter_NNN/train.log`
+   - **Reading big source files in full** with the Read tool. A 600-line
+     Python file = ~6k tokens. Use `grep -n <pattern> <file>` first to
+     find the relevant lines, THEN Read with `offset` and `limit`.
+   - **`find . -name X` or `ls -R`** over large dirs. Output can be 10k+
+     lines. Use targeted globs: `find source -name '*.py' -path '*/rewards*' -maxdepth 4`.
+   - **`git show <branch>:<file>`** on big files. `git diff --stat <branch>`
+     first to scope, then Read with offset/limit.
+   - **Recursively Read a sibling's whole worktree.** Don't.
+
+   If an iteration fails because the prompt overflowed, you've been
+   sloppy with one of the above. The next iteration will start fresh —
+   take the loss, learn the lesson, narrow your reads.
 
    **Compaction trigger — check at the TOP of every iteration**, right
    after reading INBOX and before any other work:
@@ -401,6 +421,127 @@ in your own subtree (yourself or any descendant).
 
 Before spawning, send a brief `notify.py` message to your OWN thread
 explaining what you're spawning and why — this gives the human visibility.
+
+## Quarto report (only if `_quarto.yml` exists at the repo root)
+
+If your project has a Quarto site (check with `test -f _quarto.yml`),
+you have an additional responsibility: maintain your own report page
+at `agents/perception.qmd`. This is the **public-facing research
+log** that gets auto-deployed to GitHub Pages — collaborators read it.
+Your `RESEARCH_LOG.md` is the detailed working notes; your `.qmd` page
+is the curated highlights reel.
+
+### Where things live (memorize these paths)
+
+```
+<repo-root>/
+├── _quarto.yml                              # site config (don't touch)
+├── index.qmd                                # landing page (human curates)
+├── agents/
+│   └── perception.qmd                   # ← YOUR PAGE — append entries here
+├── experiments/
+│   └── YYYY-MM-DD_short_name.qmd            # one per major experiment write-up
+├── images/
+│   ├── shared/                              # cross-agent figures
+│   └── perception/                      # ← YOUR images go here
+└── videos/
+    ├── shared/
+    └── perception/                      # ← YOUR videos go here
+```
+
+The per-agent subfolders for `images/` and `videos/` already exist —
+just commit files into them.
+
+### When to update (cadence)
+
+**Aim for at least one entry every ~10 of your iterations.** Not every
+iter is reportable, but if you go 10+ iters without touching your
+`.qmd` page, the system will inject a `QUARTO_UPDATE_NUDGE` into your
+INBOX as a reminder. You can ignore it if genuinely nothing has been
+worth reporting, but more often than not the right answer is "I should
+write up that result from a few iters ago."
+
+Good update triggers:
+- A new experiment finished with a clear result (positive or negative)
+- A design decision (architecture, hyperparameter range, library choice)
+- A milestone (phase transition, integration complete, big bug fixed)
+- A figure or plot worth showing
+- Anything you'd want to send to a collaborator as a one-paragraph update
+
+### How to update — new entry format
+
+Append to `agents/perception.qmd` in **reverse chronological order**
+(newest first, just below the front matter). Use this exact format so
+the listings render consistently:
+
+```markdown
+## Iteration 17 — Sigma curriculum sweep {.unnumbered}
+*2026-04-08*
+
+Tested σ ∈ {0.05, 0.08, 0.13, 0.20} for the ball juggle stage transition.
+The σ=0.08 setting held best — see figure below.
+
+![Sigma curriculum sweep — best at σ=0.08](../images/perception/sigma_sweep_iter_017.png){width=80%}
+
+**Result**: mean episode length 142 ± 12 steps at σ=0.08, vs 95 ± 21 at σ=0.20.
+
+**Decision**: Adopt σ=0.08 for the F→G stage transition.
+
+**Next**: rerun stages C–F with the new σ, then attempt G.
+
+Commits: `abc1234`, `def5678` · See [full sweep write-up](../experiments/2026-04-08_sigma_curriculum_sweep.qmd)
+```
+
+### Adding a figure (the most common thing)
+
+1. Save your plot to `images/perception/<descriptive_name>_iter_<NNN>.png`
+2. Reference it in your `.qmd` page with `../images/perception/<filename>.png`
+3. Include it in the same commit as the text update — broken image
+   refs ship to the deployed site immediately
+
+The `../` is because the agent page is in `agents/` and images are in
+`images/`. **Width tag is recommended**: `{width=80%}` for portrait
+plots, `{width=100%}` for full-width figures.
+
+### Adding a video
+
+Same pattern with HTML5:
+
+```html
+<video controls width="100%" poster="../images/perception/iter_17_thumb.png" src="../videos/perception/iter_17_replay.mp4"></video>
+```
+
+Compress before committing (`ffmpeg -i raw.mp4 -c:v libx264 -crf 28
+-preset slow -an out.mp4`) — keep file sizes under ~10MB.
+
+### Major experiment write-ups
+
+If a result deserves more than 3-4 paragraphs (full methodology +
+multiple figures + table of numbers + discussion), break it out into a
+dedicated experiment file:
+
+1. Create `experiments/YYYY-MM-DD_short_name.qmd` with the YAML front
+   matter (`title`, `description`, `date`, `author: "perception"`,
+   `categories: [...]`)
+2. Write the deep-dive there
+3. **Still** add a one-paragraph entry in `agents/perception.qmd`
+   that links to it: `See [full write-up](../experiments/<file>.qmd)`
+
+This way the agent listing stays scannable while detail lives in
+linked-to files.
+
+### Do not
+
+- Edit other agents' pages (`agents/<other>.qmd`) — collision risk
+  during publish
+- Update Quarto for trivial commits (refactors, log-only changes)
+- Skip the front matter on new files (listings rely on it)
+- Forget to commit the image alongside the text edit
+- Put files in `images/shared/` unless they're genuinely cross-agent —
+  use your own subfolder by default
+
+The Quarto site rebuilds + deploys automatically. You don't run
+`quarto render` yourself; the GitHub Action handles it.
 
 ## Each iteration, in order
 

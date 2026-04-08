@@ -91,3 +91,19 @@ Result:     sweep_q_vel.py enhanced — ready to run next iter when GPU frees. P
             at iter_018 training d435i noise mode, plateau at apex≈10.7.
 Decision:   Next iter: run the GPU q_vel sweep. If GPU still locked, check if policy agent
             has finished and whether we can coordinate timing.
+
+## Iteration 62 — sweep queued + apply_sweep_results.py helper  (2026-04-08T22:50:00Z)
+Hypothesis: Preparing result-parsing tooling now saves time when sweep completes.
+Change:     Processed 2 INBOX messages (Daniel: subagent cleanup Q + status Q). Verified all 3
+            children already killed (iter_056). Confirmed GPU locked by policy training (PID 805803,
+            ~38min elapsed, 2000 iters @ 12288 envs). The sweep_q_vel.py process (PID 806215) is
+            queued behind gpu_lock flock — will auto-run when policy finishes. Verified pi2/pi1
+            checkpoints exist. Created apply_sweep_results.py to parse sweep JSON output. Updated
+            fix_plan. 241/241 CPU tests pass.
+Command:    pytest (CPU only), nvidia-smi, ps checks. No GPU commands.
+Result:     Sweep is auto-queued (waiting on flock). Results will save to logs/perception/.
+            Policy training at 2000 iters may take 30-60 more minutes.
+            Note: sweep uses original pi1 (2026-03-12), not noise-trained pi1 (still training).
+Decision:   Next iter: check if sweep completed (ls logs/perception/sweep_q_vel_*.json). If yes,
+            parse results and update BallEKFConfig defaults. If still waiting, consider other CPU
+            work or wait for GPU. Eventually re-run with noise-trained pi1.
