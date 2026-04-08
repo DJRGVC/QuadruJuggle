@@ -1,0 +1,1537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QuadruJuggle — Project Report</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #252836;
+    --border: #2e3245;
+    --accent: #6c8ef7;
+    --accent2: #f77c6c;
+    --accent3: #6cf7b8;
+    --text: #e2e4ee;
+    --muted: #8890b0;
+    --code-bg: #111520;
+    --tag-bg: #1e2540;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+    padding: 0;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ── Layout ───────────────────────────────────────────── */
+  .wrapper { max-width: 1060px; margin: 0 auto; padding: 0 24px 80px; }
+
+  /* ── Hero ─────────────────────────────────────────────── */
+  .hero {
+    background: linear-gradient(135deg, #0d1230 0%, #1a1040 60%, #120d20 100%);
+    padding: 64px 0 56px;
+    border-bottom: 1px solid var(--border);
+    text-align: center;
+  }
+  .hero-inner { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+  .hero h1 {
+    font-size: 2.8rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    background: linear-gradient(90deg, #7ba4ff, #a78bfa, #f472b6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 12px;
+  }
+  .hero .subtitle {
+    font-size: 1.1rem;
+    color: var(--muted);
+    max-width: 620px;
+    margin: 0 auto 24px;
+  }
+  .badges { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .badge {
+    background: var(--tag-bg);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  /* ── Nav ──────────────────────────────────────────────── */
+  .toc {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .toc ul {
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: 0 24px;
+    list-style: none;
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .toc li a {
+    display: block;
+    padding: 12px 10px;
+    font-size: 0.82rem;
+    color: var(--muted);
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+  }
+  .toc li a:hover { color: var(--text); text-decoration: none; border-bottom-color: var(--accent); }
+
+  /* ── Sections ─────────────────────────────────────────── */
+  .section { margin-top: 64px; }
+  h2 {
+    font-size: 1.55rem;
+    font-weight: 700;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h2 .num {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    padding: 3px 8px;
+    font-weight: 700;
+  }
+  h3 { font-size: 1.1rem; font-weight: 600; margin: 28px 0 10px; color: #c8cde8; }
+  p { margin-bottom: 14px; }
+
+  /* ── Cards ────────────────────────────────────────────── */
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 22px;
+  }
+  .card .card-title { font-weight: 600; margin-bottom: 8px; color: var(--accent); font-size: 0.95rem; }
+  .card p { color: var(--muted); font-size: 0.88rem; margin: 0; }
+
+  /* ── Stat tiles ───────────────────────────────────────── */
+  .stats { display: flex; gap: 16px; flex-wrap: wrap; margin: 24px 0; }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 22px;
+    min-width: 140px;
+    flex: 1;
+    text-align: center;
+  }
+  .stat .val { font-size: 2rem; font-weight: 700; color: var(--accent3); }
+  .stat .lbl { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+
+  /* ── Tables ───────────────────────────────────────────── */
+  .table-wrap { overflow-x: auto; margin: 20px 0; border-radius: 8px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
+  thead th {
+    background: var(--surface2);
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  tbody tr { border-top: 1px solid var(--border); }
+  tbody tr:hover { background: var(--surface); }
+  tbody td { padding: 9px 14px; color: var(--text); vertical-align: top; }
+  .pos { color: #6cf7b8; } .neg { color: #f77c6c; } .code { font-family: monospace; color: #a9b2d4; }
+
+  /* ── Code blocks ──────────────────────────────────────── */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-size: 0.82rem;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    color: #c8cde8;
+    margin: 16px 0;
+    line-height: 1.5;
+  }
+  code { font-family: 'Cascadia Code', 'Fira Code', monospace; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; color: #a9b2d4; }
+
+  /* ── Diagrams (SVG) ───────────────────────────────────── */
+  .diagram-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin: 20px 0;
+    overflow-x: auto;
+    text-align: center;
+  }
+
+  /* ── Curriculum table ─────────────────────────────────── */
+  .stage-bar {
+    display: inline-block;
+    height: 8px;
+    background: linear-gradient(90deg, var(--accent), var(--accent3));
+    border-radius: 4px;
+    min-width: 4px;
+  }
+
+  /* ── Progress / Result highlight ─────────────────────── */
+  .result-box {
+    background: linear-gradient(135deg, #0d2030 0%, #0d2820 100%);
+    border: 1px solid #1e4a3a;
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin: 20px 0;
+  }
+  .result-box .label { font-size: 0.75rem; text-transform: uppercase; color: var(--accent3); letter-spacing: 1px; margin-bottom: 6px; }
+  .result-box p { color: #b0f0d8; margin: 0; font-size: 0.93rem; }
+
+  /* ── Phase list ───────────────────────────────────────── */
+  .phase-list { list-style: none; }
+  .phase-list li {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .phase-list li:last-child { border: none; }
+  .phase-badge {
+    flex-shrink: 0;
+    width: 56px;
+    text-align: center;
+    background: var(--tag-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 0;
+    font-weight: 700;
+    font-size: 0.78rem;
+    color: var(--accent);
+  }
+  .phase-badge.done { background: #0d2820; border-color: #1e4a3a; color: var(--accent3); }
+  .phase-badge.in-progress { background: #1e2010; border-color: #3a4a1e; color: #b0e060; }
+  .phase-content .phase-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 4px; }
+  .phase-content p { color: var(--muted); font-size: 0.87rem; margin: 0; }
+
+  /* ── Lessons Learned cards ────────────────────────────── */
+  .lessons-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin: 20px 0;
+  }
+  @media (max-width: 760px) { .lessons-grid { grid-template-columns: 1fr; } }
+  .lesson-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .lesson-card .lesson-header {
+    background: #1a1a2e;
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .lesson-card .lesson-icon {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+  .lesson-card .lesson-title {
+    font-weight: 600;
+    font-size: 0.92rem;
+    color: var(--text);
+  }
+  .lesson-card .lesson-body { padding: 14px 16px; }
+  .lesson-card .bug-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #f77c6c;
+    margin-bottom: 4px;
+    font-weight: 700;
+  }
+  .lesson-card .fix-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--accent3);
+    margin-bottom: 4px;
+    font-weight: 700;
+    margin-top: 12px;
+  }
+  .lesson-card .why-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #a78bfa;
+    margin-bottom: 4px;
+    font-weight: 700;
+    margin-top: 10px;
+  }
+  .lesson-card p { font-size: 0.87rem; color: var(--muted); margin: 0 0 4px; line-height: 1.5; }
+  .lesson-card pre { margin: 6px 0; font-size: 0.77rem; padding: 10px 12px; }
+
+  /* ── Footnote ─────────────────────────────────────────── */
+  .footnote { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--border); margin-top: 60px; padding-top: 20px; }
+
+  /* ── Inline TOC ───────────────────────────────────────── */
+  .inline-toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 28px;
+    margin: 32px 0 48px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 32px;
+  }
+  @media (max-width: 640px) { .inline-toc { grid-template-columns: 1fr; } }
+  .inline-toc-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 12px; grid-column: 1 / -1; font-weight: 600; }
+  .inline-toc a { color: var(--text); font-size: 0.88rem; display: flex; align-items: center; gap: 10px; padding: 3px 0; }
+  .inline-toc a:hover { color: var(--accent); text-decoration: none; }
+  .inline-toc .toc-num { font-size: 0.72rem; color: var(--accent); font-weight: 700; width: 20px; }
+
+  /* ── Print styles ─────────────────────────────────────── */
+  @media print {
+    :root { --bg: #fff; --surface: #f5f5f8; --surface2: #eaeaf0; --border: #dde; --accent: #3a5cd6; --accent2: #c0392b; --accent3: #27ae60; --text: #111; --muted: #555; --code-bg: #f0f0f5; --tag-bg: #eee; }
+    body { font-size: 11pt; line-height: 1.5; }
+    .toc { display: none; }
+    .hero { background: #f0f2ff; padding: 24pt 0 20pt; border-bottom: 1pt solid #ccc; }
+    .hero h1 { -webkit-text-fill-color: #1a3a8a; background: none; font-size: 22pt; }
+    .hero .subtitle { color: #555; }
+    .badge { background: #eee; border-color: #ccc; color: #555; }
+    h2 { font-size: 14pt; page-break-after: avoid; }
+    h3 { page-break-after: avoid; }
+    .section { page-break-before: auto; margin-top: 28pt; }
+    .lessons-grid { grid-template-columns: 1fr 1fr; }
+    pre { white-space: pre-wrap; word-break: break-all; background: #f5f5f5; border: 0.5pt solid #ddd; }
+    .diagram-wrap svg { max-width: 100%; }
+    .footnote { margin-top: 20pt; padding-top: 10pt; font-size: 9pt; }
+    a[href]:after { content: " (" attr(href) ")"; font-size: 8pt; color: #888; }
+    a[href^="#"]:after { content: ""; }
+    .inline-toc { display: none; }
+    .stat .val { color: #1a7a40; }
+    thead th { background: #e8e8ee; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════ HERO ══════════════════════════════════ -->
+<div class="hero">
+  <div class="hero-inner">
+    <h1>QuadruJuggle</h1>
+    <p class="subtitle">
+      A hierarchical deep reinforcement learning system for ball juggling on a Unitree Go1 quadruped — from reward shaping to sim-to-real EKF perception.
+    </p>
+    <div class="badges">
+      <span class="badge">Isaac Lab + PhysX 5</span>
+      <span class="badge">RSL-RL / PPO</span>
+      <span class="badge">12,288 parallel envs</span>
+      <span class="badge">Hierarchical policy (pi1 + pi2)</span>
+      <span class="badge">EKF perception pipeline</span>
+      <span class="badge">April 2026</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════ NAV ═══════════════════════════════════ -->
+<nav class="toc">
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#training">Training</a></li>
+    <li><a href="#rewards">Rewards &amp; Curriculum</a></li>
+    <li><a href="#perception">Perception</a></li>
+    <li><a href="#results">Results</a></li>
+    <li><a href="#sim2real">Sim-to-Real</a></li>
+    <li><a href="#lessons">Lessons Learned</a></li>
+    <li><a href="#velcmd">Velocity Commands</a></li>
+    <li><a href="#noise-retrain">Noise Retraining</a></li>
+    <li><a href="#references">References</a></li>
+  </ul>
+</nav>
+
+<div class="wrapper">
+
+<!-- ══════════════════════════════ INLINE TOC ════════════════════════════════ -->
+<div class="inline-toc">
+  <div class="inline-toc-title">Contents</div>
+  <a href="#overview"><span class="toc-num">1</span> Project Overview</a>
+  <a href="#architecture"><span class="toc-num">2</span> Hierarchical Architecture</a>
+  <a href="#training"><span class="toc-num">3</span> Policy Training</a>
+  <a href="#rewards"><span class="toc-num">4</span> Rewards &amp; Curriculum</a>
+  <a href="#perception"><span class="toc-num">5</span> Perception Pipeline</a>
+  <a href="#results"><span class="toc-num">6</span> Results</a>
+  <a href="#sim2real"><span class="toc-num">7</span> Sim-to-Real Plan</a>
+  <a href="#lessons"><span class="toc-num">8</span> Lessons Learned</a>
+  <a href="#velcmd"><span class="toc-num">9</span> Velocity Commands</a>
+  <a href="#noise-retrain"><span class="toc-num">10</span> Noise-Aware Retraining</a>
+  <a href="#references"><span class="toc-num">11</span> Key References</a>
+</div>
+
+<!-- ══════════════════════════════ 1 OVERVIEW ════════════════════════════════ -->
+<section class="section" id="overview">
+  <h2><span class="num">1</span> Project Overview</h2>
+
+  <!-- Executive Summary -->
+  <div style="background:linear-gradient(135deg,#1a1d27 0%,#1e2138 100%);border:1px solid #3a4060;border-left:4px solid var(--accent);border-radius:8px;padding:22px 26px;margin-bottom:28px;">
+    <div style="font-size:0.7rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin-bottom:10px;">Executive Summary</div>
+    <p style="margin-bottom:10px;">
+      <strong>QuadruJuggle</strong> is a sim-to-real research project that teaches a Unitree Go1 quadruped
+      to juggle a 40 mm ping-pong ball on a back-mounted paddle using reinforcement learning.
+      The task is substantially harder than ball <em>balancing</em>: the robot must actively impart
+      controlled upward impulses at each contact to sustain repeated bounces, requiring tight
+      coordination between whole-body posture control and real-time ball trajectory estimation.
+    </p>
+    <p style="margin-bottom:10px;">
+      We use a <strong>hierarchical two-policy architecture</strong>: a low-level torso tracker (pi2,
+      trained first) that maps 8D body-pose commands to joint targets, and a high-level ball planner
+      (pi1) that reads ball state from a D435i depth camera + EKF and outputs the body-pose commands.
+      Training runs in <strong>Isaac Lab</strong> (12 288 parallel envs) with RSL-RL / PPO. A
+      <strong>noise-aware curriculum</strong> bridges sim-to-real by injecting realistic sensor noise
+      during pi1 training, matching the noise statistics of our onboard EKF pipeline.
+    </p>
+    <p style="margin-bottom:0;">
+      <strong>Current state (April 2026):</strong> pi2 has completed 8-stage curriculum (Stage H) and
+      is frozen. pi1 is advancing through the juggling curriculum — sustained apex ≈ 9–11 cm through
+      Stage B — with a critical algorithmic discovery (<code>ball_release_velocity_reward</code>) that
+      unlocked the transition from passive balancing to active juggling. The EKF perception pipeline
+      has reached production quality with 239/239 unit tests passing, chi-squared NIS gating, and
+      phase-separated noise tuning for flight vs. contact phases.
+    </p>
+  </div>
+
+  <p>
+    QuadruJuggle trains a <strong>Unitree Go1 quadruped</strong> to bounce a 40mm ping-pong ball
+    repeatedly on a 170mm disc paddle mounted on its back — a task we call
+    <em>quadrupedal ball juggling</em>. This requires coordinated whole-body posture control,
+    real-time ball trajectory estimation, and a closed-loop policy that adjusts body attitude
+    to impart controlled impulses at each contact.
+  </p>
+  <p>
+    The project is structured around three concurrent research tracks that run in parallel
+    as separate agents within the <a href="#architecture">c3r multi-agent harness</a>:
+    <strong>policy training</strong> (pi1 ball planner + pi2 torso tracker),
+    <strong>perception</strong> (ETH-style noise-injected EKF pipeline), and
+    <strong>report writing</strong> (this document).
+  </p>
+
+  <div class="stats">
+    <div class="stat"><div class="val">12,288</div><div class="lbl">parallel simulation envs</div></div>
+    <div class="stat"><div class="val">50 Hz</div><div class="lbl">policy control rate</div></div>
+    <div class="stat"><div class="lbl">obs dims (pi2)</div><div class="val">41</div></div>
+    <div class="stat"><div class="val">8D</div><div class="lbl">pi2 command interface</div></div>
+    <div class="stat"><div class="val">≥15.5 cm</div><div class="lbl">peak apex height (Stage A)</div></div>
+    <div class="stat"><div class="val">239</div><div class="lbl">perception unit tests passing</div></div>
+  </div>
+
+  <div class="result-box">
+    <div class="label">Current status (April 2026)</div>
+    <p>
+      Ball juggling with sustained apex ≈ 9–11 cm has been achieved through Stage B curriculum.
+      The policy survived a curriculum transition from Stage A (5 cm target) to Stage B (10 cm target)
+      without collapse, sustaining ~68% timeout episodes. The EKF perception pipeline has reached
+      production quality: threaded real-time architecture, chi-squared NIS gating, phase-separated
+      noise tuning, and 239/239 unit tests passing.
+    </p>
+  </div>
+
+  <h3>Scene Constants</h3>
+  <div class="card-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-top: 12px;">
+    <div class="card">
+      <div class="card-title">Paddle geometry</div>
+      <p>Offset: +70 mm above trunk<br>Radius: 85 mm (170mm disc)<br>Thickness: 5 mm</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Ball</div>
+      <p>Radius: 20 mm (ping-pong)<br>Restitution: 0.85<br>Drop height: 8 cm ± 2 cm (Stage A)</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Simulation</div>
+      <p>12,288 parallel envs<br>Episode: 30 s (1500 steps @ 50 Hz)<br>Physics: 200 Hz</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Trunk reference</div>
+      <p>Nominal height: ≈0.40 m<br>Min height gate: 0.36 m<br>Max height gate: 0.45 m</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════ 2 ARCHITECTURE ═════════════════════════════ -->
+<section class="section" id="architecture">
+  <h2><span class="num">2</span> System Architecture</h2>
+
+  <p>
+    The system uses a <strong>hierarchical policy decomposition</strong> — pi2 (low-level torso tracker)
+    is trained first and then frozen; pi1 (high-level ball planner) is trained on top using pi2 as
+    a differentiable actuator. This separation means perception noise only affects pi1; pi2 is
+    completely isolated from ball observations.
+  </p>
+
+  <div class="diagram-wrap">
+    <svg width="820" height="280" viewBox="0 0 820 280" xmlns="http://www.w3.org/2000/svg" font-family="monospace" font-size="12">
+      <!-- Background groups -->
+      <rect x="10" y="10" width="800" height="260" rx="8" fill="#151825" stroke="#2e3245" stroke-width="1"/>
+
+      <!-- Sensor block -->
+      <rect x="30" y="110" width="130" height="60" rx="6" fill="#1a1d27" stroke="#3a4060" stroke-width="1.5"/>
+      <text x="95" y="135" fill="#8890b0" text-anchor="middle" font-size="11">Ball state</text>
+      <text x="95" y="150" fill="#6c8ef7" text-anchor="middle" font-size="12" font-weight="bold">EKF / Oracle</text>
+      <text x="95" y="163" fill="#8890b0" text-anchor="middle" font-size="10">[x,y,z,vx,vy,vz]</text>
+
+      <!-- Proprio block -->
+      <rect x="30" y="185" width="130" height="55" rx="6" fill="#1a1d27" stroke="#3a4060" stroke-width="1.5"/>
+      <text x="95" y="208" fill="#8890b0" text-anchor="middle" font-size="11">Proprioception</text>
+      <text x="95" y="224" fill="#6c8ef7" text-anchor="middle" font-size="12" font-weight="bold">Go1 sensors</text>
+      <text x="95" y="238" fill="#8890b0" text-anchor="middle" font-size="10">IMU · joints · vels</text>
+
+      <!-- Arrow to pi1 -->
+      <line x1="160" y1="140" x2="210" y2="155" stroke="#4a5080" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <line x1="160" y1="212" x2="210" y2="185" stroke="#4a5080" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+      <!-- pi1 block -->
+      <rect x="210" y="100" width="160" height="120" rx="8" fill="#0d1230" stroke="#5060b0" stroke-width="2"/>
+      <text x="290" y="128" fill="#a0a8d0" text-anchor="middle" font-size="11">π₁ — Ball Planner</text>
+      <text x="290" y="148" fill="#7ba4ff" text-anchor="middle" font-size="13" font-weight="bold">MLP [256,128,64]</text>
+      <text x="290" y="165" fill="#8890b0" text-anchor="middle" font-size="10">ball state + proprio</text>
+      <text x="290" y="180" fill="#8890b0" text-anchor="middle" font-size="10">→ 8D torso command</text>
+      <text x="290" y="198" fill="#8890b0" text-anchor="middle" font-size="9">trained with frozen π₂</text>
+      <text x="290" y="211" fill="#8890b0" text-anchor="middle" font-size="9">perception-noise robust</text>
+
+      <!-- Arrow: pi1 → cmd -->
+      <line x1="370" y1="160" x2="420" y2="160" stroke="#6c8ef7" stroke-width="2"/>
+      <polygon points="420,155 430,160 420,165" fill="#6c8ef7"/>
+
+      <!-- Command interface box -->
+      <rect x="430" y="128" width="150" height="64" rx="6" fill="#1e1a30" stroke="#6040a0" stroke-width="1.5"/>
+      <text x="505" y="150" fill="#a090e0" text-anchor="middle" font-size="11" font-weight="bold">8D Command Interface</text>
+      <text x="505" y="166" fill="#8890b0" text-anchor="middle" font-size="9">h, ḣ, roll, pitch</text>
+      <text x="505" y="178" fill="#8890b0" text-anchor="middle" font-size="9">ω_roll, ω_pitch, vx, vy</text>
+
+      <!-- Arrow: cmd → pi2 -->
+      <line x1="580" y1="160" x2="626" y2="160" stroke="#6c8ef7" stroke-width="2"/>
+      <polygon points="626,155 636,160 626,165" fill="#6c8ef7"/>
+
+      <!-- pi2 block -->
+      <rect x="636" y="100" width="150" height="120" rx="8" fill="#0d2030" stroke="#207060" stroke-width="2"/>
+      <text x="711" y="128" fill="#a0c8b0" text-anchor="middle" font-size="11">π₂ — Torso Tracker</text>
+      <text x="711" y="148" fill="#6cf7b8" text-anchor="middle" font-size="13" font-weight="bold">MLP [256,128]</text>
+      <text x="711" y="165" fill="#8890b0" text-anchor="middle" font-size="10">8D cmd + proprio</text>
+      <text x="711" y="180" fill="#8890b0" text-anchor="middle" font-size="10">→ 12 joint targets</text>
+      <text x="711" y="198" fill="#8890b0" text-anchor="middle" font-size="9">FROZEN during π₁ train</text>
+      <text x="711" y="211" fill="#8890b0" text-anchor="middle" font-size="9">DR-hardened for sim2real</text>
+
+      <!-- Arrow: pi2 → robot -->
+      <line x1="786" y1="160" x2="800" y2="160" stroke="#6cf7b8" stroke-width="1.5" stroke-dasharray="3,3"/>
+
+      <!-- Labels at top -->
+      <text x="95" y="90" fill="#5060a0" text-anchor="middle" font-size="10">Phase C: EKF mode</text>
+      <text x="290" y="90" fill="#5060a0" text-anchor="middle" font-size="10">Train: π₁ (noise-aware)</text>
+      <text x="711" y="90" fill="#5060a0" text-anchor="middle" font-size="10">Train: π₂ (DR-hardened)</text>
+
+      <!-- Perception note below -->
+      <rect x="30" y="30" width="760" height="28" rx="5" fill="#0f1525" stroke="#2e3245"/>
+      <text x="410" y="48" fill="#6c8ef7" text-anchor="middle" font-size="11">
+        Real deployment: D435i camera → HSV detector → EKF predict/update (identical code sim + real) → [x,y,z,vx,vy,vz] → π₁
+      </text>
+    </svg>
+  </div>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-title">π₂ — Torso Tracker</div>
+      <p>Low-level controller. Maps 8D commands (height, tilt, angular rates, velocity) + 33D proprioception to 12 joint position targets at 50 Hz. Trained independently with domain randomization for sim-to-real. <strong>Frozen</strong> during pi1 training.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">π₁ — Ball Planner</div>
+      <p>High-level controller. Observes ball position/velocity + proprioception, outputs 8D torso command. Trained with pi2 as a differentiable low-level actuator. Perception noise only affects pi1 — the hierarchy isolates pi2 entirely.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">8D Command Interface</div>
+      <p>Normalised interface: <code>h</code> (trunk height 0.20–0.50m), <code>ḣ</code> (vertical rate ±1.5 m/s), <code>roll/pitch</code> (±0.5 rad), <code>ω_roll/pitch</code> (±4 rad/s), <code>vx/vy</code> (±0.5 m/s). Normalised to [−1, +1] before pi2 input.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Simulation Stack</div>
+      <p>Isaac Lab (RL environment framework) + Isaac Sim + PhysX 5 GPU physics. 12,288 parallel environments on a single GPU. Policy runs at 50 Hz (20 ms steps); physics at 200 Hz (5 ms). CCD enabled for ball tunnelling prevention.</p>
+    </div>
+  </div>
+
+  <h3>Observation Spaces</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Policy</th><th>Dims</th><th>Contents</th></tr></thead>
+      <tbody>
+        <tr><td class="code">π₂</td><td>41</td><td>8D command + 3 lin_vel + 3 ang_vel + 3 gravity + 12 joint_pos + 12 joint_vel</td></tr>
+        <tr><td class="code">π₁</td><td>40</td><td>39D (same as π₂ minus commands) + 1 <code>target_apex_height_obs</code> (normalised by 1.0 m)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ 3 TRAINING ═══════════════════════════════ -->
+<section class="section" id="training">
+  <h2><span class="num">3</span> Training Infrastructure</h2>
+
+  <h3>Algorithm: Proximal Policy Optimization (PPO)</h3>
+  <p>
+    Both pi1 and pi2 are trained with PPO via <a href="https://github.com/leggedrobotics/rsl_rl">RSL-RL</a>
+    (Rudin et al., CoRL 2022). PPO's clipped surrogate objective prevents catastrophic policy
+    updates — critical for a task where a single bad gradient step can permanently destabilize
+    the learned gait:
+  </p>
+  <pre>ratio          = π_new(a|s) / π_old(a|s)
+surrogate      = −A · ratio
+surrogate_clip = −A · clamp(ratio, 0.8, 1.2)      # clip_param = 0.2
+loss_actor     = max(surrogate, surrogate_clip).mean()</pre>
+
+  <h3>PPO Hyperparameters</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Parameter</th><th>Value</th><th>Rationale</th></tr></thead>
+      <tbody>
+        <tr><td><code>num_steps_per_env</code></td><td>24</td><td>Rollout length (0.48s at 50Hz). Short enough for fast updates.</td></tr>
+        <tr><td><code>num_learning_epochs</code></td><td>5</td><td>Mini-batch passes per collected rollout.</td></tr>
+        <tr><td><code>num_mini_batches</code></td><td>4</td><td>12288 × 24 / 4 = 73,728 samples per mini-batch.</td></tr>
+        <tr><td><code>learning_rate</code></td><td>1e-3 (adaptive)</td><td>Adjusted by KL divergence; target KL = 0.01.</td></tr>
+        <tr><td><code>gamma</code></td><td>0.99</td><td>Discount: 100 steps ahead (2s) worth 0.37 of immediate reward.</td></tr>
+        <tr><td><code>lam</code></td><td>0.95</td><td>GAE λ — low-variance advantage estimates.</td></tr>
+        <tr><td><code>entropy_coef</code></td><td>0.001</td><td><em>Critical:</em> 0.01 caused entropy explosion (noise_std 0.1→1.64 in 400 iters). Reduced 10×.</td></tr>
+        <tr><td><code>clip_param</code></td><td>0.2</td><td>Standard PPO safe zone: ratio ∈ [0.8, 1.2].</td></tr>
+        <tr><td><code>init_noise_std</code></td><td>0.1</td><td>1.0 caused ±0.25 rad initial torques → collapse.</td></tr>
+        <tr><td><code>max_iterations</code></td><td>3000</td><td>Each iteration = 12,288 × 24 = 295k transitions.</td></tr>
+        <tr><td>actor/critic dims</td><td>[256,128,64]</td><td>Small enough to run at 50Hz on Jetson for real deploy.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="result-box">
+    <div class="label">Key lesson: entropy coefficient</div>
+    <p>
+      <code>entropy_coef = 0.01</code> caused noise_std to grow 0.1 → 1.64 over 400 iterations, then catastrophic policy collapse.
+      The entropy term dominated the loss at high exploration noise. Fix: <code>entropy_coef = 0.001</code> (10× reduction).
+    </p>
+  </div>
+
+  <h3>Training Commands</h3>
+  <pre># Pi2 (torso tracker)
+uv run --active python scripts/rsl_rl/train_torso_tracking.py \
+  --task Isaac-TorsoTracking-Go1-v0 --num_envs 12288 --headless
+
+# Pi1 (ball juggler, hierarchical, with frozen pi2)
+uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+  --task Isaac-BallJuggleHier-Go1-v0 \
+  --pi2-checkpoint logs/rsl_rl/go1_torso_tracking/.../model_best.pt \
+  --num_envs 12288 --headless --noise-mode oracle   # or --noise-mode d435i</pre>
+</section>
+
+<!-- ═══════════════════════════════ 4 REWARDS ════════════════════════════════ -->
+<section class="section" id="rewards">
+  <h2><span class="num">4</span> Reward Structure &amp; Curriculum</h2>
+
+  <h3>Ball Juggling (π₁) Reward Terms</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Term</th><th>Weight</th><th>Function</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td class="code">alive</td><td class="pos">+1.0</td><td><code>is_alive()</code></td><td>Per-step survival signal — primary training axis.</td></tr>
+        <tr><td class="code">ball_apex_height</td><td class="pos">+8.0</td><td>exp(−|h−target|²/2σ²), h above paddle</td><td>Main task reward; σ annealed A→G.</td></tr>
+        <tr><td class="code">ball_release_velocity</td><td class="pos">+3.0</td><td>Upward ball speed at contact</td><td>Critical: enables sustained juggling by rewarding active energy impartment.</td></tr>
+        <tr><td class="code">ball_xy_dist</td><td class="neg">−5.0</td><td>Linear XY dist from paddle centre</td><td>Strong constant gradient to keep ball centred.</td></tr>
+        <tr><td class="code">base_height</td><td class="neg">−5.0</td><td>Linear below 0.36m</td><td>Prevents crouching local max (see lesson below).</td></tr>
+        <tr><td class="code">base_height_max</td><td class="neg">−5.0</td><td>Linear above 0.45m</td><td>Anti-exploit: prevents fully extending legs to game height-gated rewards.</td></tr>
+        <tr><td class="code">foot_contact</td><td class="neg">−0.5/foot</td><td>Airborne foot count</td><td>Anti-kickstand: prevents one leg splaying sideways for lateral stability.</td></tr>
+        <tr><td class="code">early_termination</td><td class="neg">−200.0</td><td>One-shot on ball_off/ball_below</td><td>Large terminal penalty calibrated per Zhuang et al. 2023.</td></tr>
+        <tr><td class="code">action_rate</td><td class="neg">−0.01</td><td>L2 action deltas</td><td>Smooth joint commands.</td></tr>
+        <tr><td class="code">joint_torques</td><td class="neg">−2e-4</td><td>L2 joint torques</td><td>Joint effort penalty.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="result-box" style="border-left-color: var(--accent3);">
+    <div class="label" style="color: var(--accent3);">Key finding: ball_release_velocity unlocks sustained juggling</div>
+    <p>
+      Without a release-velocity reward, pi1 learned a passive "cradle" strategy: keeping the ball
+      stationary on the paddle for an extended episode rather than juggling. Adding
+      <code>ball_release_velocity_reward</code> (weight +3.0) — rewarding upward ball speed at paddle
+      contact — broke the local optimum. Apex height jumped from ≈2 cm (cradle) to 9.7 cm
+      (active juggling) and sustained stably through 1,500 training iterations (policy iter_014).
+      This reward is tapered and removed by Stage D to prevent over-aggressive throwing.
+    </p>
+  </div>
+
+  <div class="result-box">
+    <div class="label">Key lesson: crouching local maximum</div>
+    <p>
+      Using <code>alive_upright(min_height=0.33)</code> (gate returns 0 at boundary) allowed the robot to
+      earn full 1500-step episodes crouching at exactly 0.33m with the ball sitting still — gradient vacuum.
+      Fix: <code>is_alive()</code> with no gate; <code>base_height</code> penalty at 0.36m provides
+      continuous upward gradient everywhere.
+    </p>
+  </div>
+
+  <h3>Sigma (σ) Curriculum — Ball Juggle Stages</h3>
+  <p>
+    The curriculum advances when <code>timeout%</code> ≥ 30% for 15 consecutive iterations.
+    Each stage tightens the Gaussian target σ and raises the apex height target:
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Stage</th><th>Target Height</th><th>σ</th><th>Ball XY limit</th><th>Drop height</th><th>Progress bar</th></tr></thead>
+      <tbody>
+        <tr><td>A</td><td>0.05 m</td><td>0.10</td><td>0.030 m</td><td>0.08 m</td><td><div class="stage-bar" style="width:14%"></div></td></tr>
+        <tr><td>B</td><td>0.10 m</td><td>0.08</td><td>0.050 m</td><td>0.15 m</td><td><div class="stage-bar" style="width:28%"></div></td></tr>
+        <tr><td>C</td><td>0.20 m</td><td>0.07</td><td>0.065 m</td><td>0.25 m</td><td><div class="stage-bar" style="width:42%"></div></td></tr>
+        <tr><td>D</td><td>0.30 m</td><td>0.06</td><td>0.085 m</td><td>0.40 m</td><td><div class="stage-bar" style="width:56%"></div></td></tr>
+        <tr><td>E</td><td>0.45 m</td><td>0.05</td><td>0.105 m</td><td>0.60 m</td><td><div class="stage-bar" style="width:70%"></div></td></tr>
+        <tr><td>F</td><td>0.60 m</td><td>0.05</td><td>0.130 m</td><td>0.80 m</td><td><div class="stage-bar" style="width:84%"></div></td></tr>
+        <tr><td>G (goal)</td><td>1.00 m</td><td>0.05</td><td>0.150 m</td><td>1.00 m</td><td><div class="stage-bar" style="width:100%"></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="color: var(--muted); font-size: 0.85rem;">
+    σ floor of 80mm follows ROGER (Portela et al. RSS 2025) — tightening σ below 80mm rarely
+    improves the policy and risks gradient vanishing.
+    1.0m target = ball apex 1.09m above trunk centre (≈1.49m above ground).
+  </p>
+
+  <h3>Pi2 Torso Tracker Curriculum — Stages A→H</h3>
+  <p>
+    Pi2 is trained independently with an 8-stage curriculum that progressively expands the command
+    space. Stages A–D cover height + tilt commands only; Stages E–H introduce lateral velocity
+    (v<sub>x</sub>, v<sub>y</sub>) to enable locomotion during juggling. Advance criterion:
+    tracking score ≥ 1.30, height score ≥ 2.00, and v<sub>xy</sub> score ≥ 3.00 (when active),
+    sustained for 40 consecutive iterations.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Stage</th>
+          <th>h range (m)</th>
+          <th>Roll/Pitch (rad)</th>
+          <th>ω (rad/s)</th>
+          <th>v<sub>x</sub>, v<sub>y</sub> (m/s)</th>
+          <th>Progress</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>A</td><td>0.20–0.50</td><td>±0.30</td><td>±2.0</td><td>0 (disabled)</td><td><div class="stage-bar" style="width:12%"></div></td></tr>
+        <tr><td>B</td><td>0.20–0.50</td><td>±0.35</td><td>±2.5</td><td>0 (disabled)</td><td><div class="stage-bar" style="width:24%"></div></td></tr>
+        <tr><td>C</td><td>0.20–0.50</td><td>±0.40</td><td>±3.0</td><td>0 (disabled)</td><td><div class="stage-bar" style="width:36%"></div></td></tr>
+        <tr><td>D</td><td>0.20–0.50</td><td>±0.50</td><td>±4.0</td><td>0 (disabled)</td><td><div class="stage-bar" style="width:48%"></div></td></tr>
+        <tr><td>E</td><td>0.20–0.50</td><td>±0.50</td><td>±4.0</td><td>±0.15</td><td><div class="stage-bar" style="width:62%"></div></td></tr>
+        <tr><td>F</td><td>0.20–0.50</td><td>±0.50</td><td>±4.0</td><td>±0.25</td><td><div class="stage-bar" style="width:74%"></div></td></tr>
+        <tr><td>G</td><td>0.20–0.50</td><td>±0.50</td><td>±4.0</td><td>±0.35</td><td><div class="stage-bar" style="width:87%"></div></td></tr>
+        <tr><td>H (goal)</td><td>0.20–0.50</td><td>±0.50</td><td>±4.0</td><td>±0.50</td><td><div class="stage-bar" style="width:100%"></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="color: var(--muted); font-size: 0.85rem;">
+    v<sub>xy</sub> tracking uses σ=0.20 (Margolis &amp; Agrawal RSS 2022 — wider std allows gait
+    tolerance without over-penalizing stance phases). Early stopping patience=500 iters prevents
+    overfitting to easy stages. Final stage H has a 750-iteration sustain requirement before completion.
+  </p>
+</section>
+
+<!-- ═════════════════════════════ 5 PERCEPTION ═══════════════════════════════ -->
+<section class="section" id="perception">
+  <h2><span class="num">5</span> Perception Pipeline</h2>
+
+  <p>
+    The perception system follows the <strong>ETH noise-injection approach</strong>
+    (Ma et al., Science Robotics 2025): rather than rendering cameras for 12,288 simulation
+    environments (10–50× training slowdown), we inject a structured noise model onto
+    ground-truth ball position, then filter with an EKF — the same code runs in both
+    simulation and on real hardware.
+  </p>
+
+  <div class="diagram-wrap">
+    <svg width="760" height="180" viewBox="0 0 760 180" xmlns="http://www.w3.org/2000/svg" font-family="monospace" font-size="11">
+      <rect x="5" y="5" width="750" height="170" rx="8" fill="#0f1525" stroke="#2e3245" stroke-width="1"/>
+
+      <!-- Sim path -->
+      <rect x="20" y="30" width="110" height="50" rx="5" fill="#1a1d27" stroke="#3a4060" stroke-width="1.5"/>
+      <text x="75" y="52" fill="#8890b0" text-anchor="middle">GT ball state</text>
+      <text x="75" y="66" fill="#6c8ef7" text-anchor="middle" font-weight="bold">Isaac Lab</text>
+
+      <text x="145" y="58" fill="#5060a0" text-anchor="middle">+ noise</text>
+      <line x1="130" y1="55" x2="160" y2="55" stroke="#4a5080" stroke-width="1.5"/>
+      <polygon points="160,50 170,55 160,60" fill="#4a5080"/>
+
+      <rect x="170" y="30" width="120" height="50" rx="5" fill="#1a1d27" stroke="#3a4060" stroke-width="1.5"/>
+      <text x="230" y="52" fill="#8890b0" text-anchor="middle">D435i Noise</text>
+      <text x="230" y="66" fill="#a090e0" text-anchor="middle" font-weight="bold">noise_model.py</text>
+
+      <line x1="290" y1="55" x2="330" y2="55" stroke="#4a5080" stroke-width="1.5"/>
+      <polygon points="330,50 340,55 330,60" fill="#4a5080"/>
+
+      <rect x="340" y="30" width="110" height="50" rx="5" fill="#0d1230" stroke="#5060b0" stroke-width="1.5"/>
+      <text x="395" y="52" fill="#8890b0" text-anchor="middle">6D state</text>
+      <text x="395" y="66" fill="#7ba4ff" text-anchor="middle" font-weight="bold">BallEKF</text>
+
+      <line x1="450" y1="55" x2="490" y2="55" stroke="#4a5080" stroke-width="1.5"/>
+      <polygon points="490,50 500,55 490,60" fill="#4a5080"/>
+
+      <rect x="500" y="30" width="120" height="50" rx="5" fill="#0d2030" stroke="#207060" stroke-width="1.5"/>
+      <text x="560" y="52" fill="#8890b0" text-anchor="middle">[x,y,z,vx,vy,vz]</text>
+      <text x="560" y="66" fill="#6cf7b8" text-anchor="middle" font-weight="bold">→ π₁ obs</text>
+
+      <text x="640" y="58" fill="#8890b0" text-anchor="middle">→ π₁</text>
+      <line x1="620" y1="55" x2="670" y2="55" stroke="#6cf7b8" stroke-width="1.5"/>
+      <polygon points="670,50 680,55 670,60" fill="#6cf7b8"/>
+
+      <!-- Real path -->
+      <text x="55" y="110" fill="#5060a0" text-anchor="middle" font-size="9">REAL deploy:</text>
+      <rect x="20" y="115" width="110" height="50" rx="5" fill="#1a1d27" stroke="#3a4060" stroke-width="1.5"/>
+      <text x="75" y="137" fill="#8890b0" text-anchor="middle">D435i + HSV</text>
+      <text x="75" y="151" fill="#f77c6c" text-anchor="middle" font-weight="bold">Hough circle</text>
+
+      <text x="145" y="143" fill="#5060a0" text-anchor="middle">raw px</text>
+      <line x1="130" y1="140" x2="160" y2="140" stroke="#4a5080" stroke-width="1.5"/>
+      <polygon points="160,135 170,140 160,145" fill="#4a5080"/>
+
+      <rect x="170" y="115" width="120" height="50" rx="5" fill="#1a1d27" stroke="#3a4060" stroke-width="1.5"/>
+      <text x="230" y="137" fill="#8890b0" text-anchor="middle">depth unproject</text>
+      <text x="230" y="151" fill="#a090e0" text-anchor="middle" font-weight="bold">→ [x,y,z]_w</text>
+
+      <line x1="290" y1="140" x2="330" y2="140" stroke="#4a5080" stroke-width="1.5"/>
+      <line x1="395" y1="80" x2="395" y2="115" stroke="#5060b0" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <polygon points="330,135 340,140 330,145" fill="#4a5080"/>
+      <text x="365" y="107" fill="#5060a0" text-anchor="middle" font-size="9">same code</text>
+
+      <rect x="340" y="115" width="110" height="50" rx="5" fill="#0d1230" stroke="#5060b0" stroke-width="1.5"/>
+      <text x="395" y="137" fill="#8890b0" text-anchor="middle">NIS gating</text>
+      <text x="395" y="151" fill="#7ba4ff" text-anchor="middle" font-weight="bold">BallEKF</text>
+
+      <line x1="450" y1="140" x2="490" y2="140" stroke="#4a5080" stroke-width="1.5"/>
+      <line x1="560" y1="80" x2="560" y2="115" stroke="#207060" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <polygon points="490,135 500,140 490,145" fill="#4a5080"/>
+
+      <rect x="500" y="115" width="120" height="50" rx="5" fill="#0d2030" stroke="#207060" stroke-width="1.5"/>
+      <text x="560" y="137" fill="#8890b0" text-anchor="middle">identical obs</text>
+      <text x="560" y="151" fill="#6cf7b8" text-anchor="middle" font-weight="bold">→ same π₁</text>
+
+      <line x1="620" y1="140" x2="670" y2="140" stroke="#6cf7b8" stroke-width="1.5"/>
+      <polygon points="670,135 680,140 670,145" fill="#6cf7b8"/>
+    </svg>
+  </div>
+
+  <h3>EKF: 6D State Kalman Filter</h3>
+  <p>
+    The <code>BallEKF</code> maintains a 6D state <code>[x, y, z, vx, vy, vz]</code> per environment.
+    Prediction uses ballistic dynamics with quadratic aerodynamic drag:
+  </p>
+  <pre>ẍ = −c/m · ‖v‖ · vx       (drag, Cd=0.4, r=20mm, m=2.7g → c=0.112)
+ÿ = −c/m · ‖v‖ · vy
+z̈ = −g − c/m · ‖v‖ · vz   (gravity + drag)</pre>
+  <p>
+    Contact detection uses per-env contact flags to switch between two process noise
+    covariance matrices: low-Q during free flight, high-Q (50× larger) during contact,
+    when ball momentum changes abruptly.
+  </p>
+
+  <h3>NIS Gating (Chi-Squared Outlier Rejection)</h3>
+  <p>
+    Each measurement's <em>Normalized Innovation Squared</em> (NIS) is computed before
+    the EKF update step. Measurements exceeding the 99th percentile of a χ² distribution
+    with 3 DOF (threshold = 11.345) are rejected — preventing detector glitches or
+    multi-ball confusion from corrupting the state estimate:
+  </p>
+  <pre>NIS = νᵀ · S⁻¹ · ν        (ν = measurement innovation, S = innovation covariance)
+gate = NIS < 11.345         (chi-squared 3DOF 99th percentile)
+# first 50 updates per env skipped (warm-up: velocity P hasn't converged yet)</pre>
+
+  <h3>Detection Pipeline (Real Hardware)</h3>
+  <p>
+    On the real Go1, a D435i depth camera is mounted upward-facing on the back at 45°:
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Step</th><th>Method</th><th>Output</th><th>Latency</th></tr></thead>
+      <tbody>
+        <tr><td>Frame capture</td><td>D435i RGB+depth @ 30–90 Hz</td><td>BGR frame + aligned depth</td><td>~11 ms</td></tr>
+        <tr><td>Ball detection</td><td>HSV threshold → contour / Hough circles fallback</td><td>(u, v, r_px)</td><td>&lt;1 ms</td></tr>
+        <tr><td>Depth unprojection</td><td>D435i intrinsics + aligned depth z → back-project</td><td>[x,y,z] world frame</td><td>0.1 ms</td></tr>
+        <tr><td>EKF update</td><td>NIS gating + Kalman update; predict @ 200 Hz</td><td>[x,y,z,vx,vy,vz] body frame</td><td>&lt;0.5 ms</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>D435i Noise Model</h3>
+  <pre>σ_xy(d) = σ_base_xy + σ_dist_xy × d        (σ_base_xy=2mm, σ_dist_xy=2mm/m)
+σ_z(d)  = σ_base_z  + σ_dist_z  × d        (σ_base_z=3mm,  σ_dist_z=2mm/m)
+σ_imu   = σ_base_imu + σ_omega × |ω|       (motion blur from robot rotation)
+dropout = 2% baseline + 10% near-IR-reflective surface</pre>
+
+  <h3>Perception Test Suite</h3>
+  <div class="stats">
+    <div class="stat"><div class="val">239</div><div class="lbl">unit tests passing</div></div>
+    <div class="stat"><div class="val">14</div><div class="lbl">test files</div></div>
+    <div class="stat"><div class="val">0.44</div><div class="lbl">mean NIS (flight phase)</div></div>
+    <div class="stat"><div class="val">0</div><div class="lbl">regressions since iter_007</div></div>
+  </div>
+
+  <h3>GPU NIS Validation (iter_049) — 2048 envs × 500 steps</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>EKF Mode</th><th>Mean NIS</th><th>In-band (10 bins)</th><th>EKF error (mm)</th><th>Raw det. error (mm)</th><th>Gate rejections</th></tr></thead>
+      <tbody>
+        <tr><td>IMU-aided (Coriolis ON)</td><td>0.445</td><td>2/10</td><td>6.09</td><td>3.91</td><td>0 / 656k</td></tr>
+        <tr><td>No IMU (baseline)</td><td>0.444</td><td>2/10</td><td>5.98</td><td>3.87</td><td>0 / 657k</td></tr>
+        <tr><td>9D spin estimation</td><td>0.442</td><td>2/10</td><td>5.99</td><td>3.85</td><td>2 / 657k</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="result-box">
+    <div class="label">Interpretation</div>
+    <p>
+      All three EKF modes are functionally identical: IMU corrections are negligible under random-action policies (low ω). The EKF is over-conservative (NIS=0.44 vs target ≈3.0), dominated by contact-phase Q inflation (q_vel_contact=50.0). Phase-separated NIS tracking (iter_050) isolates free-flight calibration to diagnose this.
+      <br><br>
+      EKF position error (6mm) is <em>worse</em> than raw detection (4mm) — indicating the filter is too conservative (over-inflated P). This will be corrected by tuning Q during free-flight phase only.
+    </p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════ 6 RESULTS ═══════════════════════════════ -->
+<section class="section" id="results">
+  <h2><span class="num">6</span> Training Results</h2>
+
+  <h3>Ball Juggling — Policy Milestones</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Iteration</th><th>Stage</th><th>Key Change</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>iter_001–005</td><td>—</td><td>Baseline single-policy juggling experiments</td><td>Ball bouncing established; unstable long-term</td></tr>
+        <tr><td>iter_009</td><td>—</td><td>Hierarchical architecture introduced (pi2+pi1)</td><td>Foundation for pi1 ball planner</td></tr>
+        <tr><td>iter_013</td><td>D</td><td><code>ball_low -2.0</code> weight; curriculum sustain bug fix</td><td>apex=0.35 stable (Stage D)</td></tr>
+        <tr><td>iter_014</td><td>A</td><td><code>ball_release_velocity_reward</code> +3.0 added</td><td><strong>apex=9.7 sustained for 1500 iters</strong> — first stable juggling</td></tr>
+        <tr><td>iter_015</td><td>A→B</td><td>Curriculum threshold 0.75→0.30</td><td><strong>Curriculum ADVANCED</strong>: Stage A mastered (apex=15.5), then stable at Stage B (apex=9.2–10.9)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Training Curve: iter_015 (curriculum transition, dual metric)</h3>
+  <p style="color:var(--muted);font-size:0.85rem;">
+    Resumed from iter_014 stable checkpoint. <span style="color:#6c8ef7">■ Blue</span> = apex height reward (left axis, 0–16).
+    <span style="color:#f7a26c">■ Orange</span> = timeout% / episode survival (right axis, 0–100%).
+    Dashed vertical line marks Stage A→B curriculum transition.
+  </p>
+  <div class="diagram-wrap">
+    <!-- Dual-axis chart: apex_reward (blue, left) + timeout% (orange, right)
+         Data from policy agent iter_015 RESEARCH_LOG:
+           step | apex  | timeout%
+           4249 |  0.14 |   1.6
+           4349 | 15.4  |  98.8     ← peak / Stage A mastered
+           4449 | 15.5  |  96.4     ← curriculum advance ~step 4400
+           4549 | 14.4  |  92.6
+           4649 | 12.1  |  84.1
+           4749 |  9.65 |  68.9
+           4849 |  9.8  |  65.0     ← estimated (stable band)
+           5748 | 10.46 |  68.0     ← final
+         X: step 4249–5748  →  px 60–700 (640px range, scale /1499*640+60)
+         Y: plot area y=20–165 (145px); apex scale /16*145; timeout /100*145
+    -->
+    <svg width="760" height="220" viewBox="0 0 760 220" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="11">
+      <!-- Grid lines -->
+      <line x1="60" y1="20" x2="60" y2="165" stroke="#2a2f4a" stroke-width="1"/>
+      <line x1="700" y1="20" x2="700" y2="165" stroke="#2a2f4a" stroke-width="1"/>
+      <line x1="60" y1="20" x2="700" y2="20" stroke="#2a2f4a" stroke-width="1"/>
+      <line x1="60" y1="72" x2="700" y2="72" stroke="#2a2f4a" stroke-width="0.7" stroke-dasharray="3,4"/>
+      <line x1="60" y1="124" x2="700" y2="124" stroke="#2a2f4a" stroke-width="0.7" stroke-dasharray="3,4"/>
+      <!-- Left Y axis (apex reward) -->
+      <line x1="60" y1="20" x2="60" y2="165" stroke="#3a4060" stroke-width="1.5"/>
+      <text x="55" y="24"  fill="#6c8ef7" text-anchor="end" font-size="10">16</text>
+      <text x="55" y="76"  fill="#6c8ef7" text-anchor="end" font-size="10">10</text>
+      <text x="55" y="128" fill="#6c8ef7" text-anchor="end" font-size="10">4</text>
+      <text x="55" y="169" fill="#6c8ef7" text-anchor="end" font-size="10">0</text>
+      <text x="22" y="100" fill="#6c8ef7" text-anchor="middle" font-size="10" transform="rotate(-90,22,100)">apex height reward</text>
+      <!-- Right Y axis (timeout%) -->
+      <line x1="700" y1="20" x2="700" y2="165" stroke="#3a4060" stroke-width="1.5"/>
+      <text x="705" y="24"  fill="#f7a26c" text-anchor="start" font-size="10">100%</text>
+      <text x="705" y="93"  fill="#f7a26c" text-anchor="start" font-size="10">55%</text>
+      <text x="705" y="169" fill="#f7a26c" text-anchor="start" font-size="10">0%</text>
+      <text x="738" y="100" fill="#f7a26c" text-anchor="middle" font-size="10" transform="rotate(90,738,100)">episode timeout %</text>
+      <!-- X axis -->
+      <line x1="60" y1="165" x2="700" y2="165" stroke="#3a4060" stroke-width="1.5"/>
+      <!-- X ticks: step → px = (step-4249)/1499*640+60 -->
+      <!-- 4249→60, 4349→102.7, 4449→145.4, 4549→188.2, 4649→230.9, 4749→273.6, 4849→316.4, 5748→700 -->
+      <text x="60"  y="178" fill="#5060a0" text-anchor="middle" font-size="10">4249</text>
+      <text x="103" y="178" fill="#5060a0" text-anchor="middle" font-size="10">4349</text>
+      <text x="231" y="178" fill="#5060a0" text-anchor="middle" font-size="10">4649</text>
+      <text x="380" y="178" fill="#5060a0" text-anchor="middle" font-size="10">5000</text>
+      <text x="700" y="178" fill="#5060a0" text-anchor="middle" font-size="10">5748</text>
+      <text x="380" y="196" fill="#8890b0" text-anchor="middle" font-size="10">training step</text>
+
+      <!-- Curriculum advance vertical marker (~step 4400 = px 145+22=167) -->
+      <line x1="167" y1="20" x2="167" y2="165" stroke="#f7c26c" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <text x="170" y="16" fill="#f7c26c" font-size="9">▶ Stage A→B</text>
+
+      <!-- APEX REWARD polyline (blue) -->
+      <!-- y = 165 - (val/16)*145 -->
+      <!-- 0.14→164, 15.4→26, 15.5→25, 14.4→35, 12.1→55, 9.65→77, 9.8→76, 10.46→70 -->
+      <polyline
+        points="60,164 103,26 145,25 188,35 231,55 274,77 316,76 700,70"
+        fill="none" stroke="#6c8ef7" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+      <!-- Apex dots -->
+      <circle cx="60"  cy="164" r="4" fill="#6c8ef7"/>
+      <circle cx="103" cy="26"  r="4" fill="#6c8ef7"/>
+      <circle cx="145" cy="25"  r="4.5" fill="#f7c26c" stroke="#6c8ef7" stroke-width="1.5"/>
+      <circle cx="188" cy="35"  r="4" fill="#6c8ef7"/>
+      <circle cx="231" cy="55"  r="4" fill="#6c8ef7"/>
+      <circle cx="274" cy="77"  r="4" fill="#6c8ef7"/>
+      <circle cx="700" cy="70"  r="4" fill="#6cf7b8"/>
+
+      <!-- TIMEOUT% polyline (orange) -->
+      <!-- y = 165 - (pct/100)*145 -->
+      <!-- 1.6→163, 98.8→22, 96.4→25, 92.6→31, 84.1→43, 68.9→65, 65→71, 68→66 -->
+      <polyline
+        points="60,163 103,22 145,25 188,31 231,43 274,65 316,71 700,66"
+        fill="none" stroke="#f7a26c" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="6,2"/>
+      <!-- Timeout dots -->
+      <circle cx="60"  cy="163" r="3.5" fill="#f7a26c"/>
+      <circle cx="103" cy="22"  r="3.5" fill="#f7a26c"/>
+      <circle cx="145" cy="25"  r="3.5" fill="#f7a26c"/>
+      <circle cx="700" cy="66"  r="3.5" fill="#f7a26c"/>
+
+      <!-- Shaded stable band (steps 4849→5748, apex ~9.2-11) -->
+      <rect x="316" y="60" width="384" height="30" fill="#6c8ef7" fill-opacity="0.07" rx="2"/>
+      <text x="508" y="57" fill="#6cf7b8" text-anchor="middle" font-size="9">stable juggling band  (apex 9.2–11, timeout 61–68%)</text>
+
+      <!-- Peak annotation -->
+      <text x="108" y="13" fill="#8890b0" text-anchor="middle" font-size="9">peak apex=15.5</text>
+      <text x="60"  y="158" fill="#8890b0" text-anchor="start" font-size="9">cold start</text>
+    </svg>
+  </div>
+
+  <h3>Key Training Metrics (iter_015 final)</h3>
+  <div class="stats">
+    <div class="stat"><div class="val">10.46</div><div class="lbl">apex_rew (final step 5748)</div></div>
+    <div class="stat"><div class="val">68%</div><div class="lbl">timeout% (episode survival)</div></div>
+    <div class="stat"><div class="val">996</div><div class="lbl">mean episode length (steps)</div></div>
+    <div class="stat"><div class="val">1.08</div><div class="lbl">noise_std (healthy; was 1.17)</div></div>
+    <div class="stat"><div class="val">282</div><div class="lbl">mean_reward</div></div>
+  </div>
+
+  <h3>π₂ Torso Tracker — Curriculum (8 Stages A→H)</h3>
+  <p>
+    Pi2 uses a separate curriculum advancing when tracking reward ≥ 1.30, height reward ≥ 2.00,
+    and (from Stage E) velocity reward ≥ 3.00, each sustained for 40 consecutive iterations.
+    Velocity commands are introduced gradually:
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Stage</th><th>vxy range (m/s)</th><th>Focus</th></tr></thead>
+      <tbody>
+        <tr><td>A–D</td><td>0</td><td>Pose-only tracking (height, tilt, angular rate)</td></tr>
+        <tr><td>E</td><td>±0.15</td><td>Slow walking introduced</td></tr>
+        <tr><td>F</td><td>±0.25</td><td>Medium velocity</td></tr>
+        <tr><td>G</td><td>±0.35</td><td>Faster walking</td></tr>
+        <tr><td>H</td><td>±0.50</td><td>Full locomotion range</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ 7 SIM2REAL ═══════════════════════════════ -->
+<section class="section" id="sim2real">
+  <h2><span class="num">7</span> Sim-to-Real Plan</h2>
+
+  <p>
+    The sim-to-real gap has five components, each addressed by a dedicated phase:
+  </p>
+
+  <ul class="phase-list">
+    <li>
+      <div class="phase-badge in-progress">A ✓</div>
+      <div class="phase-content">
+        <div class="phase-title">Privileged training (pi2 + pi1)</div>
+        <p>Train and validate both policies with ground-truth ball state. Pi2 complete; pi1 juggling Stage B, advancing.</p>
+      </div>
+    </li>
+    <li>
+      <div class="phase-badge">B</div>
+      <div class="phase-content">
+        <div class="phase-title">Domain Randomization + Latency Modeling</div>
+        <p>Mass ±15%, friction [0.4,1.5], motor gains ±20%, joint friction ×[0.5,1.5], pushes ±0.3 m/s, external wrench ±2N/±1Nm. Action delay 5ms, obs delay 20ms. Retrain pi2, then pi1.</p>
+      </div>
+    </li>
+    <li>
+      <div class="phase-badge in-progress">C ✓</div>
+      <div class="phase-content">
+        <div class="phase-title">EKF Perception-Aware Training</div>
+        <p>Replace GT ball obs with EKF estimates from noise-injected measurements. Full pipeline implemented (239 tests). Ready for pi1 retraining in noise-aware mode.</p>
+      </div>
+    </li>
+    <li>
+      <div class="phase-badge">D</div>
+      <div class="phase-content">
+        <div class="phase-title">Hardware Preparation</div>
+        <p>Order D435i camera. Design + 3D-print 45° upward-facing bracket. Mount 170mm paddle at 70mm above trunk. Calibrate camera intrinsics + paddle rigid transform.</p>
+      </div>
+    </li>
+    <li>
+      <div class="phase-badge">E</div>
+      <div class="phase-content">
+        <div class="phase-title">System Identification + Calibration</div>
+        <p>Actuator sine-sweep to measure bandwidth (critical: &lt;10Hz would prevent 50Hz juggling). Ball restitution drop test. Real camera noise model calibration (≥500 measurements).</p>
+      </div>
+    </li>
+    <li>
+      <div class="phase-badge">F</div>
+      <div class="phase-content">
+        <div class="phase-title">Progressive Deployment</div>
+        <p>Level 0: comms check. Level 1: pi2 manual commands. Level 2: circle walking. Level 3: pi2+pi1 with external ball tracking. Level 4: onboard perception. Level 5: full juggling.</p>
+      </div>
+    </li>
+  </ul>
+
+  <h3>Domain Randomization Parameters (π₂)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Category</th><th>Parameter</th><th>Range</th><th>Rationale</th></tr></thead>
+      <tbody>
+        <tr><td>Mass</td><td>Body masses</td><td>×[0.85, 1.15]</td><td>Payload, battery variation (±1.8 kg on 12 kg Go1)</td></tr>
+        <tr><td>CoM</td><td>Center of mass</td><td>±20mm XY, ±10mm Z</td><td>Asymmetric payload, battery position</td></tr>
+        <tr><td>Motors</td><td>Stiffness + damping</td><td>×[0.80, 1.20]</td><td>Servo wear, temperature drift</td></tr>
+        <tr><td>Joints</td><td>Joint friction</td><td>×[0.5, 1.5]</td><td>Mechanical wear, lubrication variance</td></tr>
+        <tr><td>Ground</td><td>Static + dynamic friction</td><td>[0.4, 1.5]</td><td>Tile / carpet / rubber mat surfaces</td></tr>
+        <tr><td>Pushes</td><td>Linear velocity</td><td>±0.3 m/s XY</td><td>Initial perturbation robustness</td></tr>
+        <tr><td>External force</td><td>Trunk force/torque</td><td>±2.0 N / ±1.0 Nm</td><td>Wind, cable tug, steady disturbances</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Go1 Actuator Hardware Profile</h3>
+  <p>
+    The Unitree Go1 uses <strong>GO-M8010-6 quasi-direct drive (QDD) motors</strong> (gear ratio 6.33:1).
+    Key specs relevant to sim-to-real transfer (from Unitree datasheet + Hu et al. 2025,
+    arXiv:2503.01255):
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Parameter</th><th>Value</th><th>Significance</th></tr></thead>
+      <tbody>
+        <tr><td>Gear reduction ratio</td><td>6.33 : 1</td><td>QDD — low reflected inertia, high backdrivability</td></tr>
+        <tr><td>Peak output torque</td><td>23.7 N·m</td><td>Easily sufficient; pi2 commands stay well below limit</td></tr>
+        <tr><td>Internal FOC loop</td><td>6000 Hz</td><td>Closes far faster than 50 Hz policy — motor dynamics negligible</td></tr>
+        <tr><td>SDK command cycle</td><td>500 Hz (2 ms)</td><td>Latency floor; dominant lag is observation processing</td></tr>
+        <tr><td>RL policy rate</td><td>50 Hz (20 ms)</td><td>Each step = 20 ms action hold → avg 10 ms extra delay</td></tr>
+        <tr><td>Total action latency</td><td>~20 ms</td><td>SDK 2ms + inference 5–10ms + hold 8–10ms (Walk These Ways)</td></tr>
+        <tr><td>Static friction / peak torque</td><td>0.13%</td><td>Negligible — explains why PD+DR succeeds without ActuatorNet</td></tr>
+        <tr><td>Recommended Kp / Kd</td><td>20 N·m/rad / 0.5 N·m·s/rad</td><td>Walk These Ways (Go1 Edu, deployed); HIM uses 30/0.75</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    <strong>Actuator modelling conclusion (Hu et al. 2025):</strong> for Go1 locomotion,
+    <em>PD+DR with static friction randomisation outperforms ActuatorNet</em>.
+    The 0.13% stiction ratio means the dominant real-to-sim gap is
+    the <strong>~20 ms action delay</strong>, not motor nonlinearity.
+    DR range recommendation: Kp ×[0.80, 1.30], motor strength ×[0.90, 1.10],
+    static friction ×[0.0, 1.2], ground friction [0.4, 1.2].
+    If pi2 fails to transfer at Stage E–G (ω ≥ 2 rad/s) due to back-EMF saturation,
+    consider a Walk These Ways–style 3-layer actuator MLP trained on 4 min of hardware
+    chirp data — but this is unlikely to be necessary for torso-tracking amplitudes.
+  </p>
+</section>
+
+<!-- ══════════════════════════ 8 LESSONS LEARNED ══════════════════════════════ -->
+<section class="section" id="lessons">
+  <h2><span class="num">8</span> Lessons Learned</h2>
+
+  <p>
+    Six reward-shaping, PPO, and simulation bugs were discovered and fixed during development.
+    Each created a degenerate local optimum that required careful diagnosis to escape.
+  </p>
+
+  <div class="lessons-grid">
+
+    <!-- Lesson 1: Crouching local max -->
+    <div class="lesson-card">
+      <div class="lesson-header">
+        <span class="lesson-icon">🦿</span>
+        <span class="lesson-title">Clamped height gate → crouching local max</span>
+      </div>
+      <div class="lesson-body">
+        <div class="bug-label">Bug</div>
+        <p><code>alive_upright(min_height=0.33)</code> returns 0 at exactly the threshold.
+           All height-gated rewards also return 0 → gradient vacuum → robot crouches at 0.33m and earns
+           full 1500-step episodes with the ball sitting motionless.</p>
+        <pre><code class="language-python"># BAD — zero gradient at boundary
+alive = height > 0.33   # binary step</code></pre>
+        <div class="fix-label">Fix</div>
+        <p>Use <code>is_alive()</code> (unconditional) + <code>base_height</code> penalty with
+           <code>min_height=0.36m</code>, which provides a continuous upward gradient from any height.</p>
+        <pre><code class="language-python"># GOOD — continuous gradient
+base_height_penalty = relu(0.36 - trunk_z)  # ✓</code></pre>
+        <div class="why-label">Why it matters</div>
+        <p>A clamped gate produces zero gradient both above and below the threshold. Any near-optimal policy
+           that discovers the gate never receives signal to improve further.</p>
+      </div>
+    </div>
+
+    <!-- Lesson 2: Entropy explosion -->
+    <div class="lesson-card">
+      <div class="lesson-header">
+        <span class="lesson-icon">💥</span>
+        <span class="lesson-title">entropy_coef=0.01 → entropy explosion</span>
+      </div>
+      <div class="lesson-body">
+        <div class="bug-label">Bug</div>
+        <p>With <code>entropy_coef=0.01</code>, the noise standard deviation grew from 0.1 → 1.64 over
+           400 iterations, then policy catastrophically collapsed in an overnight run (iter_049 data).</p>
+        <pre><code class="language-python"># BAD — too strong entropy incentive
+entropy_coef = 0.01   # default RSL-RL value</code></pre>
+        <div class="fix-label">Fix</div>
+        <p>Reduce to <code>entropy_coef=0.001</code> (10× reduction). The entropy term no longer dominates
+           the total PPO loss at high noise scales.</p>
+        <pre><code class="language-python"># GOOD
+entropy_coef = 0.001  # prevents runaway noise</code></pre>
+        <div class="why-label">Why it matters</div>
+        <p>PPO maximizes entropy as a regularizer; the default coefficient is calibrated for locomotion tasks
+           with small action spaces. Manipulation tasks with larger observation variance require a lower coefficient
+           to stay within the stable regime.</p>
+      </div>
+    </div>
+
+    <!-- Lesson 3: Gaussian flat tail -->
+    <div class="lesson-card">
+      <div class="lesson-header">
+        <span class="lesson-icon">📉</span>
+        <span class="lesson-title">Gaussian joint tracking std=0.5 → flat tail at crouch</span>
+      </div>
+      <div class="lesson-body">
+        <div class="bug-label">Bug</div>
+        <p><code>exp(-Σ(q - q₀)² / 0.5)</code> saturates near 0 when joints deviate 0.4 rad from default.
+           No gradient to pull the policy back from crouched configurations.</p>
+        <pre><code class="language-python"># BAD — gradient ≈ 0 at 0.4 rad deviation
+joint_tracking = exp(-sq_sum / 0.5)</code></pre>
+        <div class="fix-label">Fix</div>
+        <p>Widen to <code>std=2.0</code> → <code>exp(-sq_sum / 2.0)</code> ≈ 0.77 at 0.4 rad deviation,
+           providing strong gradient everywhere including deep crouch.</p>
+        <pre><code class="language-python"># GOOD — ~0.77 at 0.4 rad off default
+joint_tracking = exp(-sq_sum / 2.0)  # std=2.0</code></pre>
+        <div class="why-label">Why it matters</div>
+        <p>Gaussian rewards are attractive for their smooth gradients, but narrow σ creates a dead zone
+           outside the mode. For posture recovery the reward must stay informative even at large deviations.</p>
+      </div>
+    </div>
+
+    <!-- Lesson 4: Joint reset randomization -->
+    <div class="lesson-card">
+      <div class="lesson-header">
+        <span class="lesson-icon">🤸</span>
+        <span class="lesson-title">Joint randomisation at spawn → airborne at reset</span>
+      </div>
+      <div class="lesson-body">
+        <div class="bug-label">Bug</div>
+        <p><code>reset_joints_by_scale(range=(0.85, 1.15))</code> occasionally spawns the robot with
+           legs too short to reach the ground, causing immediate fall and wasted rollouts.</p>
+        <pre><code class="language-python"># BAD — legs may not reach ground
+position_range = (0.85, 1.15)</code></pre>
+        <div class="fix-label">Fix</div>
+        <p>Set <code>position_range=(1.0, 1.0)</code> (no randomisation) until standing is reliably
+           learned. Reintroduce joint DR only after Stage C+ curriculum.</p>
+        <pre><code class="language-python"># GOOD — deterministic spawn stance
+position_range = (1.0, 1.0)</code></pre>
+        <div class="why-label">Why it matters</div>
+        <p>Curriculum learning requires stable initial conditions. Adding joint noise too early means
+           the policy must simultaneously learn to stand and to juggle — two skills that interfere.</p>
+      </div>
+    </div>
+
+    <!-- Lesson 5: init_noise_std=1.0 -->
+    <div class="lesson-card">
+      <div class="lesson-header">
+        <span class="lesson-icon">🎲</span>
+        <span class="lesson-title">init_noise_std=1.0 → large torques at spawn</span>
+      </div>
+      <div class="lesson-body">
+        <div class="bug-label">Bug</div>
+        <p>With <code>init_noise_std=1.0</code> and joint scale=0.25 rad, initial actions are ±0.25 rad —
+           large torques that destabilise standing from the very first step.</p>
+        <pre><code class="language-python"># BAD — ±0.25 rad random torques at init
+init_noise_std = 1.0   # default</code></pre>
+        <div class="fix-label">Fix</div>
+        <p>Reduce to <code>init_noise_std=0.1</code>. The robot stays near the default standing pose
+           at initialisation, giving the policy a stable starting point.</p>
+        <pre><code class="language-python"># GOOD — policy near standing at init
+init_noise_std = 0.1</code></pre>
+        <div class="why-label">Why it matters</div>
+        <p>RSL-RL's default is tuned for locomotion where the robot is already moving. Balancing tasks
+           start from a static pose; a large initial noise std immediately creates unrecoverable falls
+           before any learning signal is received.</p>
+      </div>
+    </div>
+
+    <!-- Lesson 6: Trunk height termination -->
+    <div class="lesson-card">
+      <div class="lesson-header">
+        <span class="lesson-icon">⏱</span>
+        <span class="lesson-title">Trunk-height termination caps episode length</span>
+      </div>
+      <div class="lesson-body">
+        <div class="bug-label">Bug</div>
+        <p>A <code>grace_steps=50</code> trunk-height termination ended every episode exactly at step 50.
+           The policy never experienced longer rollouts and could not learn long-horizon juggling behavior.</p>
+        <pre><code class="language-python"># BAD — all episodes end at step 50
+terminate_if_height &lt; 0.30m, grace=50</code></pre>
+        <div class="fix-label">Fix</div>
+        <p>Remove trunk-height termination entirely. Use <code>ball_below_paddle</code> + continuous
+           <code>base_height</code> penalty instead — this lets episodes run to 1500 steps while
+           still penalising low posture.</p>
+        <pre><code class="language-python"># GOOD — base_height penalty, no hard kill
+base_height_penalty = relu(0.36 - trunk_z)
+# terminate only on ball_below or ball_off</code></pre>
+        <div class="why-label">Why it matters</div>
+        <p>Hard termination on height is a seductive safety net, but it creates a feedback loop: the
+           robot crouches → terminates early → never learns that sustained upright posture is needed
+           for ball control.</p>
+      </div>
+    </div>
+
+  </div><!-- end lessons-grid -->
+</section>
+
+<!-- ══════════════════════════ 9 VELOCITY COMMANDS ════════════════════════════ -->
+<section class="section" id="velcmd">
+  <h2><span class="num">9</span> Velocity Commands &amp; Teleoperation</h2>
+
+  <p>
+    The Go1 hierarchical controller already exposes <code>vx, vy</code> as indices 6–7 of
+    pi2's 8-dimensional command interface (±0.5 m/s range, active from Stage E onward).
+    A <em>vel-cmd-survey</em> sub-agent surveyed 13 papers (VBC, HiLMa-Res, HOVER, Walk-These-Ways, etc.)
+    and proposed three methods for letting a human operator steer the robot while pi1 continues
+    to juggle. The methods are ordered by cost and quality.
+  </p>
+
+  <div class="table-wrap" style="margin:24px 0">
+    <table>
+      <thead>
+        <tr>
+          <th>Attribute</th>
+          <th>Method 1 — Override</th>
+          <th>Method 2 — Residual</th>
+          <th>Method 3 — Multi-Mode</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Pi1 retraining</td><td>None</td><td>Fine-tune ~4 h</td><td>Retrain ~8 h</td></tr>
+        <tr><td>Obs dimension</td><td>40D (unchanged)</td><td>40→42D</td><td>40→43D</td></tr>
+        <tr><td>Reward changes</td><td>None</td><td>+vel_tracking (w=1.0)</td><td>Mode-conditional apex scaling</td></tr>
+        <tr><td>Ball quality at 0.15 m/s</td><td>Moderate degradation</td><td>Small degradation</td><td>Best</td></tr>
+        <tr><td>Ball quality at 0.30 m/s</td><td>Ball frequently lost</td><td>Manageable</td><td>Best</td></tr>
+        <tr><td>Implementation effort</td><td>~4 h coding, no GPU</td><td>~7.5 h total</td><td>~13.5 h total</td></tr>
+        <tr><td>Risk level</td><td>Low</td><td>Medium</td><td>High</td></tr>
+        <tr><td>Primary citation</td><td>VBC (He et al., CoRL 2024)</td><td>HiLMa-Res (Shi et al., IROS 2024)</td><td>HOVER (Zhuang et al., CoRL 2024)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 style="margin-top:32px">Method 1 — Direct Override (Recommended First Step)</h3>
+  <p>
+    Override pi2's <code>cmd[6], cmd[7]</code> <em>after</em> pi1 runs, before
+    <code>env.step()</code>. Pi1 continues to control all other channels (height, roll/pitch,
+    angular rates). Requires zero retraining; validated immediately with a
+    <code>backend="zero"</code> smoke test (output must match baseline).
+  </p>
+  <div class="code-block" style="background:#1e1e2e;color:#cdd6f4;border-radius:8px;padding:16px;font-family:monospace;font-size:0.82em;margin:12px 0;overflow-x:auto">
+<pre>Joystick (USB/gamepad)
+    │  vx_user, vy_user  [m/s, clamped ±0.30]
+    ▼
+UserVelocityInput.get_cmd()
+    │  vx_norm, vy_norm  [-1, +1]   (divide by 0.5)
+    ▼
+CommandMixer.mix(pi1_cmd, vel_user)
+    │  replaces cmd[6], cmd[7] only; channels 0–5 pass through
+    ▼
+TorsoCommandAction.process_actions(mixed_cmd)  ← unchanged
+    │  runs frozen pi2
+    ▼
+12D joint targets → robot</pre>
+  </div>
+  <p>
+    User safety cap: <strong>±0.30 m/s</strong> (60% of pi2 training max). Velocity ramps
+    on/off over 1 s to prevent jerk at spawn. Implemented in
+    <code>play_teleop.py</code> (5-line addition to existing play loop).
+  </p>
+
+  <h3 style="margin-top:32px">Method 2 — Residual Velocity (Recommended Production)</h3>
+  <p>
+    Pi1 is fine-tuned to accept <code>[vx_user, vy_user]</code> as two additional
+    observations (40→42D). Pi1 outputs <em>residual</em> velocity corrections; the final
+    pi2 command is <code>vx_final = clamp(pi1_out[6] + vx_user_norm, −1, +1)</code>.
+    Pi1 learns to compensate for ball drift relative to the user's base motion.
+  </p>
+  <p>
+    Based on <strong>HiLMa-Res</strong> (Shi et al., IROS 2024): bounding pi1's output to
+    a residual prevents the manipulation planner from overriding locomotion stability — user
+    intent is guaranteed to be respected to first order. Training: zero-pad the new obs
+    channels, hot-start from Stage G checkpoint at LR=1e-4 for 200 iters, then standard
+    curriculum for 600 more.
+  </p>
+  <p>
+    <strong>Expected improvement over Method 1:</strong> at 0.20 m/s user velocity, pi1
+    adds ±0.10 m/s correction for ball drift → ~50% fewer ball-loss events vs. Method 1.
+  </p>
+
+  <h3 style="margin-top:32px">Method 3 — Multi-Mode Conditioning (Optional)</h3>
+  <p>
+    Pi1 obs extended by 3D: <code>[mode_bit, vx_target_norm, vy_target_norm]</code>.
+    Mode 0 = balance (current); Mode 1 = locomote (user velocity active). A mode-conditional
+    reward scales the apex reward to 30% in locomote mode while adding a velocity-tracking
+    reward. Based on <strong>HOVER</strong> (Zhuang et al., CoRL 2024) unified mode-conditioned
+    whole-body controller. Recommended only if Method 2's graceful degradation at ≥0.30 m/s
+    is insufficient for the target demo scenario.
+  </p>
+
+  <div class="callout" style="background:#1e3a5f;border-left:4px solid #4fa3d1;padding:12px 16px;border-radius:6px;margin-top:20px">
+    <strong>Integration note (Perception):</strong> Method 1 is perception-independent.
+    Methods 2 &amp; 3 should hot-start from a checkpoint that has <em>already stabilised under
+    full-noise EKF observations</em>. Training with fresh noise AND fresh velocity curriculum
+    simultaneously risks double-destabilisation.
+  </div>
+</section>
+
+<!-- ══════════════════════════ 10 NOISE RETRAINING ════════════════════════════ -->
+<section class="section" id="noise-retrain">
+  <h2><span class="num">10</span> Noise-Aware Policy Retraining</h2>
+  <p>Once the perception pipeline produces noisy ball observations, pi1 must be retrained to
+  remain robust. The policy agent ran a 500-iteration baseline comparison (12 288 envs, oracle
+  vs D435i noise mode) before designing the full noise curriculum.</p>
+
+  <h3>Oracle vs D435i Baseline (500 iters)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Metric</th><th>Oracle (GT)</th><th>D435i Noise</th><th>Delta</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Mean episode length</td><td>1500 (maxed)</td><td>1439</td><td>−4.1%</td></tr>
+        <tr><td>Timeout %</td><td>98.9%</td><td>85.2%</td><td>−13.7 pp</td></tr>
+        <tr><td>Ball apex height</td><td>2.92</td><td>3.04</td><td>+4.1%</td></tr>
+        <tr><td>Ball-below %</td><td>1.1%</td><td>14.8%</td><td>+13.7 pp</td></tr>
+        <tr><td>Mean reward</td><td>78.5</td><td>72.2</td><td>−8.0%</td></tr>
+        <tr><td>Noise std</td><td>0.337</td><td>0.548</td><td>+63%</td></tr>
+        <tr><td>Curriculum stage reached</td><td>Stage D</td><td>Stage D</td><td>Same</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout callout-green">
+    <strong>Key finding:</strong> D435i noise causes moderate degradation (~8% reward, ~14 pp more
+    ball drops) but does <em>not</em> prevent curriculum advancement. Both oracle and D435i reach
+    the same Stage D plateau — the bottleneck is reward shaping, not perception noise.
+  </div>
+
+  <h3>Stage D Plateau</h3>
+  <p>Both oracle and D435i policies converge to a "safe balance, don't bounce" equilibrium at
+  Stage D (target=0.20m, σ=0.08m). The breakthrough came from
+  <code>ball_release_velocity_reward</code> (+3.0), which provides a positive gradient for
+  <em>throwing</em> the ball, preventing collapse to passive balance. With this reward, the policy
+  sustained juggling through curriculum transition (Stage A → B) with apex_reward ≈ 9.7–10.5
+  for 1 000+ iterations.</p>
+
+  <h3>Planned Noise Schedule</h3>
+  <p>The noise curriculum runs orthogonally to the juggling curriculum — both share the stage
+  counter but control different parameters. Noise intensity ramps from zero (oracle warmup) to
+  full D435i noise and finally to the full EKF pipeline:</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Stage</th><th>Target (m)</th><th>σ (m)</th>
+          <th>Noise mode</th><th>noise_scale</th><th>Latency</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>A</td><td>0.05</td><td>0.025</td><td>oracle</td><td>0.0</td><td>0</td></tr>
+        <tr><td>B</td><td>0.10</td><td>0.040</td><td>oracle</td><td>0.0</td><td>0</td></tr>
+        <tr><td>C</td><td>0.15</td><td>0.060</td><td>oracle</td><td>0.0</td><td>0</td></tr>
+        <tr><td>D</td><td>0.20</td><td>0.080</td><td>d435i</td><td>0.25</td><td>0</td></tr>
+        <tr><td>E</td><td>0.25</td><td>0.100</td><td>d435i</td><td>0.50</td><td>0</td></tr>
+        <tr><td>F</td><td>0.30</td><td>0.120</td><td>d435i</td><td>0.75</td><td>0</td></tr>
+        <tr><td>G</td><td>0.36</td><td>0.144</td><td>ekf</td><td>1.0</td><td>1 step</td></tr>
+        <tr><td>H+</td><td>0.42+</td><td>—</td><td>ekf</td><td>1.0</td><td>1 step</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><strong>Rationale</strong>: Stages A–C use clean oracle observations so the policy can
+  discover throwing without fighting noisy inputs. Stages D–F ramp noise gradually (25 / 50 /
+  75% of full D435i σ) to avoid catastrophic forgetting at the noise-introduction boundary.
+  Stages G+ switch to the full EKF pipeline, which provides filtered estimates with one-step
+  observation latency (realistic for a 30 Hz global-shutter camera).</p>
+
+  <div class="callout callout-yellow">
+    <strong>NIS–curriculum link:</strong> The EKF NIS validation (perception iter_049) showed
+    NIS ≈ 0.44 — the filter is <em>over-conservative</em> (R too large). This means the noisy
+    ball observations fed to pi1 are smoother than the noise model predicts, which is
+    <em>beneficial</em> for robustness: the policy trains against a pessimistic noise model and
+    deploys with a slightly better real sensor.
+  </div>
+</section>
+
+<!-- ════════════════════════════ 11 REFERENCES ═══════════════════════════════ -->
+<section class="section" id="references">
+  <h2><span class="num">11</span> Key References</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Paper</th><th>Venue</th><th>Relevance</th></tr></thead>
+      <tbody>
+        <tr><td>Rudin et al. — <em>Learning to Walk in Minutes</em></td><td>CoRL 2022</td><td>legged_gym / RSL-RL; massively parallel PPO; survival bonus standard</td></tr>
+        <tr><td>Ji et al. — <em>DribbleBot</em></td><td>ICRA 2023</td><td>Ball dribbling; Gaussian centering reward; terminal penalty; body-vel penalty; DR params</td></tr>
+        <tr><td>Zhuang et al. — <em>Robot Parkour</em></td><td>CoRL 2023</td><td>terminal_penalty ≫ episode_length × alive_rate calibration rule</td></tr>
+        <tr><td>Caluwaerts et al. — <em>CaT</em></td><td>IROS 2024</td><td>Probabilistic termination on constraint violation</td></tr>
+        <tr><td>Hoeller et al. — <em>ANYmal Parkour</em></td><td>Sci. Robotics 2024</td><td>Binary posture gate on task reward; angular velocity penalty</td></tr>
+        <tr><td>Huang et al. — <em>SoloParkour</em></td><td>CoRL 2024 (Best Paper)</td><td>Survival + CaT; most stable collapse prevention</td></tr>
+        <tr><td>Portela et al. — <em>ROGER</em></td><td>RSS 2025</td><td>σ curriculum (std 0.5→0.08m); σ floor=80mm</td></tr>
+        <tr><td>Ma et al. — <em>Badminton legged manipulator</em></td><td>Sci. Robotics 2025</td><td>ETH noise-injection EKF; near-100% with perfect perception, 60-80% with real noise</td></tr>
+        <tr><td>Su et al. — <em>HITTER</em></td><td>2025</td><td>Hierarchical planner+controller in Isaac Lab + PPO, zero-shot sim-to-real</td></tr>
+        <tr><td>Margolis &amp; Agrawal — <em>Walk-These-Ways</em></td><td>RSS 2022</td><td>Motor gain DR; velocity tracking std (σ=0.20 for gait tolerance)</td></tr>
+        <tr><td>He et al. — <em>VBC</em></td><td>CoRL 2024</td><td>Velocity-based control interface for hierarchical loco-manipulation; Method 1 basis</td></tr>
+        <tr><td>Shi et al. — <em>HiLMa-Res</em></td><td>IROS 2024</td><td>Residual manipulation planner; bounding pi1 output preserves locomotion stability</td></tr>
+        <tr><td>Zhuang et al. — <em>HOVER</em></td><td>CoRL 2024</td><td>Unified mode-conditioned whole-body controller; Method 3 basis</td></tr>
+        <tr><td>Hu et al. — <em>Go1 Actuator System ID</em></td><td>arXiv 2025 (2503.01255)</td><td>Measured Go1 stiction 0.13% of peak torque; PD+DR with static friction beats ActuatorNet</td></tr>
+        <tr><td>Long et al. — <em>HIM</em></td><td>ICLR 2024</td><td>Go1/A1 PD+DR without ActuatorNet; Kp=30, Kd=0.75; deployed successfully</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</div><!-- end wrapper -->
+
+<div class="wrapper">
+  <div class="footnote">
+    Generated by the <strong>report-writer</strong> agent in the c3r multi-agent research harness.
+    Sibling agents: <em>policy</em> (pi1/pi2 juggling training, iter_015 — Stage B, apex=10.5 stable,
+    d435i noise −8% degradation) and <em>perception</em> (D435i + EKF pipeline, iter_053 — 239 tests
+    passing, NIS phase-separated, eval_perception_live.py added).
+    Report finalized April 8, 2026 (iter_008). Full report at <code>docs/project_report.html</code>.
+  </div>
+</div>
+
+</body>
+</html>

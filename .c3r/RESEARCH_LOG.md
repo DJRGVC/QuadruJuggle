@@ -257,3 +257,52 @@ Decision:   GPU phase-separated NIS validation + eval_perception_live.py run NEX
             GPU frees up. Policy training should complete within ~40 min. Prepare exact GPU
             commands: (1) nis_diagnostic.py 2048 envs × 500 steps, (2) eval_perception_live.py
             512 envs × 1000 steps with policy's model_best.pt.
+
+---
+
+## iter_055 — GPU NIS validation: phase-separated + live-policy eval  (2026-04-08T18:57:00Z)
+Hypothesis: Phase-separated NIS under random actions will confirm contact-phase Q inflation as
+            the cause of low overall NIS=0.44. Live-policy eval will reveal whether q_vel=0.4
+            is adequate for actual juggling dynamics (vs gentle random-action trajectories).
+Change:     (1) Killed report-writer subagent (completed, 1537-line HTML report).
+            (2) Copied report to docs/project_report.html on our branch.
+            (3) Ran nis_diagnostic.py (2048 envs × 500 steps, random actions) — GPU queued
+                behind policy training for ~35 min, then ran successfully.
+            (4) Ran eval_perception_live.py (512 envs × 1000 steps, trained pi1 policy,
+                target_height=0.10m) — FIRST GPU eval with trained policy.
+Command:    gpu_lock.sh uv run --active python scripts/perception/nis_diagnostic.py \
+              --pi2-checkpoint .../model_best.pt --num_envs 2048 --steps 500 --headless
+            gpu_lock.sh uv run --active python scripts/perception/eval_perception_live.py \
+              --pi2-checkpoint .../model_best.pt \
+              --pi1-checkpoint .../2026-04-08_10-36-50/model_best.pt \
+              --num_envs 512 --steps 1000 --target-height 0.10 --headless \
+              --output /tmp/eval_perception_nis.json
+Result:     **CRITICAL FINDING: EKF severely overconfident under active policy.**
+
+            Random-action NIS diagnostic (confirms iter_050 hypothesis):
+            | Phase   | NIS   | Diagnosis                              |
+            |---------|-------|----------------------------------------|
+            | Flight  | 1.454 | Well-tuned (target 3.0)                |
+            | Contact | 0.434 | Over-conservative (q_vel_contact=50.0) |
+            | Overall | 0.444 | Dominated by contact phase             |
+
+            Live-policy eval (TARGET HEIGHT 0.10m, trained pi1):
+            | Phase   | NIS    | Diagnosis                              |
+            |---------|--------|----------------------------------------|
+            | Flight  | 52.9   | SEVERELY overconfident (q_vel=0.4 too low) |
+            | Contact | 5.3    | Slightly overconfident                 |
+            | Overall | 19.9   | Way above target 3.0                   |
+
+            EKF RMSE: 22.0mm vs Raw: 19.3mm → EKF is WORSE than raw (-14%)!
+            Gate rejections: 1.26% (2281/181k). Timeout: 0% (ball off/below).
+
+            **Root cause**: Random actions produce gentle ballistic arcs where q_vel=0.4
+            tracks fine. Active juggling produces violent paddle strikes with near-instantaneous
+            velocity reversals. q_vel=0.4 trusts the prediction too much → filter lags behind
+            actual ball state → worse than raw measurements.
+
+            Policy checkpoint: .../2026-04-08_10-36-50/model_best.pt (trained with d435i noise)
+Decision:   q_vel needs MAJOR increase for live policy. Next: sweep q_vel=[2.0, 5.0, 10.0, 20.0]
+            with eval_perception_live.py to find optimal setting. May also need dynamic q_vel
+            that increases during flight phase to match the high-energy post-bounce trajectories.
+            Contact q_vel_contact=50.0 is actually close to right (NIS=5.3 under active policy).

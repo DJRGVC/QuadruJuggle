@@ -1,21 +1,26 @@
 # fix_plan.md — experiment queue for perception
 
 # Status: Sim pipeline FEATURE-COMPLETE (iters 001-043)
-# 239/239 tests pass (CPU). GPU NIS validated.
-# IMU-aided EKF + 9D spin + contact-aware + NIS gating all implemented.
-# Velocity commands: Method 1 (override) + Method 2 (residual) + play_teleop.py done.
-# Subagents: lit-review killed, vel-cmd-survey killed, report-writer spawned (sonnet, max 10 iters).
+# 239/239 tests pass (CPU). GPU NIS validated (random + live-policy).
+# CRITICAL: EKF severely overconfident under active policy (NIS=52.9 flight, 19.9 overall).
+# q_vel=0.4 good for random actions but WAY too low for juggling dynamics.
+
+# PRIORITY: EKF Q-tuning for active juggling
+- [ ] q_vel sweep: eval_perception_live.py with q_vel=[2.0, 5.0, 10.0, 20.0] @ target_height=0.10
+- [ ] Find q_vel where flight NIS ≈ 3.0 and EKF RMSE < raw RMSE
+- [ ] Consider dynamic q_vel (increase during post-bounce flight, decrease during stable arcs)
+- [ ] Re-validate NIS with random actions at new q_vel (ensure not over-conservative)
+- [ ] Update BallEKFConfig defaults with tuned values
 
 # Phase 5: Sim perception refinements
-- [ ] GPU phase-separated NIS validation: verify free-flight NIS closer to 3.0 (blocked: GPU held by policy training)
-- [x] eval_perception_live.py: EKF accuracy eval with trained pi1 (not random actions)
-- [ ] GPU eval_perception_live.py run: test EKF accuracy during actual juggling (needs pi1 checkpoint + GPU)
-- [ ] Support policy agent with noise curriculum tuning if/when they reach that stage
+- [x] GPU phase-separated NIS validation (flight=1.45, contact=0.43 with random actions)
+- [x] eval_perception_live.py: script written + GPU-validated
+- [x] GPU eval_perception_live.py run: EKF RMSE 22mm > raw 19mm (filter hurts, not helps!)
+- [ ] Support policy agent with noise curriculum tuning
 
-# Phase 7: Project Report (report-writer subagent)
-- [ ] Monitor report-writer progress, provide info as needed
-- [ ] Kill report-writer after max 10 iters or when report is done
-- [ ] Review and polish final report
+# Phase 7: Project Report
+- [x] report-writer subagent: 1537-line HTML report complete (killed iter_055)
+- [ ] Copy final report to main branch when ready
 
 # Phase 3: Real Hardware Integration (blocked on Go1 + D435i access)
 - [ ] Implement D435iCamera wrapper (pyrealsense2, depth-only 848x480 @ 90fps) — needs hardware

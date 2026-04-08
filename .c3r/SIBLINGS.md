@@ -26,7 +26,7 @@ Siblings will see it in their next SIBLINGS.md refresh.
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
 - **status**: running · iter #8 · ctx 0%
-- **last iter**: 39m ago
+- **last iter**: 47m ago
 
 ### Recent commits on `agent/policy`
 ```
@@ -171,17 +171,17 @@ git show agent/vel-cmd-survey:.c3r/SIBLINGS.md
 ## report-writer
 - **role**: generic
 - **focus**: Create a nicely formatted project report (HTML or Markdown with embedded images/graphs) covering the QuadruJuggle project: perception pipeline, policy training, architecture, and results. Max 10 iterations.
-- **status**: running · iter #5 · ctx 0%
+- **status**: running · iter #8 · ctx 0%
 - **last iter**: 2m ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/report-writer`
 ```
+3741766 iter_008: executive summary + final polish — report complete, ready for c3r kill
+aa99cec iter_007: noise-aware retraining section — oracle vs d435i table + noise schedule A→H+
+b28c7e8 iter_006: print stylesheet + inline TOC + docs/project_report.html copy
 0b6df27 iter_005: velocity commands section — Method 1/2/3 comparison table + architecture diagram
 556195e iter_004: lessons learned section — 6 before/after cards (crouching, entropy, Gaussian, joints, noise, termination)
-f547f3c iter_003: scene constants card + ball_release callout + pi2 curriculum table A→H
-25c3245 iter_002: dual-line training chart (apex+timeout%) + NIS validation table from GPU iter_049
-d8ed014 iter_001: initial HTML project report — architecture, training, perception, results, sim2real
 ```
 ### Files modified on `agent/report-writer` (relative to `c3r/QuadruJuggle`)
 ```
@@ -194,6 +194,7 @@ d8ed014 iter_001: initial HTML project report — architecture, training, percep
 .c3r/env.sh
 .c3r/fix_plan.md
 .claude/settings.json
+docs/project_report.html
 report.html
 ```
 ### Read one with:
