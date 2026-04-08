@@ -1,0 +1,40 @@
+{
+  "project": "QuadruJuggle",
+  "channel_id": "1491209483261837323",
+  "board_message_id": "1491254991149727865",
+  "gpu_lock": "serial",
+  "max_agents": 5,
+  "paused": false,
+  "agents": [
+    {
+      "name": "perception",
+      "role": "generic",
+      "model": "claude-opus-4-6",
+      "focus": "implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline following ETH-style architecture, producing noisy ball observations usable by pi1 in Isaac Lab sim.",
+      "parent": null,
+      "branch": "agent/perception",
+      "worktree": "/home/daniel-grant/Research/QuadruJuggle-perception",
+      "thread_id": "1491254992718397582",
+      "status": "running",
+      "last_iter": 2,
+      "last_iter_ts": "2026-04-08T02:03:27.890168+00:00",
+      "last_context_pct": 0,
+      "fail_streak": 0
+    },
+    {
+      "name": "policy",
+      "role": "generic",
+      "model": "claude-opus-4-6",
+      "focus": "retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.",
+      "parent": null,
+      "branch": "agent/policy",
+      "worktree": "/home/daniel-grant/Research/QuadruJuggle-policy",
+      "thread_id": "1491255004194144407",
+      "status": "running",
+      "last_iter": 0,
+      "last_iter_ts": null,
+      "last_context_pct": 0,
+      "fail_streak": 0
+    }
+  ]
+}
