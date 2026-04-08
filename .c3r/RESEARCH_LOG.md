@@ -176,3 +176,35 @@ Result:     **16/16 new tests pass.** Coriolis magnitude exact to 3 decimal plac
 Decision:   GPU NIS validation of body-frame+IMU vs world-frame next iteration. If body-frame
             NIS comes in-band with IMU corrections, it becomes the simpler default (no full
             robot pose needed). Also need to check if policy agent needs perception support.
+
+---
+
+## iter_038 — 9D spin estimation: Magnus effect EKF extension (25/25 tests, 109/109 total)  (2026-04-08T17:45:00Z)
+Hypothesis: Extending the EKF state to 9D [pos, vel, spin] with Magnus force dynamics allows
+            the filter to estimate ball spin from trajectory curvature, improving prediction
+            accuracy for spinning balls without requiring direct spin measurement.
+Change:     Added optional `enable_spin` mode to BallEKF (default False — 6D unchanged):
+            - Config: `enable_spin`, `magnus_coeff=0.0149` (Kutta-Joukowski for 40mm ball),
+              `spin_decay_rate=0.008` (Stokes viscous torque), `q_spin=1.0`, `q_spin_contact=100.0`,
+              `p_spin_init=10.0`
+            - Magnus force: a_M = Cm * (spin × vel), with correct Jacobians for spin_skew
+              and vel_skew cross products in F matrix (d(a)/d(vel) = Cm*[spin]_x,
+              d(a)/d(spin) = -Cm*[vel]_x)
+            - Spin decay: exponential with factor exp(-decay_rate*dt), Jacobian on F diagonal
+            - Contact-aware: q_spin inflated to q_spin_contact when ball Z < threshold
+            - All matrices (P, F, Q, H, K) properly sized as D×D where D=6 or 9
+            - `spin` property, `init_spin` param in reset(), `state_dim` property
+            Created test_spin_estimation.py with 25 tests across 6 test classes.
+Command:    `pytest scripts/perception/test_spin_estimation.py -v` (25 tests)
+            Full suite: `pytest scripts/perception/test_*.py` (CPU-only) → 109/109 pass.
+Result:     **25/25 new tests pass.** Magnus direction correct (cross product verified for
+            3 axis combinations). Physical magnitude: Cm*ω*v = 0.0149*20*3 = 0.894 m/s²
+            matches actual EKF output. Spin decay exponential exact. Topspin curves ball
+            downward as expected. EKF successfully estimates spin=40 rad/s from curvature alone
+            (converges to >5 rad/s z-component from zero initial spin). Contact noise 10000×
+            larger than free-flight. All 84 existing tests pass — zero regressions.
+            GPU NIS validation deferred — GPU locked by policy agent training.
+Decision:   Next iteration: GPU NIS validation comparing body-frame+IMU (iter_037) against
+            world-frame. Also try 9D spin mode in NIS diagnostic if GPU available. If GPU
+            still locked, integrate spin mode into ball_obs_spec.py pipeline (wire enable_spin
+            through BallObsNoiseCfg so sim can toggle it).

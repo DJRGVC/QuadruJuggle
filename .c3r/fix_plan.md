@@ -15,5 +15,6 @@
 
 # Phase 5: Sim perception refinements (while waiting for policy/hardware)
 - [x] IMU-aided EKF: use robot angular velocity to compensate platform motion during predict (iter_037)
-- [ ] Spin estimation: extend state to [x,y,z,vx,vy,vz,wx,wy,wz] for Magnus effect
+- [x] Spin estimation: extend state to [x,y,z,vx,vy,vz,wx,wy,wz] for Magnus effect (iter_038)
+- [ ] GPU NIS validation: body-frame+IMU vs world-frame comparison (blocked on GPU lock)
 - [ ] Support policy agent with noise curriculum tuning if/when they reach that stage
