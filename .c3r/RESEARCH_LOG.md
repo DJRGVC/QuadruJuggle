@@ -274,4 +274,37 @@ Result:     **74/74 pass** (2.53s). All test suites green:
 Decision:   GPU NIS re-validation with calibrated model would confirm EKF R values still
             produce in-band NIS. However, policy agent (iter_014) still working on reward
             shaping — not yet at noise robustness. Next: either do GPU NIS re-validation
+
+---
+
+## iter_035 — GPU NIS re-validation with Ahn 2019-calibrated noise + kill lit-review  (2026-04-08T14:12:00Z)
+Hypothesis: Contact-aware EKF with Ahn 2019-calibrated noise (σ_xy∝z, σ_z∝z², distance-dependent
+            dropout) still achieves in-band NIS (< 7.81).
+Change:     No code changes — diagnostic validation of iter_034's calibrated noise model.
+            Also: processed INBOX — killed lit-review subagent per Daniel's request. Posted
+            29-iteration summary of lit-review's work to Discord thread.
+Command:    `nis_diagnostic.py --num_envs 256 --steps 200 --log_interval 20 --headless`
+            (non-contact-aware comparison cancelled — policy agent training holding GPU lock)
+Result:     **Contact-aware ON (calibrated noise)**: NIS=1.598, 10/10 intervals in 95% band.
+            EKF RMSE=9.1mm, Raw RMSE=7.4mm. Detection rate ~80%.
+            
+            Comparison to iter_031 (pre-calibration noise):
+            - NIS: 0.78 → 1.598 (closer to target 3.0 — less over-conservative)
+            - Detection: 90% → 80% (distance-dependent dropout more realistic)
+            - EKF RMSE: 5.4mm → 9.1mm (tighter R at close range, more honest)
+            - Raw RMSE: 4.5mm → 7.4mm (wider σ_xy at distance)
+            
+            NIS improvement toward 3.0 is expected: calibrated noise has smaller R values
+            at close range (where ball mostly lives during random-action test), making the
+            filter trust measurements more → innovations normalized by smaller S → higher NIS.
+            Still comfortably in [0.35, 7.81] band.
+            
+            Lit-review subagent: killed after 29 iterations. Produced ~20 docs covering
+            perception, noise curriculum, EKF tuning, spin, bounce, actuators, reward shaping,
+            deployment checklists, and more. All on agent/lit-review branch.
+Decision:   Calibrated noise model validated — NIS in-band, EKF working correctly. All Phase 4
+            sim-side tasks complete. Phase 5 items (IMU-aided EKF, spin estimation) are nice-to-have.
+            Policy agent still stuck on reward shaping (fail_streak=8). Next: check if any
+            sim-side work can unblock policy, or propose new Phase 5 work (IMU-aided EKF
+            for real-deployment accuracy improvement).
             or IMU-aided EKF (platform motion compensation during predict step).

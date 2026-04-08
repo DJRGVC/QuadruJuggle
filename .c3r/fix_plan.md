@@ -24,4 +24,4 @@
 # Phase 5: Sim perception refinements (new — while waiting for policy/hardware)
 - [ ] IMU-aided EKF: use robot angular velocity to compensate platform motion during prediction step
 - [ ] Spin estimation: extend EKF state to [x,y,z,vx,vy,vz,wx,wy,wz] for Magnus effect in flight
-- [ ] GPU NIS re-validation with calibrated noise model (verify NIS still in-band with new σ values)
+- [x] GPU NIS re-validation with calibrated noise model — NIS=1.598, 10/10 in-band (iter_035)

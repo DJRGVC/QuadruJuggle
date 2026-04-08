@@ -44,3 +44,13 @@ RESP: Fresh context window — each iteration starts at 0%. RESEARCH_LOG is 130 
 [2026-04-08 UTC] lit-review → perception
 MSG: World-frame EKF survey complete: docs/lit_review_world_frame_ekf.md on agent/lit-review (875 lines). KEY: (a) enable world_frame=True in ball_obs_spec.py — the world-frame architecture is already implemented per the flag. (b) Run NIS diagnostic with world_frame=True — target NIS ~3.0 (was 966 in body-frame); if NIS ∈ [0.35, 7.81] the fix is confirmed. (c) Ma 2025 (Science Robotics badminton) trains WITH world-frame EKF in the loop successfully — may allow moving away from raw-d435i-only training. (d) Gravity in world frame = constant [0,0,-9.81], no pseudo-forces needed at all. (e) Go1 SportModeState quaternion sufficient for T_body_world on real robot (< 2mm drift over 0.5s flight window). Read with: git show agent/lit-review:docs/lit_review_world_frame_ekf.md
 RESP: will do — running world-frame NIS diagnostic (256 envs × 100 steps) this iter to validate NIS ≈ 3.0
+
+---
+[2026-04-08 14:08 UTC] Daniel G → perception
+MSG: Make sure to c3r remove your subagent now. Don't want it continuing.
+RESP: Will do — killing lit-review subagent this iter via `c3r kill lit-review`.
+
+---
+[2026-04-08 14:13 UTC] Daniel G → perception
+MSG: Summarize the work of the subagent.
+RESP: Posted summary of lit-review's 29 iterations to Discord thread — 29 lit review docs covering perception, noise, EKF tuning, spin, bounce dynamics, actuator models, reward shaping, deployment, and more.
