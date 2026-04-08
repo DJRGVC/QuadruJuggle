@@ -57,8 +57,15 @@ def main():
                         help="q_vel during post-contact window")
     parser.add_argument("--post-contact-steps", type=int, default=10,
                         help="Steps after contact to keep q_vel elevated")
+    parser.add_argument("--warmup-steps", type=int, default=50,
+                        help="Steps to run before collecting metrics (EKF convergence)")
+    parser.add_argument("--no-post-contact", action="store_true",
+                        help="Disable post-contact inflation (2-level only)")
 
     args = parser.parse_args()
+
+    if args.no_post_contact:
+        args.post_contact_steps = 0
 
     if _pi2_path is None:
         parser.error("--pi2-checkpoint is required")
@@ -68,7 +75,10 @@ def main():
     q_vel_list = [float(x) for x in args.q_vels.split(",")]
     _print(f"\nSweeping q_vel = {q_vel_list}")
     _print(f"q_vel_contact = {args.q_vel_contact} (fixed)")
-    _print(f"q_vel_post_contact = {args.q_vel_post_contact}, post_contact_steps = {args.post_contact_steps}")
+    if args.post_contact_steps > 0:
+        _print(f"q_vel_post_contact = {args.q_vel_post_contact}, post_contact_steps = {args.post_contact_steps}")
+    else:
+        _print(f"post-contact inflation DISABLED (2-level q_vel only)")
     _print(f"target_height = {args.target_height}m, {args.num_envs} envs × {args.steps} steps/setting\n")
 
     # Isaac Lab AppLauncher
@@ -214,18 +224,28 @@ def main():
             pipeline.ekf.cfg.q_vel_contact = args.q_vel_contact
             pipeline.ekf.cfg.q_vel_post_contact = args.q_vel_post_contact
             pipeline.ekf.cfg.post_contact_steps = args.post_contact_steps
-            # Reset EKF state for clean sweep
-            pipeline.ekf.reset(torch.arange(args.num_envs, device=base_env.device))
-            if hasattr(pipeline, "diagnostics") and pipeline.diagnostics is not None:
-                # Reset diagnostic accumulators
-                for key in list(pipeline.diagnostics.keys()):
-                    if isinstance(pipeline.diagnostics[key], (int, float)):
-                        pipeline.diagnostics[key] = 0
-                    elif isinstance(pipeline.diagnostics[key], torch.Tensor):
-                        pipeline.diagnostics[key].zero_()
+            # Reset EKF state with current positions (resets P to initial values)
+            all_ids = torch.arange(args.num_envs, device=base_env.device)
+            init_pos = pipeline.ekf.pos.clone()
+            init_vel = pipeline.ekf.vel.clone()
+            pipeline.ekf.reset(all_ids, init_pos, init_vel)
+            # Flush diagnostic accumulators (diagnostics property resets on access)
+            _ = pipeline.diagnostics
 
         # Reset env for clean start
         obs = env_wrapped.get_observations()
+
+        # Warmup: let EKF converge with new q_vel before collecting stats
+        if args.warmup_steps > 0:
+            _print(f"  warmup: {args.warmup_steps} steps...")
+            for _ in range(args.warmup_steps):
+                with torch.inference_mode():
+                    actions = policy(obs)
+                    obs, _, _, _ = env_wrapped.step(actions)
+            # Flush stale diagnostics accumulated during warmup
+            pipeline = getattr(base_env, "_perception_pipeline", None)
+            if pipeline is not None:
+                _ = pipeline.diagnostics
 
         nis_vals = []
         nis_flight_vals = []

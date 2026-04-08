@@ -186,3 +186,20 @@ Result:     33/33 CPU tests pass. Post-contact inflation implemented and verifie
 Decision:   Next iter: run sweep_q_vel.py on GPU when lock frees. Sweep q_vel=[0.4,2.0,5.0,10.0,20.0,50.0]
             with post-contact inflation enabled. If GPU still locked, look at improving the
             sweep script or adding more CPU-only analysis.
+
+---
+
+## Iteration 58 — sweep script bugfixes + child cleanup  (2026-04-08T20:30:00Z)
+Hypothesis: sweep_q_vel.py has a critical bug (EKF reset missing init_pos arg) that would
+            crash on GPU. Fix and add warmup period for clean per-q_vel statistics.
+Change:     (1) Fixed EKF reset in sweep script: now passes init_pos + init_vel (was missing).
+            (2) Replaced crude diagnostic dict zeroing with proper pipeline.diagnostics flush.
+            (3) Added --warmup-steps (default 50) to let EKF converge before collecting stats.
+            (4) Added --no-post-contact flag to compare with/without post-contact inflation.
+            (5) Killed 3 stale children (lit-review, vel-cmd-survey, report-writer) that
+                survived iter_056 kill attempt.
+Command:    CPU tests only (GPU locked by policy 2000-iter training from model_early_stop.pt).
+            224/224 CPU tests pass. Script syntax verified.
+Result:     Sweep script ready for GPU. Children cleaned up (agents: 2/5).
+Decision:   Next iter: GPU q_vel sweep when lock frees. If still locked, consider writing
+            a test that validates the sweep logic on CPU with synthetic data.
