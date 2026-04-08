@@ -262,3 +262,54 @@ Decision:   Major breakthrough — juggling is sustained. Next priorities:
                 continued growth past 1.3, reduce entropy_coef.
             (3) Oracle vs d435i comparison: now that juggling works, re-run oracle comparison to
                 measure noise impact on ACTIVE juggling (not passive balance).
+
+## iter_015 — curriculum threshold 0.75→0.30 (d435i, 1500 iters)  (2026-04-08T09:11Z)
+Hypothesis: Lowering _BJ_THRESHOLD from 0.75 to 0.30 allows curriculum advancement, since active
+            juggling has ~63% timeout (well above 30%) but never reaches 75%.
+Change:     _BJ_THRESHOLD = 0.75 → 0.30. Resumed from iter_014 model_4249.pt.
+Command:    gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+              --task Isaac-BallJuggleHier-Go1-v0 \
+              --pi2-checkpoint .../2026-03-12_09-04-32/model_best.pt \
+              --num_envs 12288 --max_iterations 1500 --headless --noise-mode d435i --wandb \
+              --resume --load_run 2026-04-08_07-44-03 --checkpoint model_4249.pt
+            Checkpoint dir: logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_09-11-18/
+Result:     1500 iters completed (step 4249→5748). NO early stopping. Curriculum ADVANCED.
+            
+            Trajectory (apex / timeout / reward):
+              step 4249: apex=0.14,  timeout=1.6%,  reward=3      ← cold start
+              step 4349: apex=15.4,  timeout=98.8%, reward=~440    ← peak (Stage A mastered)
+              step 4449: apex=15.5,  timeout=96.4%, reward=~440    ← CURRICULUM ADVANCE (~step 4300)
+              step 4549: apex=14.4,  timeout=92.6%, reward=~400    ← adjusting to Stage B
+              step 4649: apex=12.1,  timeout=84.1%, reward=~350    ← dip during harder stage
+              step 4749: apex=9.65,  timeout=68.9%, reward=~280    ← new equilibrium found
+              step 4849-5748: apex=9.2-10.9, timeout=61-68%, reward=250-290  ← STABLE for 1000 iters
+            
+            Final metrics (step 5748):
+              apex_rew=10.46, release_vel=0.59, alive=0.70, ball_low=-0.04
+              timeout=68.0%, ball_below=30.2%, ball_off=1.9%
+              mean_reward=282.5, mean_ep_len=996, noise_std=1.08
+            
+            KEY FINDINGS:
+            (1) Curriculum advancement WORKS with 30% threshold. Policy advanced from Stage A
+                (target=0.05m) to at least Stage B (target=0.10m) and possibly further.
+            (2) Juggling SUSTAINED through curriculum transition — no collapse. Apex dipped from
+                15.5→9.6 during transition then stabilized at 9.2-10.9 for 1000+ iters.
+            (3) noise_std=1.08 (DOWN from 1.17 in iter_014) — healthy, not diverging.
+            (4) Policy found stable equilibrium: ~68% timeout, ~30% ball_below, ~2% ball_off.
+                This is genuine juggling at a harder stage, not passive balance.
+            (5) No early stopping after 1500 iters — ES patience (700) not exhausted because
+                reward kept improving slightly (282→290 range).
+            
+            Checkpoints:
+            - model_best.pt: logs/.../2026-04-08_09-11-18/model_best.pt (from peak ~step 4350)
+            - model_5748.pt: logs/.../2026-04-08_09-11-18/model_5748.pt (final, stable juggling)
+            
+            INBOX processed:
+            - Daniel asks if still running → yes, progress update sent
+            - Daniel wants user-controlled ball height (P/L keys) + velocity (WASD) → added to fix_plan
+Decision:   Juggling is sustained through curriculum advancement. Next priorities:
+            (1) Continue training from model_5748.pt — policy may advance further through stages.
+                Run another 1500 iters to see how many stages it can clear.
+            (2) If curriculum stalls (apex plateaus, no more stage advances): reduce sigma_ratio
+                or adjust curriculum targets.
+            (3) User command interface (WASD+P/L) queued in fix_plan for later implementation.

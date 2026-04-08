@@ -17,6 +17,16 @@
 - [ ] Full noise-curriculum run to Stage G with working juggling reward
 - [ ] Cross-eval matrix: noise-trained vs oracle-trained, tested with both obs types
 
+## USER COMMAND INTERFACE (Daniel request 2026-04-08)
+
+- [ ] Implement WASD velocity + P/L height controls in play.py (or play_teleop.py)
+      - WASD: user velocity commands (vx, vy) passed to pi1 or pi2
+      - P/L: target apex height up/down
+      - Terminal readout showing current command values
+      - Integrate with perception's ResidualMixer for velocity (git show agent/perception:source/.../vel_cmd/residual_mixer.py)
+      - Pi1 already has target_apex_height obs[39] — just expose as user input
+- [ ] Research: how to compose user height commands with curriculum target — override vs. additive?
+
 ## INFRASTRUCTURE
 
 - [ ] Run play.py with model_best.pt or model_4249.pt — capture video to confirm juggling visually

@@ -116,3 +116,18 @@ RESP: Acknowledged — will deprioritize velocity input design and focus on curr
 [2026-04-08 19:00 UTC] perception → policy
 MSG: Method 2 (ResidualMixer) velocity commands ready on agent/perception. When you finish noise curriculum work, next step: expand pi1 obs from 40D→42D (append user_vx, user_vy), add vel_tracking reward (exp(-|v_actual - v_cmd|²/2σ²), σ=0.20, weight +2.0), and hot-start from your best Stage G checkpoint. See `git show agent/perception:source/go1_ball_balance/go1_ball_balance/perception/vel_cmd/residual_mixer.py` for the ResidualMixer spec. No rush — finish noise curriculum first.
 RESP: Received — will integrate ResidualMixer velocity commands after noise curriculum is stable. Currently running iter_015 with early_termination=-600 + lowered curriculum threshold. Policy advancing through stages but performance is dipping on harder stages. Will queue velocity command integration as a future task.
+
+---
+[2026-04-08 16:03 UTC] Daniel G → policy
+MSG: You still running? And give me a progress update.
+RESP: Yes, still running. iter_014 was a breakthrough — ball_release_velocity_reward sustains juggling (apex 9.7 stable, no collapse). Next: fix curriculum advancement criteria so policy can progress past Stage A.
+
+---
+[2026-04-08 16:42 UTC] Daniel G → policy
+MSG: Oh, alongside velocity, allow the user to control the height of the ball. You can separately develop this if we don't want to mess with the existing working pipeline, or just integrate it into the current. Feel free to spend a few iters on research first, though.
+RESP: Great idea — user-controlled target apex height is a natural extension. The pi1 policy already receives target_apex_height as an observation (obs dim 39), and the curriculum already varies it across stages (0.05→1.00m). The mechanism is there — we just need to expose it as a user input at play-time (like the velocity commands from perception's ResidualMixer). Will queue research + implementation after the current curriculum training stabilizes. Could integrate with velocity commands as a unified "user command" interface.
+
+---
+[2026-04-08 16:52 UTC] Daniel G → policy
+MSG: Great. And for now, maybe implement that as wasd for velocity, and p/l for up/down? make sure the commands are being show in terminal so I know the intended behavior when running this. But, for now, continue your training, just add it as a todo.
+RESP: Will do — adding to fix_plan.md as a todo. WASD for velocity, P/L for height up/down, with terminal readout. Continuing training for now.

@@ -144,7 +144,7 @@ _BJ_STAGES = [
     (0.30,     0.92,    3.5,     0.082,  0.15,       1.00),  # O
     (0.30,     1.00,    3.5,     0.090,  0.18,       1.00),  # P  — full range, full noise
 ]
-_BJ_THRESHOLD      = 0.75
+_BJ_THRESHOLD      = 0.30   # lowered from 0.75: active juggling has ~63% timeout (lit-review iter_026)
 _BJ_APEX_THRESHOLD = 0.5     # with sigma_ratio=3.5, ball at rest earns ~0.05/step × 1500 = ~75 total
                               # so natural bounce (h≈5cm) earns ~0.1/step; threshold=0.5 requires active throwing
 _BJ_SUSTAIN    = 20    # was 15 — require stronger mastery before advancing
