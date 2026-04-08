@@ -39,7 +39,10 @@
   # ROOT CAUSE 2: alive reward too dominant vs near-zero apex reward at balancing.
   # FIX: ball_low_penalty=-1.0/step when ball h≤0.03m → cancels alive during balancing.
   # With this fix: balance earns alive-low_penalty ≈ 0/step; juggle earns alive+apex > 0/step.
-- [ ] iter_011: Fresh run with sigma_ratio=3.5 + ball_low_penalty=-1.0 to break balance-not-bounce
+- [x] iter_011: Fresh run with sigma_ratio=3.5 + ball_low_penalty=-1.0 to break balance-not-bounce
+  # IN PROGRESS: iter=167, apex_rew=10.6 (vs 0.067 in iter_010 — 158x!), timeout=69%, mean_len=1350
+  # Balance local optimum BROKEN. Policy actively juggling. Checkpoint: logs/.../2026-04-08_04-04-38/
+- [ ] iter_011 follow-up: Monitor curriculum advancement from Stage A through C-D; compare apex/timeout trajectory vs oracle baseline (iter_003: timeout=98.9%, apex=2.92)
 - [x] Add wandb logging to train_juggle_hier.py (entity: d-grant-uc-berkeley) + video recording for play visualization
   # DONE iter_007b/008: wandb entity + descriptive run naming added; video upload at end of training added.
 - [x] BUG: action_term.py builds 41D pi2 obs (missing last_action=12D) but pi2 checkpoints from 2026-03-12_14-31-45 onward have 53D input; fix action_term.py to include last joint targets then retrain pi2 and pi1 from scratch

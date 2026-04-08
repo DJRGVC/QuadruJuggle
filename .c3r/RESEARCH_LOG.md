@@ -314,3 +314,27 @@ Result:     At iter 524 (still running, converged): timeout=99.4%, apex_rew=0.07
             This forces policy to choose between 0/step (balance) vs variable (juggle+survive).
 Decision:   Next: iter_011 with ball_low_penalty added. Expected: policy must explore throwing
             to avoid earning ~0 from passive balancing.
+
+---
+
+## iter_011 — ball_low_penalty=-1.0 + sigma_ratio=3.5 (d435i, 1500-iter)  (2026-04-08T04:04Z)
+Hypothesis: ball_low_penalty=-1.0/step when h≤0.03m forces balance reward to ~0/step (alive-penalty≈0),
+            making juggling strictly better than passive balancing for the first time.
+Change:     Added ball_low_penalty() to rewards.py (returns 1.0 when h≤0.03m, 0 otherwise).
+            Added ball_low RewTerm(weight=-1.0) to ball_juggle_hier_env_cfg.py.
+            Reinstalled package. Run started automatically after iter_010 GPU lock released.
+Command:    gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+              --task Isaac-BallJuggleHier-Go1-v0 \
+              --pi2-checkpoint .../2026-03-12_09-04-32/model_best.pt \
+              --num_envs 12288 --max_iterations 1500 --headless --noise-mode d435i --wandb
+            Checkpoint dir: logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_04-04-38/
+Result (iter 167, IN PROGRESS):
+              Episode_Reward/ball_apex_height: 10.60  (vs 0.067 in iter_010 — 158x improvement!)
+              Episode_Termination/time_out:    69%    (vs 99.4% in iter_010 — ball is moving)
+              Train/mean_episode_length:       1350   (vs 1500 in iter_010 — ball falls off sometimes)
+              Episode_Reward/ball_low:        -0.52   (penalty firing — policy actively moving ball)
+              Episode_Reward/alive:            0.85
+            Curriculum threshold: timeout≥75% AND apex≥0.5 → NOT YET MET (timeout=69%).
+            STRONG signal: policy learned to juggle immediately. Balance local optimum broken.
+Decision:   Continue monitoring. When timeout≥75% sustained 20 iters → curriculum advances to Stage B.
+            This is the first run where active juggling behavior emerged.
