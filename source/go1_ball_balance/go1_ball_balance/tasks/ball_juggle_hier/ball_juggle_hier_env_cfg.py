@@ -126,7 +126,7 @@ class BallJuggleHierSceneCfg_DEBUG(BallJuggleHierSceneCfg):
     """
 
     d435i = TiledCameraCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/base/D435i",
+        prim_path="{ENV_REGEX_NS}/Robot/trunk/D435i",
         update_period=1.0 / 30.0,  # 30 Hz (D435i default depth rate)
         data_types=["rgb", "distance_to_image_plane"],
         spawn=sim_utils.PinholeCameraCfg(
@@ -453,11 +453,12 @@ class BallJuggleHierEnvCfg(ManagerBasedRLEnvCfg):
 
 @configclass
 class BallJuggleHierEnvCfg_PLAY(BallJuggleHierEnvCfg):
-    # Use the debug scene with D435i camera (only active in play, ≤16 envs)
-    scene: BallJuggleHierSceneCfg_DEBUG = BallJuggleHierSceneCfg_DEBUG(num_envs=16, env_spacing=3.5)
 
     def __post_init__(self):
         super().__post_init__()
+        # Replace scene with DEBUG variant that includes D435i camera.
+        # Cannot use field override — @configclass ignores subclass field defaults.
+        self.scene = BallJuggleHierSceneCfg_DEBUG(num_envs=16, env_spacing=3.5)
         self.scene.num_envs = 16
         self.scene.env_spacing = 3.5
         self.observations.policy.enable_corruption = False

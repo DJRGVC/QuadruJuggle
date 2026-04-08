@@ -1,0 +1,3 @@
+# Debug capture frames (binary)
+*.png
+*.npy

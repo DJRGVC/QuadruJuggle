@@ -8,7 +8,13 @@ Saves frames to: source/go1_ball_balance/go1_ball_balance/perception/debug/
 """
 
 import argparse
+import os
 import sys
+
+# Prepend our worktree's source dir so our version of go1_ball_balance is found first
+# (the shared venv's editable install may point to a sibling agent's worktree)
+_OUR_SRC = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "source", "go1_ball_balance"))
+sys.path.insert(0, _OUR_SRC)
 
 from isaaclab.app import AppLauncher
 
@@ -56,34 +62,80 @@ def main():
     env_cfg.scene.num_envs = args_cli.num_envs
 
     # Inject pi2 checkpoint for hierarchical tasks
-    if _pi2_checkpoint_path is not None:
-        if hasattr(env_cfg, "actions") and hasattr(env_cfg.actions, "torso_cmd"):
-            env_cfg.actions.torso_cmd.pi2_checkpoint = os.path.abspath(_pi2_checkpoint_path)
+    if hasattr(env_cfg, "actions") and hasattr(env_cfg.actions, "torso_cmd"):
+        pi2_path = _pi2_checkpoint_path
+        if pi2_path is None:
+            # Auto-detect: find the latest torso-tracking checkpoint
+            import glob
+            candidates = sorted(glob.glob(
+                os.path.join(os.path.dirname(__file__), "..", "..",
+                             "logs", "rsl_rl", "go1_torso_tracking", "*", "model_best.pt")
+            ))
+            if not candidates:
+                # Try the main QuadruJuggle repo
+                candidates = sorted(glob.glob(
+                    os.path.expanduser("~/Research/QuadruJuggle/logs/rsl_rl/go1_torso_tracking/*/model_best.pt")
+                ))
+            if candidates:
+                pi2_path = candidates[-1]
+                print(f"[debug_capture] Auto-detected pi2 checkpoint: {pi2_path}")
+            else:
+                print("[debug_capture] WARNING: no pi2 checkpoint found. Use --pi2-checkpoint <path>")
+        if pi2_path is not None:
+            env_cfg.actions.torso_cmd.pi2_checkpoint = os.path.abspath(pi2_path)
             print(f"[debug_capture] pi2 checkpoint: {env_cfg.actions.torso_cmd.pi2_checkpoint}")
 
+    import sys
+    # Verify our worktree's version of the config was loaded (with D435i camera)
+    print(f"[debug_capture] Scene type: {type(env_cfg.scene).__name__}", flush=True)
+    print(f"[debug_capture] Scene has d435i: {hasattr(env_cfg.scene, 'd435i')}", flush=True)
+    if not hasattr(env_cfg.scene, 'd435i'):
+        # Fallback: force DEBUG scene if __post_init__ override didn't take effect
+        from go1_ball_balance.tasks.ball_juggle_hier.ball_juggle_hier_env_cfg import BallJuggleHierSceneCfg_DEBUG
+        env_cfg.scene = BallJuggleHierSceneCfg_DEBUG(num_envs=args_cli.num_envs, env_spacing=3.5)
+        print(f"[debug_capture] Forced DEBUG scene, has d435i: {hasattr(env_cfg.scene, 'd435i')}", flush=True)
+    print("[debug_capture] Creating env...", flush=True)
+    sys.stdout.flush()
     env = gym.make(args_cli.task, cfg=env_cfg)
+    print("[debug_capture] Env created. Resetting...", flush=True)
+    sys.stdout.flush()
     obs, _ = env.reset()
+    print("[debug_capture] Env reset complete.", flush=True)
+    sys.stdout.flush()
 
     # Step the environment to let the ball drop onto the paddle
-    print(f"[debug_capture] Stepping {args_cli.steps} steps to let ball settle...")
+    print(f"[debug_capture] Stepping {args_cli.steps} steps to let ball settle...", flush=True)
+    unwrapped = env.unwrapped
+    print(f"[debug_capture] Action space: {unwrapped.action_space.shape}, device: {unwrapped.device}", flush=True)
     for i in range(args_cli.steps):
-        action = torch.zeros(env.unwrapped.action_space.shape, device=env.unwrapped.device)
-        obs, _, _, _, _ = env.step(action)
+        try:
+            action = torch.zeros(unwrapped.action_space.shape, device=unwrapped.device)
+            obs, _, _, _, _ = env.step(action)
+            if i == 0:
+                print(f"[debug_capture] First step OK, obs keys: {list(obs.keys()) if isinstance(obs, dict) else obs.shape}", flush=True)
+        except Exception as e:
+            print(f"[debug_capture] ERROR at step {i}: {e}", flush=True)
+            import traceback; traceback.print_exc()
+            break
 
     # Access the TiledCamera sensor
-    unwrapped = env.unwrapped
+    print("[debug_capture] Accessing camera sensor...", flush=True)
     scene = unwrapped.scene
-    if not hasattr(scene, "d435i"):
-        print("[debug_capture] ERROR: scene has no 'd435i' camera. Is this a PLAY config?")
+    print(f"[debug_capture] Scene entities: {list(scene.keys()) if hasattr(scene, 'keys') else dir(scene)}", flush=True)
+
+    try:
+        cam = scene["d435i"]
+    except (KeyError, AttributeError) as e:
+        print(f"[debug_capture] ERROR: no 'd435i' camera in scene: {e}", flush=True)
         env.close()
         simulation_app.close()
         return
 
-    cam = scene["d435i"]
-    print(f"[debug_capture] Camera shape: {cam.image_shape}, data types: {cam.cfg.data_types}")
+    print(f"[debug_capture] Camera found: {cam}, data types: {cam.cfg.data_types}", flush=True)
 
     # Force a camera update
     cam.update(dt=unwrapped.step_dt)
+    print("[debug_capture] Camera updated.", flush=True)
 
     # Save output directory
     out_dir = os.path.join(
@@ -125,7 +177,10 @@ def main():
         img = Image.fromarray(depth_vis)
         depth_path = os.path.join(out_dir, "frame_000_depth.png")
         img.save(depth_path)
-        print(f"[debug_capture] Saved depth: {depth_path}  (range {d_min:.3f}–{d_max:.3f} m)")
+        if valid.any():
+            print(f"[debug_capture] Saved depth: {depth_path}  (range {d_min:.3f}–{d_max:.3f} m)")
+        else:
+            print(f"[debug_capture] Saved depth: {depth_path}  (all invalid/zero — camera may have no objects in view)")
 
         # Also save raw .npy
         np.save(os.path.join(out_dir, "frame_000_depth_raw.npy"), depth)

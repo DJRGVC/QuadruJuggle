@@ -65,3 +65,12 @@ Change:     Created `perception/ball_ekf.py` — `BallEKF` class with predict (b
 Command:    CPU unit tests via direct module import (no Isaac Lab deps required).
 Result:     All 5 tests pass: (1) gravity prediction z=-0.115 after 0.2s (analytic: -0.116), (2) measurement update blends correctly, (3) dropout → predict-only, (4) stationary convergence holds XY within 2cm, (5) free-fall tracking error 3.4cm at 1.0s. Debug camera capture still waiting for GPU lock (policy 500-iter training).
 Decision:   Next iter: implement noise_model.py (structured D435i noise sampling as a standalone module) OR wire the EKF into ball_obs_spec.py's "ekf" mode. The latter is more impactful — it completes the full GT→noise→EKF→obs pipeline.
+
+---
+
+## iter_008 — D435i TiledCamera verified: RGB+depth frames captured  (2026-04-07T20:30:00Z)
+Hypothesis: Fixing the camera prim path (trunk, not base), scene override (PYTHONPATH for worktree isolation), and pi2 checkpoint auto-detection will produce valid D435i frames.
+Change:     (1) Fixed prim path: `Robot/base/D435i` → `Robot/trunk/D435i` (Go1 root link is `trunk`). (2) Fixed scene override: `@configclass` field overrides don't propagate in subclasses — moved to `__post_init__` assignment. (3) Added `sys.path.insert` for worktree isolation (editable install points to policy agent's worktree). (4) Added pi2 checkpoint auto-detection from `~/Research/QuadruJuggle/logs/`. (5) Fixed depth save bug (undefined `d_min` when no valid pixels).
+Command:    `uv run --active python scripts/perception/debug_d435i_capture.py --task Isaac-BallJuggleHier-Go1-Play-v0 --num_envs 1 --headless --enable_cameras --steps 20`
+Result:     Camera successfully instantiated in scene (`d435i` in entity list). RGB (640×480) and depth frames saved to `perception/debug/`. Images are grey/black because: (a) headless mode shows only dome light in upward view, (b) pi2 step fails (obs dim mismatch 41 vs 53 — the TiledCamera adds obs to pi2 that the frozen checkpoint doesn't expect). Key finding: adding a camera sensor changes the scene entity count, which may affect pi2 obs dimension if not isolated properly.
+Decision:   Next iter: wire EKF into ball_obs_spec.py "ekf" mode — this is the main deliverable. The camera is a debug tool; the EKF pipeline is what pi1 training needs.
