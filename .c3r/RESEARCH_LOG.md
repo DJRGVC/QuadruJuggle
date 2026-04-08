@@ -166,3 +166,46 @@ Result:
   - D435i+wandb training rerun currently in progress (at iter ~150/500, PID 89008)
   - Answered Daniel's group briefing question via Discord
 Decision:   Next iteration: warm-start from iter_003 oracle checkpoint for 500+ more iters (total 1000) at Stage D to test if longer training breaks the apex plateau. GPU should be free by then. If still stuck, lower _BJ_APEX_THRESHOLD from 5.0 to 3.5 to let curriculum advance.
+
+## iter_007 — warm-start oracle + lowered apex threshold → Stage D plateau broken  (2026-04-08T06:30Z)
+Hypothesis: Warm-starting from iter_003 oracle checkpoint (Stage D, apex_rew=2.92) with _BJ_APEX_THRESHOLD lowered from 5.0 to 2.0 will allow the curriculum to advance past Stage D since the policy already meets both advancement criteria (timeout≥75%, apex_rew≥2.0).
+Change:     (1) Lowered _BJ_APEX_THRESHOLD = 2.0 (was 5.0) — committed to agent/policy branch.
+            (2) Previous context session had already launched: python train_juggle_hier.py
+                --pi2-checkpoint .../2026-03-12_09-04-32/model_best.pt
+                --num_envs 12288 --max_iterations 750 --headless
+                --resume --load_run 2026-04-07_20-18-34 --checkpoint model_best.pt
+                --start-stage 3 --noise-mode oracle
+            Checkpoint dir: logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_21-56-16/
+            (3) Built compare_pi1.py eval infrastructure (compare 2 checkpoints, diff table).
+            (4) Added --noise-mode flag to eval_juggle_hier.py.
+            (5) Added wandb video upload + descriptive run naming to train_juggle_hier.py.
+Command:    [already running via PID 112352 when this context resumed]
+Result:     Training ran for 749 new iterations (iter 225→974 in tensorboard), total ~1250 iters from fresh.
+            Curriculum trajectory:
+              ~iter 361: Stage D  apex_rew=2.86, timeout=98.9% — both thresholds met
+              ~iter 380: ADVANCE D→E  (target 0.20→0.25m, sigma 0.060→0.055m)
+                          apex_rew dropped to 2.07 — policy still close to target, just above 2.0
+              ~iter 410: ADVANCE E→F  (target 0.25→0.30m, sigma 0.055→0.050m)
+                          apex_rew dropped to 1.4 then converged to 1.1
+              iter 547-974: Stuck at Stage F, apex_rew stable ~1.1 (< 2.0 threshold for Stage G)
+            Final metrics at iter 974:
+              mean_episode_length: 1415  (timeout=94.1%)
+              apex_rew: 1.10  (needs 2.0 for F→G advance; ball hits 0.20-0.25m, target is 0.30m)
+              ball_below: 5.9%  (oracle: best was 1.1%; Stage F drop height 0.50m makes misses more likely)
+              noise_std: 0.319  (well-converged, lower than iter_003's 0.337)
+              alive: 95.2%
+              mean_reward: 55.1 (lower than Stage D because harder task)
+            Checkpoint: logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_21-56-16/model_best.pt
+            KEY FINDING: Lowering _BJ_APEX_THRESHOLD to 2.0 SUCCESSFULLY broke the Stage D plateau.
+            Curriculum advanced D→E→F. Policy is now stuck at Stage F (0.30m target) with same
+            "balance not bounce" pattern. The ball doesn't reach 0.30m: policy throws to ~0.20-0.25m
+            then catches, earning apex_rew≈1.1 per step (Gaussian factor 1.1/25 ≈ 4.4%).
+Decision:   Stage D is no longer a blocker. Two paths forward:
+            (1) Lower threshold again to 1.0 to force Stage G+ advancement — quick but may create
+                increasingly weak policy that never actually learns active throwing
+            (2) Reward shaping fix: use asymmetric reward (punish ball at paddle, reward ball above
+                target) to force active throwing rather than continuous balancing
+            (3) NOISE CURRICULUM: Now that Stage D plateau is broken, proceed with noise scheduling
+                (fix_plan task: implement noise_scale in ball_obs_spec.py, integrate into _BJ_STAGES)
+            Next iteration: implement noise_scale in curriculum (oracle→d435i as stages advance).
+            This is the primary remaining blocker for sim-to-real transfer.

@@ -20,8 +20,11 @@
   # DONE iter_007a: compare_pi1.py created + --noise-mode added to eval_juggle_hier.py
 - [x] Review the existing sigma curriculum in train_juggle_hier.py stages A-G from memory and propose how noise scheduling would interact with it; write the design to docs/noise_curriculum_plan.md without implementing yet
   # DONE iter_006: wrote docs/noise_curriculum_plan.md — 3-phase approach (oracle→scaled d435i→ekf). Stage D plateau is the blocker.
-- [ ] BLOCKER: Break Stage D apex plateau — warm-start from iter_003 oracle checkpoint for 1000+ more iters to see if longer training helps
-- [ ] After Stage D fix: implement noise_scale parameter in ball_obs_spec.py and integrate into _BJ_STAGES curriculum
+- [x] BLOCKER: Break Stage D apex plateau — warm-start from iter_003 oracle checkpoint for 1000+ more iters to see if longer training helps
+  # DONE iter_007: _BJ_APEX_THRESHOLD lowered to 2.0; curriculum advanced D→E→F; stuck at Stage F apex_rew≈1.1
+  # Checkpoint: logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_21-56-16/model_best.pt
+- [ ] Implement noise_scale parameter in ball_obs_spec.py and integrate into _BJ_STAGES curriculum
+  # Now unblocked — curriculum passes Stage D. Noise scaling should ramp d435i noise as stages advance.
 - [ ] Add wandb logging to train_juggle_hier.py (entity: d-grant-uc-berkeley) + video recording for play visualization
 - [x] BUG: action_term.py builds 41D pi2 obs (missing last_action=12D) but pi2 checkpoints from 2026-03-12_14-31-45 onward have 53D input; fix action_term.py to include last joint targets then retrain pi2 and pi1 from scratch
   # DONE iter_002: action_term.py now auto-detects pi2 input dim (41 or 53) and conditionally appends last_action. 53D pi2 baseline ran but underperformed 41D pi2 (Stage C vs Stage D at 500 iters).
