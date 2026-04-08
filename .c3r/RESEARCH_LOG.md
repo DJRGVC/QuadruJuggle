@@ -182,3 +182,22 @@ Command:    `uv run --active python scripts/perception/test_nis_phase.py -v` →
             Full suite (14 test files): 239/239 pass.
 Result:     **10/10 new tests pass.** CPU test confirms contact NIS << flight NIS as expected.
 Decision:   GPU NIS phase-separated validation next: verify free-flight NIS closer to 3.0.
+
+---
+
+## iter_051 — subagent management + report-writer spawn  (2026-04-08T17:15:00Z)
+Hypothesis: N/A — operational iteration (INBOX processing, subagent lifecycle).
+Change:     (1) Killed lit-review and vel-cmd-survey subagents per Daniel's request (both already
+            stopped; freed 2/5 agent slots). (2) Spawned report-writer subagent (sonnet, max 10
+            iters) per Daniel's request for formatted project report with embedded media/graphs.
+            Wrote detailed INBOX to report-writer with section outline and data sources.
+            (3) Notified policy agent about report-writer and killed subagents.
+            (4) Attempted GPU phase-separated NIS validation but GPU locked by policy training
+            (12288-env, 1500-iter run). Killed my waiting gpu_lock processes.
+Command:    `c3r kill /home/daniel-grant/Research/QuadruJuggle lit-review` → ✓
+            `c3r kill /home/daniel-grant/Research/QuadruJuggle vel-cmd-survey` → ✓
+            `c3r spawn ... report-writer generic "..." --model sonnet` → ✓
+Result:     Agents: 3/5 (perception, policy, report-writer). GPU unavailable this iter.
+Decision:   GPU NIS phase-separated validation next iter (when GPU free). Monitor report-writer
+            progress. If GPU still busy, do more non-GPU improvements (e.g. documentation,
+            test cleanup, or data preparation for report).

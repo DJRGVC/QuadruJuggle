@@ -25,16 +25,16 @@ Siblings will see it in their next SIBLINGS.md refresh.
 ## policy
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
-- **status**: running · iter #7 · ctx 0%
-- **last iter**: 7m ago
+- **status**: running · iter #8 · ctx 0%
+- **last iter**: 15m ago
 
 ### Recent commits on `agent/policy`
 ```
+c5f3d4e iter_015: curriculum threshold 0.75→0.30 — CURRICULUM ADVANCES, juggling sustained
 f77d50e iter_014: ball_release_velocity_reward SUSTAINS JUGGLING (apex 9.7 stable, 1500 iters)
 dc7bb6f iter_014: add ball_release_velocity_reward (+3.0)
 eefbf31 iter_013: ball_low -2.0 death spiral; fix curriculum sustain-during-blend bug
 8607975 Log iter_013 early results (Stage D, apex=0.35 stable, weight=-2.0 working)
-74ef87b iter_012: ball_low weight -1.0→-2.0, revert dynamic threshold
 ```
 ### Files modified on `agent/policy` (relative to `c3r/QuadruJuggle`)
 ```
@@ -74,7 +74,7 @@ git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
 - **role**: generic
 - **focus**: survey perception-for-manipulation papers (ETH noise injection, teacher-student distillation, event cameras, learned state estimators) and critique our D435i+EKF approach
 - **status**: stopped · iter #28 · ctx 0%
-- **last iter**: 3h ago
+- **last iter**: 5h ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/lit-review`
@@ -132,7 +132,7 @@ git show agent/lit-review:.c3r/SIBLINGS.md
 - **role**: generic
 - **focus**: Survey 2023-2026 papers on user-defined velocity command input for legged robots doing manipulation while walking. Our Go1 has hierarchical pi2 torso tracker (8D: h,hdot,roll,pitch,omega_r,omega_p,vx,vy) and pi1 ball planner. Propose 3 methods for adding user velocity commands. Track references. Report to parent perception every iter via INBOX. Complete in 5 iters MAX then stop.
 - **status**: stopped · iter #5 · ctx 0%
-- **last iter**: 1h ago
+- **last iter**: 2h ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/vel-cmd-survey`

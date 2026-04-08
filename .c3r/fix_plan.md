@@ -4,11 +4,16 @@
 # 239/239 tests pass (CPU). GPU NIS validated.
 # IMU-aided EKF + 9D spin + contact-aware + NIS gating all implemented.
 # Velocity commands: Method 1 (override) + Method 2 (residual) + play_teleop.py done.
-# Lit-review + vel-cmd-survey subagents killed.
+# Subagents: lit-review killed, vel-cmd-survey killed, report-writer spawned (sonnet, max 10 iters).
 
 # Phase 5: Sim perception refinements
-- [ ] GPU phase-separated NIS validation: verify free-flight NIS closer to 3.0
+- [ ] GPU phase-separated NIS validation: verify free-flight NIS closer to 3.0 (blocked: GPU held by policy training)
 - [ ] Support policy agent with noise curriculum tuning if/when they reach that stage
+
+# Phase 7: Project Report (report-writer subagent)
+- [ ] Monitor report-writer progress, provide info as needed
+- [ ] Kill report-writer after max 10 iters or when report is done
+- [ ] Review and polish final report
 
 # Phase 3: Real Hardware Integration (blocked on Go1 + D435i access)
 - [ ] Implement D435iCamera wrapper (pyrealsense2, depth-only 848x480 @ 90fps) — needs hardware

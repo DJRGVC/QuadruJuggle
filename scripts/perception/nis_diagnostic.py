@@ -33,10 +33,13 @@ def main():
     parser.add_argument("--pi2-checkpoint", type=str, required=True)
     parser.add_argument("--headless", action="store_true")
     # EKF tuning overrides
-    parser.add_argument("--q_vel", type=float, default=None, help="Override EKF q_vel")
+    parser.add_argument("--q_vel", type=float, default=None, help="Override EKF q_vel (free-flight)")
+    parser.add_argument("--q_vel_contact", type=float, default=None, help="Override EKF q_vel_contact")
     parser.add_argument("--q_pos", type=float, default=None, help="Override EKF q_pos")
     parser.add_argument("--r_xy", type=float, default=None, help="Override EKF r_xy")
     parser.add_argument("--r_z", type=float, default=None, help="Override EKF r_z")
+    parser.add_argument("--contact_z_threshold", type=float, default=None,
+                        help="Override contact detection Z threshold (m)")
     parser.add_argument("--world-frame", action="store_true",
                         help="Run EKF in world frame (transforms meas body→world)")
     parser.add_argument("--no-contact-aware", action="store_true",
@@ -100,6 +103,10 @@ def main():
         ekf_cfg.r_xy = args.r_xy
     if args.r_z is not None:
         ekf_cfg.r_z = args.r_z
+    if args.q_vel_contact is not None:
+        ekf_cfg.q_vel_contact = args.q_vel_contact
+    if args.contact_z_threshold is not None:
+        ekf_cfg.contact_z_threshold = args.contact_z_threshold
     if getattr(args, "no_contact_aware", False):
         ekf_cfg.contact_aware = False
 
@@ -107,9 +114,10 @@ def main():
     enable_imu = not getattr(args, "no_imu", False)
     enable_spin = getattr(args, "enable_spin", False)
     _print(f"\nEKF config: q_pos={ekf_cfg.q_pos}, q_vel={ekf_cfg.q_vel}, "
+           f"q_vel_contact={ekf_cfg.q_vel_contact}, "
            f"r_xy={ekf_cfg.r_xy}, r_z={ekf_cfg.r_z}, r_z_per_m={ekf_cfg.r_z_per_metre}, "
-           f"contact_aware={ekf_cfg.contact_aware}, world_frame={world_frame}, "
-           f"enable_imu={enable_imu}, enable_spin={enable_spin}")
+           f"contact_aware={ekf_cfg.contact_aware}, contact_z={ekf_cfg.contact_z_threshold}, "
+           f"world_frame={world_frame}, enable_imu={enable_imu}, enable_spin={enable_spin}")
 
     # Build env config
     noise_cfg = BallObsNoiseCfg(
@@ -174,6 +182,8 @@ def main():
            f"{'-'*6}  {'-'*6}")
 
     all_nis = []
+    all_nis_flight = []
+    all_nis_contact = []
     total_gate_rejected = 0
     total_gate_total = 0
 
@@ -206,6 +216,10 @@ def main():
 
             nis_flight = diag.get("mean_nis_flight", 0.0)
             nis_contact = diag.get("mean_nis_contact", 0.0)
+            if nis_flight > 0:
+                all_nis_flight.append(nis_flight)
+            if nis_contact > 0:
+                all_nis_contact.append(nis_contact)
             gate_rate = diag.get("gate_rejection_rate", 0.0)
             gate_count = diag.get("gate_rejected", 0)
             total_gate_rejected += gate_count
@@ -240,6 +254,28 @@ def main():
             _print(f"  → DIAGNOSIS: Slightly overconfident but OK. Consider increasing q_vel slightly.")
         else:
             _print(f"  → DIAGNOSIS: Well-tuned! NIS close to χ²(3) mean = 3.0")
+
+        # Phase-separated diagnosis (from accumulated per-interval values)
+        if all_nis_flight or all_nis_contact:
+            _print(f"\n  Phase-separated NIS (averaged over logged intervals):")
+            if all_nis_flight:
+                mean_f = sum(all_nis_flight) / len(all_nis_flight)
+                _print(f"    Flight:  {mean_f:.3f}  ({len(all_nis_flight)} intervals, tuned by q_vel={ekf_cfg.q_vel})")
+                if mean_f < 1.0:
+                    _print(f"    → Flight over-conservative: try q_vel < {ekf_cfg.q_vel}")
+                elif mean_f > 5.0:
+                    _print(f"    → Flight overconfident: try q_vel > {ekf_cfg.q_vel}")
+                else:
+                    _print(f"    → Flight well-tuned")
+            if all_nis_contact:
+                mean_c = sum(all_nis_contact) / len(all_nis_contact)
+                _print(f"    Contact: {mean_c:.3f}  ({len(all_nis_contact)} intervals, tuned by q_vel_contact={ekf_cfg.q_vel_contact})")
+                if mean_c < 1.0:
+                    _print(f"    → Contact over-conservative: try q_vel_contact < {ekf_cfg.q_vel_contact}")
+                elif mean_c > 5.0:
+                    _print(f"    → Contact overconfident: try q_vel_contact > {ekf_cfg.q_vel_contact}")
+                else:
+                    _print(f"    → Contact well-tuned")
     else:
         _print("\n  No NIS data collected!")
 
