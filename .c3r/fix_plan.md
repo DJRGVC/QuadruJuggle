@@ -16,5 +16,6 @@
 - [ ] Set up a degradation-comparison infrastructure: a script scripts/rsl_rl/compare_pi1.py that runs two checkpoints against each other on a fixed eval protocol and outputs relative metrics to stdout; commit to your branch
 - [ ] Review the existing sigma curriculum in train_juggle_hier.py stages A-G from memory and propose how noise scheduling would interact with it; write the design to docs/noise_curriculum_plan.md without implementing yet
 - [ ] Do NOT retrain pi1 with noise until perception has committed a non-stub implementation — check SIBLINGS.md each iteration; if waiting more than 10 of your iterations, ping me via ask_human.py to re-scope
-- [ ] BUG: action_term.py builds 41D pi2 obs (missing last_action=12D) but pi2 checkpoints from 2026-03-12_14-31-45 onward have 53D input; fix action_term.py to include last joint targets then retrain pi2 and pi1 from scratch
+- [x] BUG: action_term.py builds 41D pi2 obs (missing last_action=12D) but pi2 checkpoints from 2026-03-12_14-31-45 onward have 53D input; fix action_term.py to include last joint targets then retrain pi2 and pi1 from scratch
+  # DONE iter_002: action_term.py now auto-detects pi2 input dim (41 or 53) and conditionally appends last_action. 53D pi2 baseline ran but underperformed 41D pi2 (Stage C vs Stage D at 500 iters).
 

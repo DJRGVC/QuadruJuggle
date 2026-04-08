@@ -163,8 +163,13 @@ class TorsoCommandAction(ActionTerm):
                 "count": count,
             }
 
+        # Detect pi2 input dimensionality (41D without last_action, 53D with)
+        self._pi2_input_dim = layers[0][0] if layers else 41
+        self._pi2_has_last_action = self._pi2_input_dim > 41
+
         print(f"[TorsoCommandAction] Loaded pi2 from {checkpoint_path}")
         print(f"  Actor architecture: {[f'{in_d}→{out_d}' for in_d, out_d in layers]}")
+        print(f"  Input dim: {self._pi2_input_dim} ({'with' if self._pi2_has_last_action else 'without'} last_action)")
         print(f"  Normalizer: {'yes' if self._obs_normalizer else 'no'}")
 
     @property
@@ -189,10 +194,9 @@ class TorsoCommandAction(ActionTerm):
         # Scale [-1, 1] → physical units
         torso_cmd = actions * self._cmd_scales + self._cmd_offsets
 
-        # Build pi2's 53D observation vector (must match training order exactly):
-        # [torso_command_normalized(8), base_lin_vel(3), base_ang_vel(3),
-        #  projected_gravity(3), joint_pos_rel(12), joint_vel_rel(12),
-        #  last_action(12)]
+        # Build pi2's observation vector (must match training order exactly):
+        # 41D: [torso_cmd(8), lin_vel(3), ang_vel(3), gravity(3), jpos(12), jvel(12)]
+        # 53D: same + last_action(12)
 
         # Normalize torso command (same as torso_command_obs)
         torso_cmd_norm = (torso_cmd + self._obs_offset) * self._obs_norm
@@ -208,15 +212,17 @@ class TorsoCommandAction(ActionTerm):
         joint_vel = self._robot.data.joint_vel[:, self._joint_ids]
 
         # Concatenate in training order
-        pi2_obs = torch.cat([
-            torso_cmd_norm,          # 8
-            base_lin_vel,            # 3
-            base_ang_vel,            # 3
-            projected_gravity,       # 3
-            joint_pos_rel,           # 12
-            joint_vel,               # 12
-            self._last_pi2_actions,  # 12
-        ], dim=-1)  # (N, 53)
+        obs_parts = [
+            torso_cmd_norm,    # 8
+            base_lin_vel,      # 3
+            base_ang_vel,      # 3
+            projected_gravity, # 3
+            joint_pos_rel,     # 12
+            joint_vel,         # 12
+        ]
+        if self._pi2_has_last_action:
+            obs_parts.append(self._last_pi2_actions)  # 12
+        pi2_obs = torch.cat(obs_parts, dim=-1)  # (N, 41 or 53)
 
         # Apply normalizer if available
         if self._obs_normalizer is not None:
