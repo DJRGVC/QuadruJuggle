@@ -109,3 +109,46 @@ Result:     Both smoke tests PASS (2 iterations each, no errors).
 Decision:   Next: run full 500-iter d435i training (same pi2, 12288 envs) to quantify degradation
             vs oracle baseline (iter_003: timeout=98.9%, apex=2.92). This is the core of
             the policy agent's mandate: measure noise impact and begin noise scheduling.
+
+## iter_005 — d435i noise training comparison (500-iter, 12288 envs)  (2026-04-08T03:50Z)
+Hypothesis: Training pi1 with d435i perception noise will degrade performance vs oracle baseline, providing the first noise-degradation measurement.
+Change:     Ran pi1 training with --noise-mode d435i (D435i structured noise: 2mm XY, 3mm Z base, 2% dropout). Same pi2 (41D), same 12288 envs, 500 iters.
+Command:    $C3R_BIN/gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+              --task Isaac-BallJuggleHier-Go1-v0 \
+              --pi2-checkpoint .../2026-03-12_09-04-32/model_best.pt \
+              --num_envs 12288 --max_iterations 500 --headless --noise-mode d435i
+            # checkpoint: logs/rsl_rl/go1_ball_juggle_hier/2026-04-07_20-53-29/model_best.pt
+Result:     Training time 1724s (~29 min).
+            Curriculum: A→B (iter ~204), B→C (iter ~220), C→D (iter ~240).
+            Stage D stuck (same as oracle) — apex reward plateaus at ~2.9/5.0 needed.
+            At iter 499:
+              mean_episode_length: 1438.6  (oracle iter_003: 1500)
+              time_out %: 85.2%  (oracle: 98.9%)
+              ball_apex_height: 3.04  (oracle: 2.92)
+              alive: 0.921  (oracle: 0.994)
+              mean_reward: 72.2  (oracle: 78.5)
+              noise_std: 0.548  (oracle: 0.337)
+              ball_below: 14.8%  (oracle: 1.1%)
+            
+            COMPARISON SUMMARY:
+            | Metric          | Oracle (iter_003) | D435i (iter_005) | Delta |
+            |-----------------|-------------------|------------------|-------|
+            | mean_ep_len     | 1500              | 1439             | -4.1% |
+            | timeout %       | 98.9%             | 85.2%            | -13.7pp |
+            | apex_reward     | 2.92              | 3.04             | +4.1% |
+            | ball_below %    | 1.1%              | 14.8%            | +13.7pp |
+            | mean_reward     | 78.5              | 72.2             | -8.0% |
+            | noise_std       | 0.337             | 0.548            | +63%  |
+            
+            KEY FINDING: d435i noise causes moderate degradation (~8% reward, ~14pp more ball drops)
+            but does NOT prevent curriculum advancement (both reach Stage D at similar iterations).
+            Both oracle and d435i hit the SAME local optimum: the robot balances the ball but
+            doesn't actively juggle it to the 20cm target height. The apex-reward bottleneck
+            is NOT caused by observation noise — it's a reward/architecture issue.
+Decision:   The d435i degradation is modest and manageable. But the more important finding is
+            that BOTH oracle and d435i plateau at Stage D with apex ~3/5. Before investing in
+            noise scheduling, need to diagnose why the policy won't juggle. Hypotheses:
+            (1) ball_apex_height reward Gaussian is too narrow (std=target/2.5 = 0.08m at D)
+            (2) The policy earns more from survival than from attempting risky bounces
+            (3) pi2 can't execute the fast height changes needed for bouncing
+            Next iteration: investigate hypothesis (1) — check if wider apex sigma helps.

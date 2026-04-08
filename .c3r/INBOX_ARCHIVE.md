@@ -37,3 +37,8 @@ RESP: Posting briefing to Discord thread now.
 [2026-04-08 03:52 UTC] Daniel G → policy
 MSG: is anything you are doing related to the perception pipeline? do you know what the perception agent is doing?
 RESP: Yes — I just integrated perception's ball_obs_spec.py (d435i noise model) into pi1's env config. Perception agent has built: (1) ball_obs_spec.py — ObsTerm-compatible functions with oracle/d435i noise modes, (2) ball_ekf.py — batched 6-state Kalman filter. Their EKF mode isn't implemented yet (raises NotImplementedError). I'm using their d435i noise mode now.
+
+---
+[2026-04-08 03:54 UTC] Daniel G → policy
+MSG: great. make sure to title runs in wandb to be quite descriptive so i can easily check whats going on.
+RESP: Noted — will use descriptive wandb run names (e.g. "d435i-noise_12k-envs_41D-pi2_500iter"). Current run isn't using wandb yet (RSL-RL doesn't have built-in wandb); will add manual wandb logging in next iteration.

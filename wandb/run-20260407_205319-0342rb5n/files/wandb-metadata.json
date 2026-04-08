@@ -1,0 +1,40 @@
+{
+  "os":  "Linux-6.17.0-20-generic-x86_64-with-glibc2.39",
+  "python":  "CPython 3.11.14",
+  "startedAt":  "2026-04-08T03:53:19.064837Z",
+  "program":  "/home/daniel-grant/Research/QuadruJuggle-policy/scripts/rsl_rl/train_juggle_hier.py",
+  "codePath":  "scripts/rsl_rl/train_juggle_hier.py",
+  "codePathLocal":  "scripts/rsl_rl/train_juggle_hier.py",
+  "git":  {
+    "remote":  "https://github.com/DJRGVC/QuadruJuggle.git",
+    "commit":  "e0e479a27d609cc9dce86373dab0150c1f6a3e8e"
+  },
+  "email":  "dgrant@berkeley.edu",
+  "root":  "/home/daniel-grant/Research/QuadruJuggle-policy",
+  "host":  "daniel-grant-B850-AORUS-ELITE-WIFI7",
+  "executable":  "/home/daniel-grant/IsaacLab/.venv311/bin/python3",
+  "cpu_count":  16,
+  "cpu_count_logical":  32,
+  "gpu":  "NVIDIA GeForce RTX 5070 Ti",
+  "gpu_count":  1,
+  "disk":  {
+    "/":  {
+      "total":  "277534498816",
+      "used":  "97121910784"
+    }
+  },
+  "memory":  {
+    "total":  "64890576896"
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "NVIDIA GeForce RTX 5070 Ti",
+      "memoryTotal":  "17094934528",
+      "cudaCores":  8960,
+      "architecture":  "Blackwell",
+      "uuid":  "GPU-70726c3b-10d0-1c31-df78-8808031c0c57"
+    }
+  ],
+  "cudaVersion":  "13.1",
+  "writerId":  "qyyzkdzgtex0az588401mgfatidmymcw"
+}
