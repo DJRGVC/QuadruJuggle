@@ -143,7 +143,7 @@ _BJ_STAGES = [
     (0.30,     1.00,    2.5,     0.090,  0.18),   # P  — full range
 ]
 _BJ_THRESHOLD      = 0.75
-_BJ_APEX_THRESHOLD = 5.0
+_BJ_APEX_THRESHOLD = 2.0     # was 5.0; lowered to let curriculum advance past Stage D plateau
 _BJ_SUSTAIN    = 20    # was 15 — require stronger mastery before advancing
 _BJ_TRANSITION = 15    # was 10 — slower parameter blending
 

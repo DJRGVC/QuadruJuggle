@@ -26,7 +26,7 @@ Siblings will see it in their next SIBLINGS.md refresh.
 - **role**: generic
 - **focus**: implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline following ETH-style architecture, producing noisy ball observations usable by pi1 in Isaac Lab sim.
 - **status**: running · iter #5 · ctx 0%
-- **last iter**: 37m ago
+- **last iter**: 48m ago
 
 ### Recent commits on `agent/perception`
 ```
