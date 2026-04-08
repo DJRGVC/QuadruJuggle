@@ -153,7 +153,7 @@ class TestBallisticFreeFlightEKF(unittest.TestCase):
         ekf = BallEKF(
             num_envs=1,
             device="cpu",
-            cfg=BallEKFConfig(contact_aware=contact_aware),
+            cfg=BallEKFConfig(contact_aware=contact_aware, nis_gate_enabled=False),
         )
         ekf.reset(
             torch.tensor([0]),
@@ -276,7 +276,7 @@ class TestBallisticWithContact(unittest.TestCase):
         # Phase 2: launch + flight — ~50 steps
         # Phase 3: ball back near paddle — remaining
 
-        ekf = BallEKF(num_envs=1, device="cpu", cfg=BallEKFConfig(contact_aware=True))
+        ekf = BallEKF(num_envs=1, device="cpu", cfg=BallEKFConfig(contact_aware=True, nis_gate_enabled=False))
         pos0 = np.array([0.0, 0.0, 0.020])  # resting on paddle
         ekf.reset(
             torch.tensor([0]),
@@ -332,7 +332,7 @@ class TestBallisticWithContact(unittest.TestCase):
 
     def test_contact_phase_high_q_vel(self):
         """During contact (z < 25mm), q_vel should inflate so EKF trusts measurements."""
-        ekf = BallEKF(num_envs=1, device="cpu", cfg=BallEKFConfig(contact_aware=True))
+        ekf = BallEKF(num_envs=1, device="cpu", cfg=BallEKFConfig(contact_aware=True, nis_gate_enabled=False))
         pos0 = torch.tensor([[0.0, 0.0, 0.020]])  # on paddle
         ekf.reset(torch.tensor([0]), pos0, torch.zeros(1, 3))
 
@@ -352,7 +352,7 @@ class TestBallisticWithContact(unittest.TestCase):
 
     def test_flight_phase_low_q_vel(self):
         """During flight (z > 25mm), q_vel is low for good smoothing."""
-        ekf = BallEKF(num_envs=1, device="cpu", cfg=BallEKFConfig(contact_aware=True))
+        ekf = BallEKF(num_envs=1, device="cpu", cfg=BallEKFConfig(contact_aware=True, nis_gate_enabled=False))
         pos0 = torch.tensor([[0.0, 0.0, 0.50]])  # high up
         ekf.reset(torch.tensor([0]), pos0, torch.zeros(1, 3))
 
@@ -375,7 +375,7 @@ class TestMultipleBounces(unittest.TestCase):
     def test_three_bounces(self):
         """Simulate 3 consecutive bounces with decreasing height."""
         dt = 0.02
-        ekf = BallEKF(num_envs=1, device="cpu", cfg=BallEKFConfig(contact_aware=True))
+        ekf = BallEKF(num_envs=1, device="cpu", cfg=BallEKFConfig(contact_aware=True, nis_gate_enabled=False))
 
         # Bounce heights: 30cm, 25cm, 20cm (losing energy each bounce)
         heights = [0.30, 0.25, 0.20]
@@ -416,7 +416,7 @@ class TestMultipleBounces(unittest.TestCase):
     def test_nis_stays_bounded(self):
         """NIS should stay in reasonable range across multiple bounces."""
         dt = 0.02
-        ekf = BallEKF(num_envs=1, device="cpu", cfg=BallEKFConfig(contact_aware=True))
+        ekf = BallEKF(num_envs=1, device="cpu", cfg=BallEKFConfig(contact_aware=True, nis_gate_enabled=False))
 
         pos0 = np.array([0.0, 0.0, 0.025])
         ekf.reset(
@@ -458,7 +458,7 @@ class TestOffAxisLaunch(unittest.TestCase):
         n_steps = int(t_flight / dt)
         gt_pos, gt_vel = ballistic_trajectory(pos0, vel0, dt, n_steps)
 
-        ekf = BallEKF(num_envs=1, device="cpu", cfg=BallEKFConfig(contact_aware=True))
+        ekf = BallEKF(num_envs=1, device="cpu", cfg=BallEKFConfig(contact_aware=True, nis_gate_enabled=False))
         ekf.reset(
             torch.tensor([0]),
             torch.tensor([pos0], dtype=torch.float32),

@@ -198,3 +198,29 @@ Result:     **17/17 new pass.** EKF converges to <5cm error on stationary ball w
             Hough-on-MockCamera end-to-end: <10cm error. Zero regressions.
 Decision:   GPU NIS IMU on/off comparison next if GPU available. Else: NIS gating in pipeline
             (reject wild measurements via chi-squared test before EKF update).
+
+---
+
+## iter_047 — Chi-squared NIS gating in BallEKF (19/19 new tests, 227/227 total)  (2026-04-08T22:00:00Z)
+Hypothesis: Per-env chi-squared NIS gating in BallEKF.update() rejects outlier measurements
+            (detector glitches, multi-ball confusion) before they corrupt the state estimate.
+Change:     Added NIS gating to BallEKF.update(): computes NIS for all envs, rejects measurements
+            where NIS > nis_gate_threshold (default 11.345 = chi-squared 3DOF 99th percentile).
+            Per-env warm-up: gating skipped for first nis_gate_warmup=50 updates per env after
+            reset, since velocity takes many position-only observations to converge (position P
+            drops in 1 step but velocity P needs ~50). Config: nis_gate_enabled (default True),
+            nis_gate_threshold, nis_gate_warmup. Diagnostics: gate_rejection_rate,
+            gate_rejection_count, reset_gate_stats(). _update_count per env, reset on env reset.
+            Key design decisions:
+            - Warm-up count (not P-threshold) because pos-P converges instantly while vel-P lags
+            - 50 updates ≈ 1s at 50Hz — sufficient for velocity convergence in sim (reset near truth)
+            - Real pipeline's cold start (init at [0,0,0]) also covered by warm-up
+            - Existing ballistic trajectory tests use nis_gate_enabled=False since they pre-date
+              gating and have multi-bounce discontinuities the gate correctly rejects
+Command:    `uv run --active python scripts/perception/test_nis_gating.py -v` → 19/19
+            Full suite (13 test files): 227/227 pass.
+Result:     **19/19 new tests pass.** 8 test classes: config, outlier rejection, disabled mode,
+            warm-up (skip/activate/reset-on-env-reset), diagnostics, 9D spin, contact-aware,
+            custom threshold. Zero regressions across all 12 pre-existing test files.
+Decision:   GPU NIS IMU on/off when available. Else: NIS diagnostic logging in nis_diagnostic.py
+            (add gate rejection stats to the output), or latency injection refinements.

@@ -101,6 +101,18 @@ class BallEKFConfig:
     # Initial spin uncertainty
     p_spin_init: float = 10.0  # initial spin std (rad/s) — very uncertain
 
+    # --- NIS gating (chi-squared outlier rejection) ---
+    nis_gate_enabled: bool = True  # if True, reject measurements with NIS > threshold
+    nis_gate_threshold: float = 11.345  # chi-squared 3DOF, 99th percentile
+    # 95% = 7.815, 99% = 11.345, 99.5% = 12.838
+    # 99% rejects ~1% of consistent measurements — tight enough to catch
+    # real outliers (detector glitches, multi-ball confusion) without
+    # discarding good data during contact transients.
+    nis_gate_warmup: int = 50  # skip gating for first N updates per env
+    # The EKF needs several updates to converge velocity from position-only
+    # observations. During warm-up, all measurements are accepted. After
+    # warm-up, the NIS gate rejects outliers. 50 updates ≈ 1s at 50Hz.
+
 
 def _batch_skew(v: torch.Tensor) -> torch.Tensor:
     """Build batched skew-symmetric matrix [v]_x from (N, 3) vectors.
@@ -186,6 +198,13 @@ class BallEKF:
         self._nis_sum = 0.0
         self._nis_count = 0
 
+        # NIS gate rejection counter (for diagnostics)
+        self._gate_reject_count = 0
+        self._gate_total_count = 0
+
+        # Per-env update count (diagnostic)
+        self._update_count = torch.zeros(num_envs, dtype=torch.long, device=self.device)
+
     # --- Public properties ---
 
     @property
@@ -233,6 +252,25 @@ class BallEKF:
         val = self.mean_nis
         self._nis_sum = 0.0
         self._nis_count = 0
+        return val
+
+    @property
+    def gate_rejection_rate(self) -> float:
+        """Fraction of detected measurements rejected by NIS gate."""
+        if self._gate_total_count == 0:
+            return 0.0
+        return self._gate_reject_count / self._gate_total_count
+
+    @property
+    def gate_rejection_count(self) -> int:
+        """Total number of measurements rejected by NIS gate."""
+        return self._gate_reject_count
+
+    def reset_gate_stats(self) -> tuple[int, int]:
+        """Return (rejected, total) and reset gate counters."""
+        val = (self._gate_reject_count, self._gate_total_count)
+        self._gate_reject_count = 0
+        self._gate_total_count = 0
         return val
 
     # --- Core EKF operations ---
@@ -423,14 +461,39 @@ class BallEKF:
         S += torch.eye(3, device=self.device).unsqueeze(0) * 1e-8
         K = torch.linalg.solve(S.transpose(-1, -2), PH_T.transpose(-1, -2)).transpose(-1, -2)  # (N, D, 3)
 
-        # ANEES / NIS diagnostic: NIS_k = y^T S^{-1} y (scalar per env)
+        # NIS per env: NIS_k = y^T S^{-1} y (scalar per env)
+        # Compute for ALL envs (needed for gating), accumulate stats for detected only.
+        S_inv_y = torch.linalg.solve(S, y.unsqueeze(-1))  # (N, 3, 1)
+        nis = torch.bmm(y.unsqueeze(1), S_inv_y).squeeze(-1).squeeze(-1)  # (N,)
+
+        # Accumulate NIS diagnostic for detected envs (before gating)
         if detected.any():
-            y_det = y[detected]
-            S_det = S[detected]
-            S_inv_y = torch.linalg.solve(S_det, y_det.unsqueeze(-1))
-            nis = torch.bmm(y_det.unsqueeze(1), S_inv_y).squeeze()
-            self._nis_sum += nis.sum().item()
-            self._nis_count += nis.numel()
+            nis_det = nis[detected]
+            self._nis_sum += nis_det.sum().item()
+            self._nis_count += nis_det.numel()
+
+        # NIS gating: reject measurements where NIS > threshold (outlier).
+        # Per-env warm-up: skip gating until env has had enough successful
+        # updates for both position and velocity to converge. Needed because
+        # position converges in 1 step but velocity (indirectly observed
+        # through position changes) takes many more.
+        if self.cfg.nis_gate_enabled:
+            past_warmup = self._update_count >= self.cfg.nis_gate_warmup
+            gate_eligible = detected & past_warmup
+            if gate_eligible.any():
+                n_eligible = gate_eligible.sum().item()
+                self._gate_total_count += int(n_eligible)
+                gated_out = gate_eligible & (nis > self.cfg.nis_gate_threshold)
+                n_rejected = gated_out.sum().item()
+                self._gate_reject_count += int(n_rejected)
+                # Mask out gated measurements — treat as undetected
+                detected = detected & ~gated_out
+
+        if not detected.any():
+            return
+
+        # Increment per-env update count for envs that pass gating
+        self._update_count[detected] += 1
 
         # State update: x = x + K @ y (only for detected envs)
         dx = torch.bmm(K, y.unsqueeze(-1)).squeeze(-1)  # (N, D)
@@ -507,3 +570,6 @@ class BallEKF:
         if self._spin_enabled:
             P_init[6:9, 6:9] *= self.cfg.p_spin_init ** 2
         self._P[env_ids] = P_init.unsqueeze(0).expand(len(env_ids), -1, -1)
+
+        # Reset per-env update count so gating warm-up restarts
+        self._update_count[env_ids] = 0

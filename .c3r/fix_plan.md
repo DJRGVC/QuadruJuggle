@@ -17,6 +17,7 @@
 - [ ] End-to-end hardware test: perception -> pi1 on real Go1
 
 # Phase 5: Sim perception refinements
+- [x] NIS chi-squared gating in BallEKF (reject outlier measurements)
 - [ ] GPU NIS validation: IMU ON vs OFF comparison (blocked on GPU lock)
 - [ ] GPU NIS validation: 9D spin mode (blocked on GPU lock)
 - [ ] Support policy agent with noise curriculum tuning if/when they reach that stage
