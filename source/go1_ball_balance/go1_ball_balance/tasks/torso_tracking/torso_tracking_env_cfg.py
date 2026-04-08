@@ -37,10 +37,10 @@ Rewards (aligned with Isaac Lab Go1 flat terrain velocity tracking config):
   NEGATIVE (pose tracking as squared-error penalties):
   - height_error       -2.0   (z - h_target)^2
   - height_vel_error   -0.2   (z_dot - h_dot_target)^2
-  - roll_error         -1.0   (roll - roll_target)^2
-  - pitch_error        -1.0   (pitch - pitch_target)^2
-  - roll_rate_error    -0.05  (omega_roll - target)^2
-  - pitch_rate_error   -0.05  (omega_pitch - target)^2
+  - roll_error         -3.0   (roll - roll_target)^2
+  - pitch_error        -3.0   (pitch - pitch_target)^2
+  - roll_rate_error    -0.3   (omega_roll - target)^2
+  - pitch_rate_error   -0.3   (omega_pitch - target)^2
   NEGATIVE (regularization — Isaac Lab standard set):
   - base_height        -1.0   safety net below 0.17m
   - base_height_max    -1.0   safety net above 0.53m
@@ -497,22 +497,27 @@ class RewardsCfg:
     )
     roll_error = RewTerm(
         func=mdp.roll_error_penalty,
-        weight=-1.0,
+        weight=-3.0,
+        # Was -1.0 — too weak; RMS error ~10 deg.  3× increase forces angle tracking.
         params={"robot_cfg": SceneEntityCfg("robot")},
     )
     pitch_error = RewTerm(
         func=mdp.pitch_error_penalty,
-        weight=-1.0,
+        weight=-3.0,
+        # Was -1.0 — same as roll.
         params={"robot_cfg": SceneEntityCfg("robot")},
     )
     roll_rate_error = RewTerm(
         func=mdp.roll_rate_error_penalty,
-        weight=-0.05,
+        weight=-0.3,
+        # Was -0.05 — nearly ignored (RMS 2.3 rad/s).  6× increase to actually
+        # damp angular oscillation and track commanded rates.
         params={"robot_cfg": SceneEntityCfg("robot")},
     )
     pitch_rate_error = RewTerm(
         func=mdp.pitch_rate_error_penalty,
-        weight=-0.05,
+        weight=-0.3,
+        # Was -0.05 — same as roll_rate.
         params={"robot_cfg": SceneEntityCfg("robot")},
     )
 
