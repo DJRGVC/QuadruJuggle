@@ -290,7 +290,10 @@ def _bj_install_curriculum(runner, start_stage: int = 0) -> None:
                         ball_apex_frac = sum(vals) / len(vals)
 
         # ── threshold + sustain check ─────────────────────────────────────────
-        if not final and time_out_frac is not None:
+        # Only count sustain when NOT blending — otherwise the counter ticks up
+        # during the transition and triggers back-to-back stage advances.
+        blending_now = state["old_stage"] is not None
+        if not final and not blending_now and time_out_frac is not None:
             juggling_ok = (ball_apex_frac is None) or (ball_apex_frac >= _BJ_APEX_THRESHOLD)
             if time_out_frac >= _BJ_THRESHOLD and juggling_ok:
                 state["above_count"] += 1

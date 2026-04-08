@@ -165,26 +165,46 @@ Result:     Log shrunk from 340→~130 lines. Archive preserved verbatim.
 Decision:   Next iteration (iter_013): increase ball_low weight to -2.0, warm-start from
             iter_011 model_best.pt to preserve the juggling behavior from the peak.
 
-## iter_013 — ball_low weight=-2.0 + warm-start from iter_011 peak  (2026-04-08T05:07Z)
-Hypothesis: weight=-2.0 makes passive balance earn alive(1)-penalty(2)=-1/step (negative),
-            making even a failed juggling attempt better than passive balance (-1500/ep).
-            Warm-start from iter_011 model_best.pt preserves learned bouncing behavior.
-Change:     ball_low weight: -1.0 → -2.0 in ball_juggle_hier_env_cfg.py.
-            Reverted dynamic threshold back to static 0.03m.
-Command:    gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
-              --task Isaac-BallJuggleHier-Go1-v0 \
-              --pi2-checkpoint .../2026-03-12_09-04-32/model_best.pt \
-              --num_envs 12288 --max_iterations 1500 --headless --noise-mode d435i --wandb \
-              --resume --load_run 2026-04-08_04-04-38 --checkpoint model_best.pt
+## iter_013 — ball_low=-2.0, curriculum sustain-during-blend bugfix  (2026-04-08T12:07Z)
+Hypothesis: (a) weight=-2.0 makes passive balance earn -1/step, forcing sustained juggling.
+            (b) Curriculum sustain counter must not tick during parameter blending.
+Change:     (1) ball_low weight: -1.0 → -2.0 (already committed in iter_012).
+            (2) Fixed curriculum bug: sustain counter was incrementing during blend transitions,
+                causing back-to-back stage advances (e.g. A→B→C in 35 iters instead of 70+).
+                Added `blending_now` guard in _wrapped_log() threshold check.
+            (3) Reverted ball_low back to -1.0 after observing death spiral.
+Command:    Run 1 (no fix): gpu_lock.sh ... --resume --load_run 2026-04-08_04-04-38 --checkpoint model_best.pt
             Checkpoint dir: logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_05-07-31/
-Result (Stage D, iter 621, IN PROGRESS):
-              apex_rew: 0.34-0.36/step (STABLE — not declining!)
-              timeout: 97%, ball_low: -0.96/step (ball below threshold 48% of time, was 96%)
-              alive: 0.955, ES=68/700, Total mean_reward: -33 (improving)
-            KEY FINDINGS:
-            - weight=-2.0 + warm-start working: apex stable (not collapsing), 52% time bouncing
-            - Ball below threshold only 48% of time (was 96% in iter_011 passive plateau)
-            - Total reward improving → ES not exhausted
-            BLOCKER: apex=0.35 < threshold 0.5; ball bouncing to h≈0.03-0.05m, not 0.20m target.
-Decision:   Let run continue; monitor for apex trend. If stalled at 0.35 for 100+ iters:
-            lower _BJ_APEX_THRESHOLD to 0.3 or add ball_release_velocity_reward (+3.0/launch).
+            Run 2 (with fix): gpu_lock.sh ... --resume --load_run 2026-04-08_05-07-31 --checkpoint model_best.pt
+            Checkpoint dir: logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_05-18-05/
+Result:     TWO RUNS, SAME CONCLUSION:
+            
+            Run 1 (ball_low=-2.0, no blend fix):
+              Apex peaked at 12.3 (iter 528), then catastrophic collapse → 0.8 (iter 551).
+              Timeout crashed from 99.8% → 70.8%. Reward → deeply negative.
+              Collapse at iter 529 coincided with rapid curriculum advancement (A→B→C pipelined
+              due to sustain-during-blend bug).
+            
+            Run 2 (ball_low=-2.0, WITH blend fix):
+              Apex peaked at 14.0 (iter 685), 2× longer stable window than Run 1.
+              Curriculum: A→B at iter ~670, blend done at ~685. B→C at iter ~705.
+              During B→C blend: apex 14→2.84, timeout 92%→75% (target 0.10→0.15m too hard).
+              After blend: death spiral — reward → -48, timeout → 3%, apex → 0.05.
+              Partial recovery to apex=0.54, timeout=44% by iter 800, but deeply negative reward.
+            
+            CURRICULUM BUG FIXED: sustain-during-blend guard prevents pipelined advances.
+            Bug doubled the stable training window (75→150+ iters before collapse).
+            
+            BALL_LOW=-2.0 VERDICT: Creates death spiral on curriculum steps.
+            With -2.0, passive balance earns -1/step (no safe fallback). When curriculum
+            advances and policy temporarily struggles, it enters a negative reward spiral:
+            less juggling → more ball_low penalty → shorter episodes → more terminations → worse.
+            Reverted to -1.0. Need a different mechanism to sustain juggling.
+            
+            Checkpoints:
+            - Run 1 model_best.pt: logs/.../2026-04-08_05-07-31/model_best.pt (peak at ~iter 528)
+            - Run 2 model_best.pt: logs/.../2026-04-08_05-18-05/model_best.pt (peak at ~iter 685)
+Decision:   Next iter_014: keep ball_low=-1.0 (safe fallback) + add ball_release_velocity_reward
+            (positive reward for upward ball velocity at paddle separation). This rewards the ACT
+            of throwing without penalizing temporary failure. Lit-review recommends weight=+3.0.
+            Warm-start from Run 2 model_best.pt (best peak model, apex=14).

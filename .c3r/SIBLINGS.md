@@ -82,7 +82,7 @@ git show agent/perception:.c3r/SIBLINGS.md
 - **role**: generic
 - **focus**: survey perception-for-manipulation papers (ETH noise injection, teacher-student distillation, event cameras, learned state estimators) and critique our D435i+EKF approach
 - **status**: running · iter #24 · ctx 0%
-- **last iter**: 1m ago
+- **last iter**: 9m ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/lit-review`

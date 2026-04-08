@@ -4,9 +4,12 @@
 
 ## ACTIVE — Break balance-not-bounce local optimum
 
-- [ ] iter_012: Increase ball_low_penalty weight from -1.0 to -2.0 (lit-review says passive earns 0/step at -1.0; needs net -1/step → weight -2.0). Warm-start from iter_011 model_best.pt (peak juggling at iter ~200).
-- [ ] If -2.0 insufficient: add ball_release_velocity_reward=+3.0 at paddle-ball separation (DribbleBot + JuggleRL pattern). See git show agent/lit-review:docs/lit_review_passive_optimum_anti_balance.md
-- [ ] If still stuck: gate apex_height_reward on is_airborne (PBRS Φ=0 at contact) — architectural fix
+- [ ] iter_014: Add ball_release_velocity_reward (+3.0 weight) to reward upward ball velocity at
+      paddle separation. Combined with ball_low=-1.0, this should sustain juggling through curriculum
+      steps without the death spiral that -2.0 caused. Warm-start from iter_013b model_best.pt.
+      See git show agent/lit-review:docs/lit_review_passive_optimum_anti_balance.md
+- [ ] If release_vel insufficient: gate apex_height_reward on is_airborne (PBRS Φ=0 at contact)
+- [ ] If still stuck: try ball_airborne_fraction reward (fraction of timesteps ball is above threshold)
 
 ## NEXT — Noise robustness validation
 
@@ -16,8 +19,7 @@
 
 ## INFRASTRUCTURE
 
-- [ ] iter_011 follow-up: compare model_best.pt (peak juggling) vs model_450.pt (passive) via compare_pi1.py
-- [ ] Run play.py with model_best.pt from iter_011 peak — capture video to confirm juggling visually
+- [ ] Run play.py with peak model from iter_013b (model_best.pt) — capture video to confirm juggling visually
 
 ## COMPLETED (archived in RESEARCH_LOG_ARCHIVE.md)
 # iters 001-003: oracle baseline established (41D pi2, 12288 envs, Stage D, timeout=98.9%)
@@ -25,3 +27,5 @@
 # iters 006-008: noise curriculum implemented, Stage D plateau broken, noise outperforms oracle
 # iters 009-010: root cause chain (sigma_ratio + alive dominance) identified
 # iter_011: ball_low_penalty breaks balance (apex 13.7 peak) but policy collapses back
+# iter_012: compaction
+# iter_013: ball_low=-2.0 + curriculum sustain-during-blend bugfix; -2.0 causes death spiral
