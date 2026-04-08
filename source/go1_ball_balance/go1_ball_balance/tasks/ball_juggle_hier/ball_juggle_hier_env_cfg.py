@@ -22,7 +22,7 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sensors import ContactSensorCfg
+from isaaclab.sensors import ContactSensorCfg, TiledCameraCfg
 from isaaclab.utils import configclass
 
 from . import mdp
@@ -114,6 +114,35 @@ class BallJuggleHierSceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/Robot/.*_foot",
         history_length=3,
         track_air_time=False,
+    )
+
+
+@configclass
+class BallJuggleHierSceneCfg_DEBUG(BallJuggleHierSceneCfg):
+    """Scene with a simulated D435i camera for debug rendering (≤16 envs only).
+
+    Camera is mounted behind the paddle, tilted 45° upward to cover
+    0 m to >1 m ball apex range.  86° HFOV matches D435i depth module.
+    """
+
+    d435i = TiledCameraCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/base/D435i",
+        update_period=1.0 / 30.0,  # 30 Hz (D435i default depth rate)
+        data_types=["rgb", "distance_to_image_plane"],
+        spawn=sim_utils.PinholeCameraCfg(
+            focal_length=11.24,          # cm — gives 86° HFOV with default aperture
+            horizontal_aperture=20.955,  # cm — default 35mm-equiv sensor width
+            clipping_range=(0.10, 3.0),  # D435i min depth ~0.1 m
+        ),
+        width=640,
+        height=480,
+        offset=TiledCameraCfg.OffsetCfg(
+            # body-frame: 5 cm behind paddle centre, 8 cm above trunk root
+            pos=(-0.05, 0.0, 0.08),
+            # 45° pitch upward in ROS convention (+Z fwd, -Y up)
+            rot=(0.9239, -0.3827, 0.0, 0.0),
+            convention="ros",
+        ),
     )
 
 
@@ -424,6 +453,9 @@ class BallJuggleHierEnvCfg(ManagerBasedRLEnvCfg):
 
 @configclass
 class BallJuggleHierEnvCfg_PLAY(BallJuggleHierEnvCfg):
+    # Use the debug scene with D435i camera (only active in play, ≤16 envs)
+    scene: BallJuggleHierSceneCfg_DEBUG = BallJuggleHierSceneCfg_DEBUG(num_envs=16, env_spacing=3.5)
+
     def __post_init__(self):
         super().__post_init__()
         self.scene.num_envs = 16

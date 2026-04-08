@@ -38,3 +38,12 @@ Change:     13 targeted edits to docs/sim_to_real_plan.md: (1) perception gap ta
 Command:    Read + Edit (no code, doc-only iteration)
 Result:     sim_to_real_plan.md now consistent with perception_roadmap.md on D435i choice. Key additions: 45° mount geometry rationale (FoV spans 0m to >1m), camera-paddle rigid transform spec (~50mm behind, ~30mm below, 45° Y-rotation), assembly mass estimate (170g vs prior ~25g mono), librealsense2 in software stack.
 Decision:   Next iter: task 5 — mount a simulated D435i in the Isaac Lab scene env_cfg and take a debug snapshot. This requires reading the existing scene setup and adding a TiledCamera sensor (per CAMERA_CHOICE.md decision).
+
+---
+
+## iter_005 — Mount simulated D435i TiledCamera in PLAY scene  (2026-04-07T19:15:00Z)
+Hypothesis: Adding a TiledCameraCfg to a DEBUG scene subclass (used only in PLAY config) will let us render D435i-like RGB+depth frames without affecting training performance (training uses 12288 envs with no camera).
+Change:     (1) Added `TiledCameraCfg` import and `BallJuggleHierSceneCfg_DEBUG` class to `ball_juggle_hier_env_cfg.py` — inherits full scene, adds `d435i` TiledCamera at `{ENV_REGEX_NS}/Robot/base/D435i` (30Hz, 640×480, 86° HFOV matching D435i depth module, 45° upward pitch, mounted 5cm behind + 8cm above trunk). (2) Updated `BallJuggleHierEnvCfg_PLAY` to use the DEBUG scene. (3) Created `scripts/perception/debug_d435i_capture.py` — standalone script that creates the PLAY env, steps 50-100 steps, then saves RGB + depth PNG + raw .npy from env 0. (4) Created `perception/debug/` directory for output frames.
+Command:    AST parse test (OK). GPU smoke test queued but blocked by policy agent's 500-iter training run — GPU lock contention.
+Result:     Code parses cleanly. Camera config: focal_length=11.24cm, horizontal_aperture=20.955cm → 86° HFOV. Quaternion (0.9239, -0.3827, 0, 0) = 45° pitch up in ROS convention. Visual verification deferred to next iter when GPU frees.
+Decision:   Next iter: run the debug_d435i_capture.py smoke test (GPU should be free). If it works, save frame_000.png and move to task 6 (Forrai et al. reference survey). If TiledCamera fails at runtime, debug the sensor config.
