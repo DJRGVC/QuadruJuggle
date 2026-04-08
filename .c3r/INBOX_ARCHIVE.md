@@ -69,3 +69,18 @@ RESP: Will do — spawning a sonnet report-writer subagent (max 10 iters) to cre
 [2026-04-08 16:49 UTC] Daniel G → perception
 MSG: seems like your subagents are still around. make sure to delete them so they aren't counted in the total c3r subagent limit. make sure to collate relevant info from them, though.
 RESP: Done — killed both lit-review and vel-cmd-survey subagents. Their work is preserved on their git branches and summarized in my research log.
+
+---
+[2026-04-08 18:24 UTC] Daniel G → perception
+MSG: Well, those two subagents are still showing up. Make sure c3r knows they aren't taking up space anymore, should be 3/5 now.
+RESP: Done — killed lit-review, vel-cmd-survey, and report-writer. Now 2/5 agents (perception + policy).
+
+---
+[2026-04-08 18:24 UTC] Daniel G → perception
+MSG: Or actually 2/5, report writer is done.
+RESP: Confirmed — all 3 children killed, 2/5 active.
+
+---
+[2026-04-08 18:25 UTC] Daniel G → perception
+MSG: Where is the report? How can I easily download it and view it?
+RESP: Report is at docs/project_report.html on agent/report-writer branch. Copied it to perception branch — open in browser.

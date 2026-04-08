@@ -431,3 +431,87 @@ Change:     Killed vel-cmd-survey subagent. Created vel_cmd/residual_mixer.py: R
 Command:    `pytest scripts/perception/test_vel_cmd.py -v` → 44/44; full suite 176/176.
 Result:     **16/16 pass.** Residual adds pi1+user (vs override which discards pi1). 176/176 total.
 Decision:   Policy agent handoff for Method 2 requirements. GPU NIS when available.
+
+---
+
+## iter_044 — compaction (summarized iters 029-035)  (2026-04-08T18:00:00Z)
+Hypothesis: N/A — compaction iteration.
+Change:     Archived iters 029-035 verbatim to RESEARCH_LOG_ARCHIVE.md. Rewrote compacted summary
+            covering all phases through iter_035 (roadmap, EKF core, pipeline, NIS debugging,
+            contact-aware fix, Ahn 2019 calibration). Kept iters 036-043 verbatim. Pruned fix_plan.
+Command:    No GPU commands.
+Result:     Log shrunk from 323->~155 lines. Archive now has 35 verbatim entries (001-035).
+            Fix plan consolidated to 11 forward-looking tasks across 3 phases.
+Decision:   Next iter: write handoff note to policy agent INBOX about Method 2 requirements
+            (obs 40->42D, vel_tracking reward, hot-start from Stage G). GPU NIS validation
+            (IMU on/off, 9D spin) when GPU available.
+
+---
+
+## iter_045 — Hough circle fallback detector + from_yaml (15/15 new tests, 191/191 total)  (2026-04-08T19:15:00Z)
+Hypothesis: Hough circle detection on depth frames provides robust ball detection
+            when YOLO is unavailable or low-confidence, with <10mm error at 0.3-1.0m.
+Change:     Implemented `BallDetector._detect_hough()` using cv2.HoughCircles on
+            normalised 8-bit depth images. Circle scoring by radius-ratio vs expected
+            ball size at detected depth. Implemented `BallDetector.detect()` fallback
+            chain (YOLO→Hough→low-conf YOLO). Also implemented
+            `CameraCalibrator.from_yaml()` (YAML extrinsics loader with validation).
+            Wrote policy agent handoff note about Method 2 velocity commands.
+Command:    `uv run --active python scripts/perception/test_hough_detector.py -v` → 15/15
+            Full suite: 191/191 pass (174 pytest + 17 real_utils).
+Result:     **15/15 new tests pass.** Hough detects ball at 30cm/50cm/1m with <10mm error.
+            Works with 2mm depth noise. Empty-frame correctly returns None. Bbox/confidence
+            valid. from_yaml loads identity + non-trivial extrinsics, validates shape.
+            Wrote handoff to policy INBOX re: Method 2 (obs 40→42D, vel_tracking reward).
+Decision:   GPU NIS with IMU on/off when GPU available. Else: implement more mock-testable
+            real pipeline pieces (e.g. threaded pipeline integration with MockCamera+Hough).
+
+---
+
+## iter_046 — Threaded RealPerceptionPipeline + integration tests (17/17 new tests, 208/208 total)  (2026-04-08T20:30:00Z)
+Hypothesis: A threaded RealPerceptionPipeline (camera+detector on acq thread, EKF on main thread)
+            can be fully tested with MockCamera + MockDetector, validating the real-time architecture.
+Change:     Replaced pipeline.py stubs with working implementation: acquisition thread runs
+            camera.get_frame() + detector.detect() and pushes _Measurement to a lock-guarded deque;
+            get_observation() drains queue, runs EKF predict+update, transforms to body frame.
+            Dependency injection: accepts any camera/detector matching the interface (MockCamera,
+            MockDetector, BallDetector w/ Hough, or future real D435i). Added _quat_to_rotmat(),
+            PipelineObservation (extended with timestamp + ekf_pos_w/ekf_vel_w debug fields),
+            reset_ekf(), stats property. 17 integration tests across 8 test classes:
+            lifecycle, convergence, dropout, body-frame transform, extrinsics, EKF reset, Hough.
+Command:    `uv run --active python scripts/perception/test_threaded_pipeline.py -v` → 17/17
+            Full suite (12 test files): 208/208 pass.
+Result:     **17/17 new pass.** EKF converges to <5cm error on stationary ball within 200ms.
+            Body-frame transform correct under rotation and translation. Dropout→ball_lost works.
+            Hough-on-MockCamera end-to-end: <10cm error. Zero regressions.
+Decision:   GPU NIS IMU on/off comparison next if GPU available. Else: NIS gating in pipeline
+            (reject wild measurements via chi-squared test before EKF update).
+
+---
+
+## iter_047 — Chi-squared NIS gating in BallEKF (19/19 new tests, 227/227 total)  (2026-04-08T22:00:00Z)
+Hypothesis: Per-env chi-squared NIS gating in BallEKF.update() rejects outlier measurements
+            (detector glitches, multi-ball confusion) before they corrupt the state estimate.
+Change:     Added NIS gating to BallEKF.update(): computes NIS for all envs, rejects measurements
+            where NIS > nis_gate_threshold (default 11.345 = chi-squared 3DOF 99th percentile).
+            Per-env warm-up: gating skipped for first nis_gate_warmup=50 updates per env after
+            reset, since velocity takes many position-only observations to converge (position P
+            drops in 1 step but velocity P needs ~50). Config: nis_gate_enabled (default True),
+            nis_gate_threshold, nis_gate_warmup. Diagnostics: gate_rejection_rate,
+            gate_rejection_count, reset_gate_stats(). _update_count per env, reset on env reset.
+Command:    `uv run --active python scripts/perception/test_nis_gating.py -v` → 19/19
+            Full suite (13 test files): 227/227 pass.
+Result:     **19/19 new tests pass.** Zero regressions across all 12 pre-existing test files.
+Decision:   GPU NIS IMU on/off when available. Else: NIS diagnostic logging.
+
+---
+
+## iter_048 — Gate rejection stats in pipeline diagnostics + NIS diagnostic tool (2/2 new tests, 229/229 total)  (2026-04-08T23:15:00Z)
+Hypothesis: Surfacing NIS gate rejection counters in PerceptionPipeline.diagnostics and
+            nis_diagnostic.py enables tuning gate threshold via the GPU diagnostic tool.
+Change:     (1) PerceptionPipeline.diagnostics now includes gate_rejected, gate_total,
+            gate_rejection_rate. (2) nis_diagnostic.py: added Gate% and Gated columns.
+            (3) 2 new tests in test_world_frame_ekf.py.
+Command:    All 13 test files: 229/229 pass (188 pytest + 41 manual).
+Result:     **2/2 new tests pass.** 229/229 total. Zero regressions.
+Decision:   GPU NIS IMU on/off comparison next if GPU available.
