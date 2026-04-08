@@ -152,3 +152,17 @@ Decision:   The d435i degradation is modest and manageable. But the more importa
             (2) The policy earns more from survival than from attempting risky bounces
             (3) pi2 can't execute the fast height changes needed for bouncing
             Next iteration: investigate hypothesis (1) — check if wider apex sigma helps.
+
+## iter_006 — noise curriculum plan + Stage D analysis  (2026-04-08T04:30Z)
+Hypothesis: Documenting the noise scheduling design will clarify the interaction between perception noise and the existing juggling curriculum, and identify blockers.
+Change:     Wrote docs/noise_curriculum_plan.md — 3-phase noise curriculum (oracle warmup → scaled d435i → full EKF). Identified Stage D apex-reward plateau as the primary blocker.
+Command:    No GPU commands (GPU occupied by d435i+wandb rerun from previous iter). Analysis of tbdump metrics from iter_003 oracle baseline.
+Result:     
+  - Detailed metric analysis: ball_apex_height reward ≈ 2.9/5.0 needed for Stage D→E advancement
+  - Root cause: policy converges to "balance, don't bounce" local optimum. Ball sits ~3-4cm above paddle (bounces from spawn drop) but doesn't actively toss to 20cm target.
+  - Noise curriculum designed as 3 phases: Stages A-C oracle, D-F scaled d435i (25→75%), G+ full EKF
+  - Alternative "noise-first" approach documented for if Stage D plateau persists
+  - Updated fix_plan: marked tasks 3 and 5 complete, added Stage D plateau as BLOCKER task
+  - D435i+wandb training rerun currently in progress (at iter ~150/500, PID 89008)
+  - Answered Daniel's group briefing question via Discord
+Decision:   Next iteration: warm-start from iter_003 oracle checkpoint for 500+ more iters (total 1000) at Stage D to test if longer training breaks the apex plateau. GPU should be free by then. If still stuck, lower _BJ_APEX_THRESHOLD from 5.0 to 3.5 to let curriculum advance.

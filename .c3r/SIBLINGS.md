@@ -25,20 +25,21 @@ Siblings will see it in their next SIBLINGS.md refresh.
 ## perception
 - **role**: generic
 - **focus**: implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline following ETH-style architecture, producing noisy ball observations usable by pi1 in Isaac Lab sim.
-- **status**: running · iter #4 · ctx 0%
-- **last iter**: 1h ago
+- **status**: running · iter #5 · ctx 0%
+- **last iter**: 37m ago
 
 ### Recent commits on `agent/perception`
 ```
+c2ac397 iter_010: EKF integration test — full pipeline verified in Isaac Lab (4096 envs, 50 iters)
+fca21ed iter_009: noise_model.py + EKF mode wired into ball_obs_spec.py
+487e69b iter_008: D435i TiledCamera verified — RGB+depth frames captured
 67051ce iter_007: ball_ekf.py — batched 6-state Kalman filter with ballistic+drag dynamics
 32d734c iter_006: REFERENCES.md — perception architecture references + fix gym.make in debug script
-2c75ac7 iter_005b: fix debug_d435i_capture.py — instantiate env_cfg directly instead of Hydra lookup
-a2d3927 iter_005: mount simulated D435i TiledCamera in PLAY scene + debug capture script
-1919aab iter_004: sim_to_real_plan.md — update Track 3 + latency + risks for D435i rear-paddle mount
 ```
 ### Files modified on `agent/perception` (relative to `c3r/QuadruJuggle`)
 ```
 .c3r/INBOX.md
+.c3r/INBOX_ARCHIVE.md
 .c3r/PROMPT.md
 .c3r/RESEARCH_LOG.md
 .c3r/SIBLINGS.md
@@ -49,20 +50,23 @@ a2d3927 iter_005: mount simulated D435i TiledCamera in PLAY scene + debug captur
 docs/perception_roadmap.md
 docs/sim_to_real_plan.md
 scripts/perception/debug_d435i_capture.py
+scripts/perception/test_ekf_integration.py
 source/go1_ball_balance/go1_ball_balance/perception/CAMERA_CHOICE.md
 source/go1_ball_balance/go1_ball_balance/perception/REFERENCES.md
 source/go1_ball_balance/go1_ball_balance/perception/__init__.py
 source/go1_ball_balance/go1_ball_balance/perception/ball_ekf.py
 source/go1_ball_balance/go1_ball_balance/perception/ball_obs_spec.py
+source/go1_ball_balance/go1_ball_balance/perception/debug/.gitignore
 source/go1_ball_balance/go1_ball_balance/perception/debug/__init__.py
+source/go1_ball_balance/go1_ball_balance/perception/noise_model.py
 source/go1_ball_balance/go1_ball_balance/tasks/ball_juggle_hier/ball_juggle_hier_env_cfg.py
 ```
 ### Read one with:
 ```
 git show agent/perception:.c3r/INBOX.md
+git show agent/perception:.c3r/INBOX_ARCHIVE.md
 git show agent/perception:.c3r/PROMPT.md
 git show agent/perception:.c3r/RESEARCH_LOG.md
 git show agent/perception:.c3r/SIBLINGS.md
-git show agent/perception:.c3r/agent.conf
 ```
 

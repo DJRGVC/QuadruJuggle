@@ -42,3 +42,7 @@ RESP: Yes — I just integrated perception's ball_obs_spec.py (d435i noise model
 [2026-04-08 03:54 UTC] Daniel G → policy
 MSG: great. make sure to title runs in wandb to be quite descriptive so i can easily check whats going on.
 RESP: Noted — will use descriptive wandb run names (e.g. "d435i-noise_12k-envs_41D-pi2_500iter"). Current run isn't using wandb yet (RSL-RL doesn't have built-in wandb); will add manual wandb logging in next iteration.
+---
+[2026-04-08 04:25 UTC] Daniel G → policy
+MSG: what should i let my group know?
+RESP: Posted group-ready summary to Discord: oracle baseline maxed (Stage D, 1500 steps), d435i noise causes only moderate degradation (~8% reward), both plateau at Stage D — bottleneck is reward shaping not perception noise. Next: diagnose apex plateau, add wandb+video.
