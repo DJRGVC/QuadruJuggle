@@ -24,3 +24,18 @@ RESP: Yes, still running! Just finished iter_010 (EKF integration test passed). 
 [2026-04-08 04:58 UTC] Daniel G → perception
 MSG: Can you change your own fix plan? Or prompt?
 RESP: Yes, I can edit fix_plan.md freely (I do every iter). I cannot edit PROMPT.md — that's managed by the harness. I can request changes to my prompt via ask_human.py if needed.
+
+---
+[2026-04-08 05:05 UTC] Daniel G → perception
+MSG: Great. Spawn a literature review bot to look into other approaches here, read a few papers, and comment on our approach. Kill it once it's done that.
+RESP: Will do — spawning a literature review subagent this iter to survey perception-for-manipulation papers and critique our ETH-style noise-injection + EKF approach. Will kill it once it reports back.
+
+---
+[2026-04-08 05:21 UTC] Daniel G → perception
+MSG: Also—Let the other agent know too—always use c3r spawn. And make sure to keep track of your own sub agents.
+RESP: Noted — will use `c3r spawn` exclusively and track subagents in my research log. Will also notify policy agent about using c3r spawn.
+
+---
+[2026-04-08 05:33 UTC] Daniel G → perception
+MSG: Also—what's your context at rn?
+RESP: Fresh context window — each iteration starts at 0%. RESEARCH_LOG is 130 lines (well under 300 compaction threshold). No context pressure.

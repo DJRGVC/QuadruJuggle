@@ -128,3 +128,12 @@ Change:     (1) `ball_ekf.py`: `predict()` and `step()` now accept optional `gra
 Command:    3 CPU unit tests: (1) backward compat predict without gravity_b, (2) tilted 10° gravity produces lateral displacement, (3) step() with explicit gravity. AST parse both files.
 Result:     All 3 tests PASS. Isaac Lab `projected_gravity_b` confirmed as unit vector in body frame (articulation_data.py:790). GPU smoke test for compare_perception_modes.py still blocked behind policy agent's training run (~10 min elapsed when checked).
 Decision:   Next iter: run the comparison test (oracle vs d435i vs ekf, 50 iters each). GPU should be free by then. The body-frame gravity fix will be validated as part of the EKF comparison.
+
+---
+
+## iter_015 — subprocess isolation for compare script + lit-review subagent spawned  (2026-04-08T06:38:00Z)
+Hypothesis: The compare_perception_modes.py script hangs when switching modes because Isaac Lab can't cleanly recreate envs in a single process. Running each mode in a separate subprocess will fix this.
+Change:     (1) Rewrote compare_perception_modes.py to use subprocess isolation — each mode runs in a separate `python ... --single-mode <mode>` process, results collected via JSON files. The orchestrator spawns subprocesses sequentially and combines results. (2) Killed stuck PID 134896 (old compare script hung after oracle completed, ~61 min wasted). (3) Spawned `lit-review` subagent per Daniel's request — sonnet model, parent=perception, task: survey perception-for-manipulation papers and critique our D435i+EKF approach. (4) Seeded lit-review fix_plan.md and INBOX with task description. (5) Notified policy agent via INBOX about c3r spawn usage (Daniel's request). (6) Processed 3 INBOX messages from Daniel (spawn lit-review, use c3r spawn, context status).
+Command:    /home/daniel-grant/Research/c3r/c3r spawn /home/daniel-grant/Research/QuadruJuggle lit-review generic "..." --model sonnet --parent perception
+Result:     lit-review spawned (thread 1491325907695177789), currently in error state from iter 0 (API 529 overload) — agent loop will auto-retry. Compare script AST-parses correctly. GPU still occupied by policy agent's 1200-iter d435i training (PID 161679, 12288 envs).
+Decision:   Next iter: if GPU is free, run the subprocess-based comparison test. If lit-review has produced output, review it. If GPU still busy, look into whether we can run a reduced comparison (fewer envs, fewer iters) or work on EKF parameter analysis offline.

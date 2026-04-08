@@ -26,15 +26,15 @@ Siblings will see it in their next SIBLINGS.md refresh.
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
 - **status**: running · iter #3 · ctx 0%
-- **last iter**: 28m ago
+- **last iter**: 1h ago
 
 ### Recent commits on `agent/policy`
 ```
+ac2fa7f update fix_plan: mark noise_scale done, add noise-curriculum training task
+e1e4ee6 add noise_scale curriculum: d435i noise ramps 0%→100% across stages A→G
+ce23add iter_007: warm-start oracle breaks Stage D plateau — curriculum advances to Stage F
+83f62ad add wandb video upload + descriptive run naming to train_juggle_hier.py
 2dec634 add compare_pi1.py eval comparison infrastructure + --noise-mode to eval script
-af2b20a iter_006b: lower _BJ_APEX_THRESHOLD 5.0→2.0 to allow Stage D advancement
-7f921b6 iter_006: noise curriculum plan + Stage D plateau analysis
-e61f255 chore: gitignore wandb local files
-82fe30e iter_005: d435i noise comparison — moderate degradation, same Stage D plateau
 ```
 ### Files modified on `agent/policy` (relative to `c3r/QuadruJuggle`)
 ```

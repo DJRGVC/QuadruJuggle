@@ -21,9 +21,11 @@
 - [x] Implement noise_model.py — D435i-structured noise sampling (depth-dependent σ, dropout, latency) consumed by ball_obs_spec.py d435i mode
 - [x] Wire EKF mode into ball_obs_spec.py — PerceptionPipeline class (noise→EKF→filtered obs), lazy init on env, reset event, idempotent step dedup
 - [x] Integration test: swap ball_juggle_hier obs to mode="ekf", run short training (50 iters) — PASSED, mean_len=123 at iter 50, pipeline stable
-- [ ] Oracle vs d435i vs EKF comparison: run compare_perception_modes.py (50 iters each, 4096 envs) — script ready, awaiting GPU
+- [ ] Oracle vs d435i vs EKF comparison: run compare_perception_modes.py (50 iters each, 4096 envs) — script rewritten with subprocess isolation (old version hung on env.close()+gym.make), awaiting GPU (policy agent has 12288-env 1200-iter training running)
 - [x] Body-frame gravity in EKF: pass projected_gravity_b * 9.81 into EKF.predict() to account for trunk tilt
 - [x] Handoff to policy agent: document how to enable EKF mode in env_cfg (swap noise_cfg, add reset event), provide example config diff — PERCEPTION_HANDOFF.md committed
 - [x] Perception diagnostics: added _PerceptionDiagnostics to PerceptionPipeline (pos/vel RMSE, detection rate, EKF improvement %)
 - [ ] Tune EKF parameters (process noise Q, measurement noise R) based on comparison results
 - [x] Noise curriculum support: `noise_scale` field on BallObsNoiseCfg + `update_perception_noise_scale()` for runtime curriculum updates — DONE, 6 unit tests pass
+- [ ] Monitor lit-review subagent — kill once it commits docs/lit_review_perception.md
+- [ ] Review lit-review findings and update perception approach if warranted
