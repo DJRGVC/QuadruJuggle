@@ -26,7 +26,7 @@ Siblings will see it in their next SIBLINGS.md refresh.
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
 - **status**: running · iter #5 · ctx 0%
-- **last iter**: 10m ago
+- **last iter**: 13m ago
 
 ### Recent commits on `agent/policy`
 ```
@@ -74,7 +74,7 @@ git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
 - **role**: generic
 - **focus**: survey perception-for-manipulation papers (ETH noise injection, teacher-student distillation, event cameras, learned state estimators) and critique our D435i+EKF approach
 - **status**: running · iter #25 · ctx 0%
-- **last iter**: 6m ago
+- **last iter**: 9m ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/lit-review`

@@ -109,11 +109,24 @@ class CameraCalibrator:
         Args:
             mount_position_body: (3,) camera origin in body frame (metres).
             mount_orientation_rpy: (3,) roll, pitch, yaw in radians
-                (camera-to-body rotation as Euler angles).
+                (camera-to-body rotation as Euler angles, intrinsic XYZ).
 
         Returns:
             CameraExtrinsics with the computed transform.
         """
-        raise NotImplementedError(
-            "CameraCalibrator.from_known_mount() is a stub."
+        roll, pitch, yaw = mount_orientation_rpy
+        cr, sr = np.cos(roll), np.sin(roll)
+        cp, sp = np.cos(pitch), np.sin(pitch)
+        cy, sy = np.cos(yaw), np.sin(yaw)
+
+        # Intrinsic XYZ rotation: R = Rz(yaw) @ Ry(pitch) @ Rx(roll)
+        R = np.array([
+            [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+            [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+            [-sp,     cp * sr,                cp * cr],
+        ])
+
+        return CameraExtrinsics(
+            R_cam_body=R,
+            t_cam_body=np.asarray(mount_position_body, dtype=np.float64),
         )

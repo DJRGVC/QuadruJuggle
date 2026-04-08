@@ -288,3 +288,12 @@ Change:     Created `perception/real/` package with 6 files:
 Command:    AST parse all 6 files — OK.
 Result:     6 files created, all parse cleanly. Interfaces match `docs/hardware_pipeline_architecture.md` exactly. `_median_depth_in_bbox` is the only non-trivial implementation (median of valid depth pixels in YOLO bbox — needed for both testing and production).
 Decision:   Next iter: the remaining fix_plan items are all hardware-blocked (D435i driver, YOLO training, calibration). Consider: (1) writing unit tests for the implemented utility methods (deproject, transform_to_body, median_depth), (2) checking if policy agent needs any perception support, or (3) writing a mock camera for integration testing without hardware.
+
+---
+
+## iter_027 — Unit tests for real hardware utilities + implement from_known_mount  (2026-04-08T13:30:00Z)
+Hypothesis: The implemented utility methods in perception/real/ (deproject, transform_to_body, median_depth_in_bbox) are correct and from_known_mount can be implemented as pure RPY→rotation math.
+Change:     (1) Implemented CameraCalibrator.from_known_mount() in calibration.py — intrinsic XYZ Euler (Rz*Ry*Rx) rotation matrix from roll/pitch/yaw + mount position. (2) Created scripts/perception/test_real_utils.py with 17 unit tests covering all 4 utility methods: deproject (3 tests: principal point, off-centre, zero depth), transform_to_body (5 tests: identity, translation, 90° rotation, batch N×3, roundtrip), median_depth_in_bbox (5 tests: simple, rejects zeros, all invalid→None, rejects out-of-range, mixed valid/invalid), from_known_mount (4 tests: identity, translation, 45° pitch, orthogonality check).
+Command:    python scripts/perception/test_real_utils.py
+Result:     17/17 tests PASS. All utility methods verified correct. from_known_mount produces orthogonal rotation matrices with det=1.0 and correct pitch=45° mapping (camera Z → body X*cos45 + Z*sin45).
+Decision:   Next iter: consider writing a MockCamera class for integration testing without hardware (generates synthetic depth frames with a ball at known position), or check if policy agent has new needs. Sim pipeline + real stubs are now fully tested.

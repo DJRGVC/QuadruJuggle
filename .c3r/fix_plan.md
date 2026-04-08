@@ -44,7 +44,8 @@
 - [x] Create perception/real/ directory with camera.py, detector.py, calibration.py, pipeline.py, config.py stubs (interfaces per hardware_pipeline_architecture.md)
 - [ ] Implement D435iCamera wrapper (pyrealsense2, depth-only 848×480 @ 90fps, non-blocking poll)
 - [ ] Implement BallDetector (YOLOv8n+P2 TRT FP16 inference + median-depth-in-bbox 3D localisation)
-- [ ] Implement CameraCalibrator (load extrinsics YAML, optional checkerboard routine)
+- [x] Implement CameraCalibrator.from_known_mount() — RPY→rotation matrix, 4 unit tests pass
+- [ ] Implement CameraCalibrator.from_yaml() and from_checkerboard() (hardware-blocked)
 - [ ] Implement RealPerceptionPipeline (threaded: camera+YOLO at 90Hz, EKF predict at 200Hz, get_observation at 50Hz)
 - [ ] YOLO training data collection on real Go1 (300+ depth frames, auto-label + CVAT verify)
 - [ ] YOLO fine-tune: YOLOv8n+P2, frozen backbone, 150 epochs, export TRT FP16 on Orin NX
