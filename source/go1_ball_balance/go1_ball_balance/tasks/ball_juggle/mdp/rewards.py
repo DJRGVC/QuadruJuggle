@@ -81,3 +81,55 @@ def ball_apex_height_reward(
     )
 
     return height_gate * reward
+
+
+def ball_low_penalty(
+    env: ManagerBasedRLEnv,
+    low_threshold: float = 0.03,
+    ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    paddle_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.070),
+    ball_radius: float = 0.020,
+    min_height: float = 0.20,
+) -> torch.Tensor:
+    """Penalty when ball stays too close to the paddle surface (anti-balance).
+
+    Returns 1.0 when the ball is at or below ``low_threshold`` above the paddle
+    surface (ball is resting / barely moving). Returns 0.0 when ball is above
+    ``low_threshold``. This breaks the balance-not-bounce local optimum by making
+    passive balancing costly.
+
+    Use with a negative weight (e.g., -1.0) in RewardsCfg.
+
+    Args:
+        low_threshold: Height above paddle surface below which penalty is active (metres).
+            Default 0.03m = ball resting + small bounce range.
+        ball_cfg: Scene entity for the ball.
+        robot_cfg: Scene entity for the robot.
+        paddle_offset_b: Paddle offset from trunk origin (body frame).
+        ball_radius: Physical radius of the ball (metres).
+        min_height: Trunk Z gate — no penalty if robot is collapsed.
+
+    Returns:
+        Tensor of shape (num_envs,) in [0, 1].
+    """
+    ball: RigidObject = env.scene[ball_cfg.name]
+    robot: Articulation = env.scene[robot_cfg.name]
+
+    trunk_pos_w = robot.data.root_pos_w
+    trunk_quat_w = robot.data.root_quat_w
+
+    offset_b = torch.tensor(paddle_offset_b, device=env.device).unsqueeze(0).expand(env.num_envs, -1)
+    paddle_pos_w = trunk_pos_w + math_utils.quat_apply(trunk_quat_w, offset_b)
+
+    ball_z = ball.data.root_pos_w[:, 2]
+    paddle_z = paddle_pos_w[:, 2]
+    h = ball_z - paddle_z - ball_radius   # (N,) — 0 when resting
+
+    # Gate: only active when robot is upright
+    trunk_z = trunk_pos_w[:, 2]
+    active = (trunk_z > min_height).float()
+
+    # Penalty: 1.0 when h <= low_threshold, 0.0 otherwise
+    penalty = (h <= low_threshold).float()
+    return active * penalty

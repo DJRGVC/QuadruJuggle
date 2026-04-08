@@ -375,6 +375,19 @@ class RewardsCfg:
         params={"foot_contact_cfg": SceneEntityCfg("foot_contact_forces")},
     )
 
+    ball_low = RewTerm(
+        func=mdp.ball_low_penalty,
+        weight=-1.0,
+        params={
+            "low_threshold": 0.03,
+            "ball_cfg": SceneEntityCfg("ball"),
+            "robot_cfg": SceneEntityCfg("robot"),
+            "paddle_offset_b": _PADDLE_OFFSET_B,
+            "ball_radius": _BALL_RADIUS,
+            "min_height": 0.20,
+        },
+    )
+
 
 # ---------------------------------------------------------------------------
 # MDP: Terminations (same as flat juggle)
