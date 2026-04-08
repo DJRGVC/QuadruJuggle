@@ -233,5 +233,96 @@ class TestCommandMixerConfig(unittest.TestCase):
         self.assertEqual(out[0, 7].item(), 0.0)
 
 
+# -----------------------------------------------------------------------
+# Teleop integration flow tests
+# -----------------------------------------------------------------------
+
+class TestTeleopFlow(unittest.TestCase):
+    """End-to-end tests simulating the play_teleop.py flow:
+    policy output → UserVelocityInput → CommandMixer → mixed actions."""
+
+    def setUp(self):
+        self.uvi = UserVelocityInput(UserVelocityInputCfg(backend="zero"))
+        self.uvi.start()
+        self.mixer = CommandMixer(CommandMixerCfg(mode="override"))
+        self.num_envs = 4
+
+    def tearDown(self):
+        self.uvi.stop()
+
+    def test_zero_input_preserves_pi1_vxy(self):
+        """With zero backend and override mode, vx/vy should be 0 (user input)."""
+        pi1_actions = torch.randn(self.num_envs, 8)
+        vel_user = self.uvi.get_cmd_tensor(self.num_envs, "cpu")
+        mixed = self.mixer.mix(pi1_actions, vel_user)
+        # vx/vy zeroed by user
+        self.assertTrue(torch.allclose(mixed[:, 6], torch.zeros(self.num_envs)))
+        self.assertTrue(torch.allclose(mixed[:, 7], torch.zeros(self.num_envs)))
+        # height/tilt from pi1 preserved
+        self.assertTrue(torch.equal(mixed[:, :6], pi1_actions[:, :6]))
+
+    def test_simulated_user_walk_forward(self):
+        """Simulate user pushing joystick forward: vx=0.25 m/s, vy=0."""
+        self.uvi._vx = 0.25
+        self.uvi._vy = 0.0
+        pi1_actions = torch.zeros(self.num_envs, 8)
+        vel_user = self.uvi.get_cmd_tensor(self.num_envs, "cpu")
+        mixed = self.mixer.mix(pi1_actions, vel_user)
+        # 0.25 / 0.5 = 0.5 normalized
+        self.assertAlmostEqual(mixed[0, 6].item(), 0.5, places=4)
+        self.assertAlmostEqual(mixed[0, 7].item(), 0.0, places=4)
+
+    def test_simulated_user_strafe_left(self):
+        """Simulate user pushing joystick left: vx=0, vy=0.20 m/s."""
+        self.uvi._vx = 0.0
+        self.uvi._vy = 0.20
+        pi1_actions = torch.randn(self.num_envs, 8)
+        vel_user = self.uvi.get_cmd_tensor(self.num_envs, "cpu")
+        mixed = self.mixer.mix(pi1_actions, vel_user)
+        self.assertAlmostEqual(mixed[0, 6].item(), 0.0, places=4)
+        self.assertAlmostEqual(mixed[0, 7].item(), 0.40, places=4)  # 0.20/0.5
+
+    def test_blend_mode_teleop_flow(self):
+        """Blend mode: pi1 wants vx=0.3 normalized, user wants vx=0.25 m/s.
+        With alpha=0.5, result = 0.5*0.3 + 0.5*0.5 = 0.40."""
+        mixer = CommandMixer(CommandMixerCfg(mode="blend", blend_alpha=0.5))
+        self.uvi._vx = 0.25  # → 0.5 normalized
+        pi1_actions = torch.zeros(self.num_envs, 8)
+        pi1_actions[:, 6] = 0.3  # pi1 wants vx=0.3 normalized
+        vel_user = self.uvi.get_cmd_tensor(self.num_envs, "cpu")
+        mixed = mixer.mix(pi1_actions, vel_user)
+        expected_vx = 0.5 * 0.3 + 0.5 * 0.5
+        self.assertAlmostEqual(mixed[0, 6].item(), expected_vx, places=4)
+
+    def test_passthrough_teleop_flow(self):
+        """Passthrough mode: user input ignored, pi1 controls everything."""
+        mixer = CommandMixer(CommandMixerCfg(mode="passthrough"))
+        self.uvi._vx = 0.30
+        self.uvi._vy = -0.30
+        pi1_actions = torch.randn(self.num_envs, 8)
+        vel_user = self.uvi.get_cmd_tensor(self.num_envs, "cpu")
+        mixed = mixer.mix(pi1_actions, vel_user)
+        self.assertTrue(torch.equal(mixed, pi1_actions))
+
+    def test_max_speed_clamp(self):
+        """User velocity capped at ±0.30 m/s → ±0.60 normalized."""
+        self.uvi._vx = 0.30   # max
+        self.uvi._vy = -0.30  # max negative
+        vel_user = self.uvi.get_cmd_tensor(1, "cpu")
+        self.assertAlmostEqual(vel_user[0, 0].item(), 0.60, places=4)
+        self.assertAlmostEqual(vel_user[0, 1].item(), -0.60, places=4)
+
+    def test_multi_step_consistency(self):
+        """Mixer should produce consistent results across multiple calls
+        (no internal state mutation)."""
+        pi1_actions = torch.randn(self.num_envs, 8)
+        self.uvi._vx = 0.15
+        self.uvi._vy = 0.10
+        vel = self.uvi.get_cmd_tensor(self.num_envs, "cpu")
+        out1 = self.mixer.mix(pi1_actions, vel)
+        out2 = self.mixer.mix(pi1_actions, vel)
+        self.assertTrue(torch.equal(out1, out2))
+
+
 if __name__ == "__main__":
     unittest.main()

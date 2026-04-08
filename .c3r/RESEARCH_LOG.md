@@ -272,3 +272,27 @@ Result:     **21/21 new tests pass.** All blend modes verified numerically. Over
 Decision:   Next: create play_teleop.py integration script (hooks mixer into play loop).
             Monitor vel-cmd-survey subagent (iter_002 done; Methods 2/3 specs pending).
             GPU NIS validation still blocked by policy agent training.
+
+---
+
+## iter_042 — play_teleop.py integration script (7/7 new tests, 160/160 total)  (2026-04-08T11:00:00Z)
+Hypothesis: A standalone play_teleop.py script that wires UserVelocityInput + CommandMixer into
+            the Isaac Lab play loop gives users keyboard/joystick control of vx/vy during
+            hierarchical ball juggling, completing the Method 1 (Direct Override) pipeline.
+Change:     Created `scripts/rsl_rl/play_teleop.py`:
+            - Pre-parses --backend (pygame/keyboard/zero), --blend-mode, --blend-alpha, --pi2-checkpoint
+            - Initializes UserVelocityInput + CommandMixer before the play loop
+            - In loop: policy(obs) → mixer.mix(actions, vel_user) → env.step(mixed_actions)
+            - Telemetry: prints user vx/vy vs actual vx/vy + ball_z every 20 steps
+            - Clean shutdown: KeyboardInterrupt → vel_input.stop() → env.close()
+            - Video recording support via --video flag
+            Added 7 integration tests to test_vel_cmd.py (TestTeleopFlow class): zero input,
+            walk forward, strafe left, blend mode, passthrough, max speed clamp, multi-step consistency.
+Command:    `pytest scripts/perception/test_vel_cmd.py -v` (28 tests)
+            Full suite (CPU-only, 10 test files): 160/160 pass.
+Result:     **7/7 new teleop flow tests pass.** 28/28 vel_cmd tests total. 160/160 full suite.
+            Script ready for use with:
+            `uv run --active python scripts/rsl_rl/play_teleop.py --task Isaac-BallJuggleHier-Go1-Play-v0 --pi2-checkpoint <path> --num_envs 1 --backend keyboard`
+Decision:   Next: check vel-cmd-survey subagent (should be on iter_004 with final proposal).
+            If subagent done, kill it and assess Method 2/3 recommendations.
+            GPU NIS validation (IMU on/off comparison) when GPU available.

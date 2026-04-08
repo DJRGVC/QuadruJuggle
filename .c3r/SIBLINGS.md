@@ -131,17 +131,17 @@ git show agent/lit-review:.c3r/SIBLINGS.md
 ## vel-cmd-survey
 - **role**: generic
 - **focus**: Survey 2023-2026 papers on user-defined velocity command input for legged robots doing manipulation while walking. Our Go1 has hierarchical pi2 torso tracker (8D: h,hdot,roll,pitch,omega_r,omega_p,vx,vy) and pi1 ball planner. Propose 3 methods for adding user velocity commands. Track references. Report to parent perception every iter via INBOX. Complete in 5 iters MAX then stop.
-- **status**: running · iter #2 · ctx 0%
+- **status**: running · iter #3 · ctx 0%
 - **last iter**: 1m ago
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/vel-cmd-survey`
 ```
+516a817 iter_003: Methods 2 (Residual) and 3 (Multi-Mode) specs — ResidualMixer + ModeConditionedInput + reward changes
 38522c3 iter_002: Method 1 (Direct Override) implementation spec — UserVelocityInput + CommandMixer
 f78f121 iter_001: velocity command survey — 13 papers, 3 methods proposed
 aab3845 torso tracking edit
 9c4793a pi_2 with v trackign works
-3841f54 working on pi_1 + pi_2
 ```
 ### Files modified on `agent/vel-cmd-survey` (relative to `c3r/QuadruJuggle`)
 ```
@@ -156,6 +156,7 @@ aab3845 torso tracking edit
 .claude/settings.json
 docs/lit_review_vel_cmd_loco_manipulation.md
 docs/vel_cmd_method1_spec.md
+docs/vel_cmd_method2_3_spec.md
 ```
 ### Read one with:
 ```
