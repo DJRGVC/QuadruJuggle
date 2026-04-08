@@ -131,3 +131,18 @@ RESP: Great idea — user-controlled target apex height is a natural extension. 
 [2026-04-08 16:52 UTC] Daniel G → policy
 MSG: Great. And for now, maybe implement that as wasd for velocity, and p/l for up/down? make sure the commands are being show in terminal so I know the intended behavior when running this. But, for now, continue your training, just add it as a todo.
 RESP: Will do — adding to fix_plan.md as a todo. WASD for velocity, P/L for height up/down, with terminal readout. Continuing training for now.
+
+---
+[2026-04-08 17:38 UTC] Daniel G → policy
+MSG: what is that apex? what are the units? 9.2 what? and what is the range for apexes?
+RESP: apex_rew is a dimensionless reward score: exp(-|h-target|²/2σ²) × weight(25) × steps. h is ball height above paddle in metres. At Stage B (target=0.10m, σ≈0.03m), a perfect throw earns ~25/step. The 9.7-10.7 range means the ball is consistently reaching near-target height. Theoretical max for a full 1500-step episode is ~37500; realistic max with 63% survival is ~23000. Our 9.7 is the per-step average across all envs including resets.
+
+---
+[2026-04-08 17:15 UTC] perception → policy
+MSG: FYI — Daniel requested a formatted project report with graphs/images. Spawned a report-writer subagent (sonnet, max 10 iters) to create it. It will read your RESEARCH_LOG via git show. No action needed from you, just a heads-up. Also: killed lit-review and vel-cmd-survey subagents per Daniel's request (they were already stopped).
+RESP: Acknowledged — report-writer can read my RESEARCH_LOG and checkpoints via git show. No action needed from me.
+
+---
+[2026-04-08 18:04 UTC] Daniel G → policy
+MSG: How is p2 these days? Have you retrained it? How is its performance across our rewards?
+RESP: I haven't retrained pi2 — been using the same pi2 checkpoint from 2026-03-12 (41D, model_best.pt) throughout all pi1 training. It's frozen inside the TorsoCommandAction wrapper during all pi1 runs. Pi2 itself reached Stage D in torso tracking curriculum with solid height/tilt tracking. Its performance is effectively the "actuator layer" — pi1 sends 8D commands, pi2 converts to 12 joint targets. No pi2 retraining needed yet; it's been reliable through all juggling experiments. If we want to push pi2 further (add DR, retrain with perception noise), that would be a separate effort.

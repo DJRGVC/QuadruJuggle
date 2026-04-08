@@ -252,3 +252,43 @@ Result:     1036 iterations completed in ~62 min before process killed (iteratio
 Decision:   Queued iter_009: resume from model_1199.pt for 1000 more iters to push apex_rew to 2.0.
             With apex_rew=1.87 and rising slowly, ~200-400 more iters may be sufficient.
             Noise_scale at Stage F = 0.75 (75% d435i) — full noise at Stage G.
+
+## iter_009 — fresh d435i 1500-iter with threshold=1.5  (2026-04-08T01:00Z)
+Hypothesis: Fresh run with _BJ_APEX_THRESHOLD=1.5 and d435i noise will advance further than iter_007.
+Change:     Fresh training with --noise-mode d435i, 12288 envs, 1500 max iters.
+            Checkpoint dir: logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_00-55-03/
+Result:     Early stopped at iter 1127. Stuck at Stage F, apex=1.09 (same as oracle).
+            ROOT CAUSE: sigma_ratio=2.5 → ball at rest earns 4.4% of max apex/step.
+Decision:   sigma_ratio→3.5, _BJ_APEX_THRESHOLD→0.5.
+
+## iter_010 — sigma_ratio=3.5 fresh run (d435i)  (2026-04-08T03:30Z)
+Hypothesis: sigma_ratio 2.5→3.5 forces active throwing.
+Change:     sigma_ratio 3.5 (Stage C-P), 3.0 (B), 2.5 (A). _BJ_APEX_THRESHOLD=0.5.
+Result:     Same balance optimum. ROOT CAUSE 2: alive=1.0/step dominates.
+Decision:   Add ball_low_penalty to cancel alive during balance.
+
+## iter_011 — ball_low_penalty + sigma_ratio=3.5 (d435i, 456 iters)  (2026-04-08T04:04Z)
+Hypothesis: ball_low_penalty=-1.0/step forces balance reward to ~0/step.
+Change:     Added ball_low_penalty (weight=-1.0). Checkpoint dir: 2026-04-08_04-04-38/
+Result:     Apex PEAKED at 13.7 (iter 200) then COLLAPSED to 0.18 (iter 400+). Policy explored
+            juggling but reverted to passive survival.
+Decision:   Weight -1.0 insufficient; try -2.0 or ball_release_velocity_reward.
+
+## iter_012 — compaction (summarized iters 001-008)  (2026-04-08T15:30Z)
+No GPU commands. Log shrunk from 340→~130 lines.
+
+## iter_013 — ball_low=-2.0, curriculum sustain-during-blend bugfix  (2026-04-08T12:07Z)
+Hypothesis: weight=-2.0 makes passive balance earn -1/step.
+Change:     (1) ball_low weight -1→-2. (2) Fixed sustain-during-blend bug. (3) Reverted to -1.0.
+Result:     Two runs, both death spiral on curriculum steps. -2.0 creates no safe fallback.
+            Bug fix doubled stable window (75→150+ iters).
+Decision:   Keep -1.0, add ball_release_velocity_reward (+3.0).
+
+## iter_014 — ball_release_velocity_reward (+3.0) d435i 1500-iter  (2026-04-08T07:44Z)
+Hypothesis: Positive reward for upward ball velocity sustains juggling.
+Change:     Added ball_release_velocity_reward (weight=+3.0, max_vel=3.0m/s). Warm-started from
+            iter_013b model_best.pt.
+Result:     **SUSTAINED JUGGLING — NO COLLAPSE.** 1500 iters, apex 15.4 peak → 9.7 stable.
+            Policy found stable equilibrium: ~63% timeout, ~34% ball_below. First sustained juggling.
+            Checkpoint: logs/.../2026-04-08_07-44-03/model_4249.pt
+Decision:   Breakthrough. Next: fix curriculum threshold (timeout-based 75% wrong for juggling).

@@ -22,24 +22,26 @@ Siblings will see it in their next SIBLINGS.md refresh.
 
 ---
 
+## SIBLINGS — peers you do NOT manage (other agents' work)
+
 ## perception
 - **role**: generic
 - **focus**: implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline following ETH-style architecture, producing noisy ball observations usable by pi1 in Isaac Lab sim.
-- **status**: running · iter #44 · ctx 0%
-- **last iter**: 1h ago
+- **status**: running · iter #49 · ctx 0%
 
 ### Recent commits on `agent/perception`
 ```
-1b43248 iter_051: compaction (summarized iters 036-043)
-4363f8b iter_050: phase-separated NIS tracking — flight vs contact (10/10 new tests, 239/239 total)
-4bf0170 iter_049: GPU NIS validation — IMU ON vs OFF vs 9D spin (all identical, NIS ~0.44)
-9314aaa iter_048: gate rejection stats in pipeline diagnostics + NIS diagnostic tool (2/2 new tests, 229/229 total)
-aae1548 iter_047: chi-squared NIS gating in BallEKF (19/19 new tests, 227/227 total)
+3973320 iter_055: GPU NIS validation — EKF severely overconfident under active policy (flight NIS=52.9, RMSE 22mm > raw 19mm)
+52749bc iter_054: eval_perception_live.py — JSON output + per-interval RMSE tracking
+129daf0 iter_053: eval_perception_live.py — EKF accuracy eval with trained pi1 policy
+adf4341 iter_052: nis_sweep phase-separated output + test verification
+15a5b5d iter_051: subagent management + report-writer spawn
 ```
 ### Files modified on `agent/perception` (relative to `c3r/QuadruJuggle`)
 ```
 .c3r/INBOX.md
 .c3r/INBOX_ARCHIVE.md
+.c3r/PAUSED
 .c3r/PROMPT.md
 .c3r/RESEARCH_LOG.md
 .c3r/RESEARCH_LOG_ARCHIVE.md
@@ -52,9 +54,11 @@ docs/hardware_pipeline_architecture.md
 docs/lit_review_ekf_lag_vs_raw_noise.md
 docs/lit_review_ekf_tuning.md
 docs/perception_roadmap.md
+docs/project_report.html
 docs/sim_to_real_plan.md
 scripts/perception/compare_perception_modes.py
 scripts/perception/debug_d435i_capture.py
+scripts/perception/eval_perception_live.py
 scripts/perception/nis_diagnostic.py
 scripts/perception/nis_sweep.py
 scripts/perception/test_ballistic_trajectory.py
@@ -65,25 +69,21 @@ scripts/perception/test_imu_aided_ekf.py
 scripts/perception/test_latency_injection.py
 scripts/perception/test_mock_pipeline.py
 scripts/perception/test_nis_gating.py
-scripts/perception/test_nis_phase.py
-scripts/perception/test_pipeline_config.py
-scripts/perception/test_real_utils.py
-... and 27 more
+... and 30 more
 ```
 ### Read one with:
 ```
 git show agent/perception:.c3r/INBOX.md
 git show agent/perception:.c3r/INBOX_ARCHIVE.md
+git show agent/perception:.c3r/PAUSED
 git show agent/perception:.c3r/PROMPT.md
 git show agent/perception:.c3r/RESEARCH_LOG.md
-git show agent/perception:.c3r/RESEARCH_LOG_ARCHIVE.md
 ```
 
 ## lit-review
 - **role**: generic
 - **focus**: survey perception-for-manipulation papers (ETH noise injection, teacher-student distillation, event cameras, learned state estimators) and critique our D435i+EKF approach
-- **status**: stopped · iter #28 · ctx 0%
-- **last iter**: 4h ago
+- **status**: running · iter #28 · ctx 0%
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/lit-review`
@@ -140,8 +140,7 @@ git show agent/lit-review:.c3r/SIBLINGS.md
 ## vel-cmd-survey
 - **role**: generic
 - **focus**: Survey 2023-2026 papers on user-defined velocity command input for legged robots doing manipulation while walking. Our Go1 has hierarchical pi2 torso tracker (8D: h,hdot,roll,pitch,omega_r,omega_p,vx,vy) and pi1 ball planner. Propose 3 methods for adding user velocity commands. Track references. Report to parent perception every iter via INBOX. Complete in 5 iters MAX then stop.
-- **status**: stopped · iter #5 · ctx 0%
-- **last iter**: 2h ago
+- **status**: running · iter #5 · ctx 0%
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/vel-cmd-survey`
@@ -175,5 +174,42 @@ git show agent/vel-cmd-survey:.c3r/INBOX_ARCHIVE.md
 git show agent/vel-cmd-survey:.c3r/PROMPT.md
 git show agent/vel-cmd-survey:.c3r/RESEARCH_LOG.md
 git show agent/vel-cmd-survey:.c3r/SIBLINGS.md
+```
+
+## report-writer
+- **role**: generic
+- **focus**: Create a nicely formatted project report (HTML or Markdown with embedded images/graphs) covering the QuadruJuggle project: perception pipeline, policy training, architecture, and results. Max 10 iterations.
+- **status**: idle · iter #8 · ctx 0%
+- **parent**: perception (this is a sub-agent)
+
+### Recent commits on `agent/report-writer`
+```
+bd362fb iter_009: research log entry
+1f04fe6 iter_009: Go1 actuator hardware table — QDD specs, PD gains, latency decomp, Hu 2025 DR
+3741766 iter_008: executive summary + final polish — report complete, ready for c3r kill
+aa99cec iter_007: noise-aware retraining section — oracle vs d435i table + noise schedule A→H+
+b28c7e8 iter_006: print stylesheet + inline TOC + docs/project_report.html copy
+```
+### Files modified on `agent/report-writer` (relative to `c3r/QuadruJuggle`)
+```
+.c3r/INBOX.md
+.c3r/INBOX_ARCHIVE.md
+.c3r/PROMPT.md
+.c3r/RESEARCH_LOG.md
+.c3r/SIBLINGS.md
+.c3r/agent.conf
+.c3r/env.sh
+.c3r/fix_plan.md
+.claude/settings.json
+docs/project_report.html
+report.html
+```
+### Read one with:
+```
+git show agent/report-writer:.c3r/INBOX.md
+git show agent/report-writer:.c3r/INBOX_ARCHIVE.md
+git show agent/report-writer:.c3r/PROMPT.md
+git show agent/report-writer:.c3r/RESEARCH_LOG.md
+git show agent/report-writer:.c3r/SIBLINGS.md
 ```
 
