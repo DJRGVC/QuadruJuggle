@@ -101,3 +101,12 @@ Change:     Created `perception/PERCEPTION_HANDOFF.md` with: (1) runtime patchin
 Command:    No GPU workload — documentation-only iteration.
 Result:     PERCEPTION_HANDOFF.md committed. Key finding from reviewing policy agent's code: their train_juggle_hier.py only supports oracle/d435i, and doesn't add the reset event for EKF mode. Both gaps documented in handoff.
 Decision:   Next iter: oracle vs EKF comparison test. Run test_ekf_integration.py with --perception-mode oracle and --perception-mode ekf back-to-back (50 iters each, 4096 envs) to quantify the EKF filtering benefit vs raw d435i noise. Then begin EKF parameter tuning.
+
+---
+
+## iter_012 — Perception diagnostics + comparison script  (2026-04-07T21:00:00Z)
+Hypothesis: Adding per-step estimation error tracking (EKF vs raw noise vs GT) to PerceptionPipeline will quantify the EKF filtering benefit and guide parameter tuning.
+Change:     (1) Added `_PerceptionDiagnostics` class to `ball_obs_spec.py` — tracks running pos/vel RMSE for both EKF-filtered and raw noisy measurements. Computes `ekf_improvement_pct` (RMSE reduction). Enabled via `env._perception_diagnostics_enabled = True` before pipeline creation. (2) Updated `PerceptionPipeline.step()` to accept optional `gt_vel_b` for velocity error tracking. (3) Added `PerceptionPipeline.diagnostics` property — returns summary dict and resets accumulators. (4) Created `scripts/perception/compare_perception_modes.py` — runs oracle/d435i/ekf back-to-back with diagnostic logging every 10 iterations, saves comparison table + per-mode diagnostic JSON.
+Command:    AST parse (both files OK). No GPU workload — policy agent holds lock.
+Result:     Code ready for comparison test. Diagnostics collect: pos_rmse_ekf_mm, pos_rmse_raw_mm, vel_rmse_ekf_mps, detection_rate, ekf_improvement_pct. Comparison script will produce a table like the one policy agent generated (iter_005/006) but with the EKF column added.
+Decision:   Next iter: run compare_perception_modes.py when GPU frees. If still blocked, begin noise curriculum support (parameterize noise scaling so policy can ramp d435i noise across stages — this is what their noise_curriculum_plan.md calls for).

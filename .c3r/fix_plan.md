@@ -21,6 +21,8 @@
 - [x] Implement noise_model.py — D435i-structured noise sampling (depth-dependent σ, dropout, latency) consumed by ball_obs_spec.py d435i mode
 - [x] Wire EKF mode into ball_obs_spec.py — PerceptionPipeline class (noise→EKF→filtered obs), lazy init on env, reset event, idempotent step dedup
 - [x] Integration test: swap ball_juggle_hier obs to mode="ekf", run short training (50 iters) — PASSED, mean_len=123 at iter 50, pipeline stable
-- [ ] Oracle baseline comparison: run same test with mode="oracle" for apples-to-apples (deferred — GPU contention from policy agent training)
+- [ ] Oracle vs d435i vs EKF comparison: run compare_perception_modes.py (50 iters each, 4096 envs) — script ready, awaiting GPU
 - [x] Handoff to policy agent: document how to enable EKF mode in env_cfg (swap noise_cfg, add reset event), provide example config diff — PERCEPTION_HANDOFF.md committed
-- [ ] Tune EKF parameters (process noise Q, measurement noise R) based on training performance gap vs oracle
+- [x] Perception diagnostics: added _PerceptionDiagnostics to PerceptionPipeline (pos/vel RMSE, detection rate, EKF improvement %)
+- [ ] Tune EKF parameters (process noise Q, measurement noise R) based on comparison results
+- [ ] Noise curriculum support: parameterize noise model scaling so policy agent can ramp noise across stages

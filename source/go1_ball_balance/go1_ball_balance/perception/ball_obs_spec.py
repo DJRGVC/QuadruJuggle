@@ -101,6 +101,9 @@ class PerceptionPipeline:
     Attached to the env object as ``env._perception_pipeline`` on first use.
     Manages noise model and EKF instances, handles resets, and provides
     filtered position and velocity estimates.
+
+    Optionally tracks diagnostics (estimation error vs GT) when
+    ``enable_diagnostics=True``. Access via :attr:`diagnostics`.
     """
 
     def __init__(
@@ -108,6 +111,7 @@ class PerceptionPipeline:
         num_envs: int,
         device: str | torch.device,
         noise_cfg: BallObsNoiseCfg,
+        enable_diagnostics: bool = False,
     ):
         self.num_envs = num_envs
         self.device = torch.device(device)
@@ -127,15 +131,29 @@ class PerceptionPipeline:
         # Track which step we're on (for deduplication within a single step)
         self._last_step_count = -1
 
+        # Diagnostics: running error accumulators
+        self._diagnostics_enabled = enable_diagnostics
+        if enable_diagnostics:
+            self._diag = _PerceptionDiagnostics(num_envs, self.device)
+        else:
+            self._diag = None
+
     def step(
         self,
         gt_pos_b: torch.Tensor,
         env_step_count: int,
+        gt_vel_b: torch.Tensor | None = None,
     ) -> None:
         """Run one noise→EKF cycle. Idempotent within a single env step.
 
         Called by both ball_pos_perceived and ball_vel_perceived; only
         runs the actual predict+update once per step.
+
+        Args:
+            gt_pos_b: GT ball position in paddle frame (N, 3).
+            env_step_count: Current env step counter.
+            gt_vel_b: GT ball velocity in trunk frame (N, 3). Only needed
+                for diagnostics — pass None to skip velocity error tracking.
         """
         if env_step_count == self._last_step_count:
             return  # already ran this step (pos called before vel)
@@ -147,6 +165,17 @@ class PerceptionPipeline:
 
         # EKF predict + update
         self.ekf.step(noisy_pos, detected, dt=self.cfg.policy_dt)
+
+        # Diagnostics
+        if self._diag is not None:
+            self._diag.record(
+                gt_pos=gt_pos_b,
+                gt_vel=gt_vel_b,
+                noisy_pos=noisy_pos,
+                ekf_pos=self.ekf.pos,
+                ekf_vel=self.ekf.vel,
+                detected=detected,
+            )
 
     def reset(
         self,
@@ -168,6 +197,89 @@ class PerceptionPipeline:
         """EKF-filtered ball velocity estimate (N, 3)."""
         return self.ekf.vel
 
+    @property
+    def diagnostics(self) -> dict[str, float] | None:
+        """Return current diagnostic summary and reset accumulators.
+
+        Returns None if diagnostics are disabled. Otherwise returns a dict
+        with keys like 'pos_rmse_ekf', 'pos_rmse_raw', 'vel_rmse_ekf',
+        'detection_rate', 'ekf_improvement_pct'.
+        """
+        if self._diag is None:
+            return None
+        return self._diag.summary_and_reset()
+
+
+class _PerceptionDiagnostics:
+    """Lightweight running-statistics tracker for perception pipeline errors."""
+
+    def __init__(self, num_envs: int, device: torch.device):
+        self.num_envs = num_envs
+        self.device = device
+        self._reset_accumulators()
+
+    def _reset_accumulators(self) -> None:
+        self._pos_sq_err_ekf = 0.0   # sum of squared EKF pos errors
+        self._pos_sq_err_raw = 0.0   # sum of squared raw noisy pos errors
+        self._vel_sq_err_ekf = 0.0   # sum of squared EKF vel errors
+        self._detected_count = 0     # number of detected samples
+        self._total_count = 0        # total (env × step) samples
+
+    def record(
+        self,
+        gt_pos: torch.Tensor,
+        gt_vel: torch.Tensor | None,
+        noisy_pos: torch.Tensor,
+        ekf_pos: torch.Tensor,
+        ekf_vel: torch.Tensor,
+        detected: torch.Tensor,
+    ) -> None:
+        """Record one step of errors across all envs."""
+        N = gt_pos.shape[0]
+
+        # Position errors (L2 per env, then sum)
+        ekf_pos_err = (ekf_pos - gt_pos).pow(2).sum(dim=-1)  # (N,)
+        raw_pos_err = (noisy_pos - gt_pos).pow(2).sum(dim=-1)  # (N,)
+
+        self._pos_sq_err_ekf += ekf_pos_err.sum().item()
+        self._pos_sq_err_raw += raw_pos_err.sum().item()
+
+        if gt_vel is not None:
+            vel_err = (ekf_vel - gt_vel).pow(2).sum(dim=-1)
+            self._vel_sq_err_ekf += vel_err.sum().item()
+
+        self._detected_count += detected.sum().item()
+        self._total_count += N
+
+    def summary_and_reset(self) -> dict[str, float]:
+        """Compute RMSE summary and reset accumulators."""
+        if self._total_count == 0:
+            return {}
+
+        n = self._total_count
+        pos_rmse_ekf = (self._pos_sq_err_ekf / n) ** 0.5
+        pos_rmse_raw = (self._pos_sq_err_raw / n) ** 0.5
+        vel_rmse_ekf = (self._vel_sq_err_ekf / n) ** 0.5 if self._vel_sq_err_ekf > 0 else 0.0
+        detection_rate = self._detected_count / n
+
+        # Improvement: how much EKF reduces error vs raw noise
+        if pos_rmse_raw > 1e-9:
+            improvement_pct = (1.0 - pos_rmse_ekf / pos_rmse_raw) * 100.0
+        else:
+            improvement_pct = 0.0
+
+        result = {
+            "pos_rmse_ekf_mm": round(pos_rmse_ekf * 1000, 2),
+            "pos_rmse_raw_mm": round(pos_rmse_raw * 1000, 2),
+            "vel_rmse_ekf_mps": round(vel_rmse_ekf, 4),
+            "detection_rate": round(detection_rate, 4),
+            "ekf_improvement_pct": round(improvement_pct, 1),
+            "num_samples": int(n),
+        }
+
+        self._reset_accumulators()
+        return result
+
 
 def _get_or_create_pipeline(
     env: "ManagerBasedRLEnv",
@@ -175,10 +287,13 @@ def _get_or_create_pipeline(
 ) -> PerceptionPipeline:
     """Get or lazily create the PerceptionPipeline on the env object."""
     if not hasattr(env, "_perception_pipeline") or env._perception_pipeline is None:
+        # Enable diagnostics if env has the flag (set by test scripts)
+        enable_diag = getattr(env, "_perception_diagnostics_enabled", False)
         env._perception_pipeline = PerceptionPipeline(
             num_envs=env.num_envs,
             device=env.device,
             noise_cfg=noise_cfg,
+            enable_diagnostics=enable_diag,
         )
     return env._perception_pipeline
 
@@ -291,6 +406,7 @@ def ball_vel_perceived(
         pipeline.step(
             _ball_pos_paddle_frame_gt(env, ball_cfg, robot_cfg, (0.0, 0.0, 0.070)),
             env.common_step_counter,
+            gt_vel_b=vel_b if pipeline._diagnostics_enabled else None,
         )
         return pipeline.vel.clone()
 
