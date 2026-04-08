@@ -29,3 +29,12 @@ Change:     Created `perception/ball_obs_spec.py` with `ball_pos_perceived()` an
 Command:    AST parse + dataclass construction test (isaaclab not available outside sim env)
 Result:     Module parses cleanly, dataclasses construct with defaults and custom overrides. Full sim integration test deferred to camera mount iteration (task 5). Key design: `BallObsNoiseCfg(mode="oracle")` is the default → zero behavior change when policy agent swaps in these functions.
 Decision:   Next iter: task 4 — survey docs/sim_to_real_plan.md for camera mount assumptions and update for rear-paddle-mounted 45° upward D435i orientation.
+
+---
+
+## iter_004 — sim_to_real_plan.md D435i update  (2026-04-07T02:00:00Z)
+Hypothesis: The sim_to_real_plan.md still references a generic "global shutter USB cam" with monocular depth and 120Hz; updating it for D435i will align the hardware preparation track (Track 3), latency budget, comms architecture, and risk assessment with the actual sensor choice.
+Change:     13 targeted edits to docs/sim_to_real_plan.md: (1) perception gap table → "noisy D435i depth", (2) latency table → D435i 11ms readout at 90Hz, (3) Track 2 summary → "D435i stereo depth lookup", (4) Track 3A camera row → D435i rear-paddle-mounted 45° upward with mass/USB3 details, (5) added camera-paddle transform row, (6) updated cabling for USB3, (7) added mass → 170g assembly, (8) comms diagram → D435i 30-90Hz, (9) compute stack → librealsense2 SDK, (10) DR base mass note → D435i ~90g, (11) calendar → D435i-specific tasks, (12) risk: motion blur → D435i IR global shutter, (13) risk: detection → D435i stereo depth advantage. Added 45° mount rationale paragraph with FoV geometry analysis.
+Command:    Read + Edit (no code, doc-only iteration)
+Result:     sim_to_real_plan.md now consistent with perception_roadmap.md on D435i choice. Key additions: 45° mount geometry rationale (FoV spans 0m to >1m), camera-paddle rigid transform spec (~50mm behind, ~30mm below, 45° Y-rotation), assembly mass estimate (170g vs prior ~25g mono), librealsense2 in software stack.
+Decision:   Next iter: task 5 — mount a simulated D435i in the Isaac Lab scene env_cfg and take a debug snapshot. This requires reading the existing scene setup and adding a TiledCamera sensor (per CAMERA_CHOICE.md decision).

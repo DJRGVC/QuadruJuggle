@@ -20,7 +20,7 @@ There are **five gaps** between simulation and reality. Each must be closed:
 | Gap | What's different | How to close | Who demonstrated it |
 |---|---|---|---|
 | **Actuator dynamics** | Sim motors are ideal; real motors have friction, delay, bandwidth limits | System identification + domain randomization | ETH (CMA-ES), Kumar (RMA) |
-| **Perception** | Sim has ground-truth ball state; real has noisy camera | EKF + noise model (ETH approach) | Ma et al. 2025 |
+| **Perception** | Sim has ground-truth ball state; real has noisy D435i depth | EKF + noise model (ETH approach) | Ma et al. 2025 |
 | **Latency** | Sim is synchronous; real has pipeline delays | Explicit latency modeling in training | DeepMind 2024 |
 | **Physics** | Sim contact/friction/restitution differ from real | Domain randomization + ball physics calibration | Rudin et al. 2022 |
 | **Mechanical** | Sim robot is rigid; real has flex, backlash, paddle mounting tolerances | System ID + mechanical robustness | General |
@@ -40,7 +40,7 @@ for sim-to-real on quadrupeds:
 
 | Parameter | Sim default | Randomization range | Why |
 |---|---|---|---|
-| Robot base mass | nominal | ±15% | Real Go1 has camera, paddle, cables mounted |
+| Robot base mass | nominal | ±15% | Real Go1 has D435i (~90g), paddle, bracket, cables mounted |
 | Link masses | nominal | ±10% | Manufacturing tolerances |
 | Friction coefficient | 0.7 | [0.4, 1.2] | Floor surface varies |
 | Restitution (ball) | 0.85 | [0.75, 0.95] | Ball wear, paddle surface variation |
@@ -66,13 +66,13 @@ that sim doesn't model:
 
 | Component | Expected latency | How to model |
 |---|---|---|
-| Camera readout | 8ms (at 120fps) | — |
-| Detection + depth | 1-2ms | — |
+| D435i depth readout | 11ms (at 90Hz depth) or 33ms (at 30Hz) | — |
+| HSV detect + depth lookup | <1ms | — |
 | EKF update | <1ms | — |
 | Pi1 inference | ~1ms | — |
 | Pi2 inference | ~1ms | — |
 | Go1 SDK communication | 2-5ms | — |
-| **Total observation delay** | **~15ms** | **Delay observations by 1 policy step** |
+| **Total observation delay** | **~15-20ms** | **Delay observations by 1 policy step** |
 | **Total action delay** | **~5ms** | **Delay actions by 1 physics step** |
 
 **Implementation:** Add observation and action delay buffers to the env:
@@ -108,8 +108,8 @@ This is the previously documented ETH-style approach. Summary of the phases:
 
 1. **EKF in sim (clean)** — validate filter on trajectories from trained pi1
 2. **Noise model + perception-aware retraining** — asymmetric actor-critic, retrain pi1
-3. **Camera hardware** — global shutter USB cam, upward-facing
-4. **Real detection** — HSV + monocular depth
+3. **Camera hardware** — Intel RealSense D435i, rear-paddle-mounted 45° upward
+4. **Real detection** — HSV on RGB + D435i stereo depth lookup
 5. **Noise calibration** — regress real noise model, update training if needed
 
 Full details in `docs/perception_roadmap.md`.
@@ -128,21 +128,35 @@ body (reducing angular velocity → reducing perception noise).
 | Component | Details | Notes |
 |---|---|---|
 | **Paddle** | 170mm diameter disc, mounted on back | Must match sim geometry exactly (offset, mass) |
-| **Camera** | Global shutter USB cam, upward-facing | Mount near paddle, clear view of 0-1m above |
-| **Camera bracket** | 3D-printed, rigid | Must not flex — any deflection is unmodeled |
-| **Cabling** | USB + power routed along spine | Secure to prevent snagging during motion |
-| **Added mass** | Weigh the full assembly | Record for domain randomization center value |
+| **Camera** | Intel RealSense D435i, rear-paddle-mounted, 45° upward | USB3, ~90g; must see ball from rest to 1m above paddle |
+| **Camera bracket** | 3D-printed, rigid, bolted behind paddle on Go1's back | Tilted 45° from horizontal toward zenith; must not flex — any deflection is unmodeled perception error |
+| **Camera-paddle transform** | Rigid 6-DOF offset measured once at assembly | Critical: EKF converts D435i frame → paddle frame via this fixed transform |
+| **Cabling** | USB3 cable routed along spine to Jetson | Secure to prevent snagging; USB3 required for D435i depth stream bandwidth |
+| **Added mass** | Weigh full assembly (paddle + D435i + bracket ≈ 170g) | Record for domain randomization center value; heavier than mono camera (was ~25g) |
 | **Paddle material** | Match sim restitution | Test real ball bounce height vs sim; adjust sim or paddle surface |
+
+**D435i mount orientation — why 45° upward:**
+The D435i sits behind the paddle, tilted 45° from horizontal toward zenith. This
+balances two competing constraints: (1) the ball at rest on the paddle (z≈0.07m above
+trunk) must be in-frame, and (2) the ball at 1m apex must also be in-frame. The D435i
+has ~86°×57° FoV (depth stream). At 45° tilt, the vertical FoV spans roughly -14° to
++71° from horizontal — covering 0m (paddle surface) to >1m above. At 0° (straight up),
+the ball at rest would be out of the depth minimum range (~0.1m). At 90° (horizontal),
+the ball at apex would be out of frame. 45° is the sweet spot.
+
+The camera-to-paddle transform is a fixed rigid offset: ~50mm behind paddle center,
+~30mm below paddle surface, rotated 45° about the lateral (Y) axis. Measured once at
+assembly and burned into the EKF config. Any flex in the bracket is unmodeled error.
 
 ### 3B. Compute Stack
 
 The Go1 ships with:
-- **Jetson Nano** (stock) — sufficient for detection + small MLP inference
-- Alternative: **Jetson Orin Nano** (~$200 upgrade) — more headroom for perception
+- **Jetson Nano** (stock) — sufficient for HSV detection + depth lookup + small MLP inference
+- Alternative: **Jetson Orin Nano** (~$200 upgrade) — more headroom; recommended if running D435i depth at 90Hz
 
 Required software:
-- Camera driver (V4L2 or manufacturer SDK)
-- OpenCV for HSV detection
+- Intel RealSense SDK 2.0 (`librealsense2`) — D435i driver, depth-color alignment, intrinsics
+- OpenCV for HSV detection on aligned RGB frame
 - PyTorch (or TorchScript/ONNX Runtime) for policy inference
 - Unitree Go1 SDK (Python or C++) for joint command interface
 - ROS2 (optional — useful for debugging, not required for deployment)
@@ -153,7 +167,7 @@ Required software:
 ┌─────────────────────────────────────────────────────┐
 │                    Jetson (onboard)                  │
 │                                                     │
-│  Camera (120Hz) ──→ HSV Detect ──→ EKF (200Hz)     │
+│  D435i (30-90Hz) ──→ HSV+Depth ──→ EKF (200Hz)     │
 │                                      │              │
 │                     Proprioception ──┤              │
 │                                      ↓              │
@@ -329,8 +343,8 @@ When reality doesn't match sim (it won't, at first), diagnose systematically:
 
 | Week | Sim work | Hardware work |
 |---|---|---|
-| 1 | Finish pi1 privileged training | Order camera, design paddle mount |
-| 2 | Track 1: domain rand + latency + obs noise; retrain pi2+pi1 | 3D print mount, assemble, calibrate intrinsics |
+| 1 | Finish pi1 privileged training | Order D435i, design rear-paddle bracket (45° upward) |
+| 2 | Track 1: domain rand + latency + obs noise; retrain pi2+pi1 | 3D print bracket, assemble D435i + paddle, verify depth stream, calibrate camera-paddle transform |
 | 3 | Track 2: EKF in sim (clean), then noisy | Track 4A: actuator sine sweeps, sys ID |
 | 4 | Track 2: perception-aware pi1 retraining | Track 4B: ball bounce calibration |
 | 5 | Integrate all robustness + perception, final retrain | Track 5: Level 0-2 (comms, pi2 only, walking) |
@@ -360,13 +374,16 @@ When reality doesn't match sim (it won't, at first), diagnose systematically:
   train_torso_tracking.py), and domain randomization on friction.
 
 - Camera motion blur at high angular velocities. The robot tilts/rotates during
-  juggling, blurring the ball image. Mitigation: global shutter camera + noise
-  model that accounts for angular velocity.
+  juggling. Mitigation: D435i IR stereo cameras are global shutter (no rolling
+  shutter blur); RGB is rolling shutter but only used for HSV detection (tolerant
+  to moderate blur). IR dot pattern can smear at high angular rates → noise model
+  σ_omega term accounts for this.
 
 **Low risk:**
 - Compute budget on Jetson. The total pipeline is <5ms per step — well within
   the 20ms budget. Pi1 and pi2 are small MLPs (~50k params each).
 
 - Ball detection. HSV filtering on a colored ping-pong ball at close range is
-  a solved problem. The ETH team used the same approach for a much harder target
-  (feathered shuttlecock at 3-10m range) with success.
+  a solved problem. D435i adds native stereo depth — eliminates the mono depth
+  estimation error that would have been the dominant noise source. ETH used HSV
+  for a harder target (feathered shuttlecock at 3-10m) with success.
