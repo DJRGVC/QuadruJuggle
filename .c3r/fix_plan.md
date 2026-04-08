@@ -21,7 +21,7 @@
 - [x] Implement noise_model.py — D435i-structured noise sampling (depth-dependent σ, dropout, latency) consumed by ball_obs_spec.py d435i mode
 - [x] Wire EKF mode into ball_obs_spec.py — PerceptionPipeline class (noise→EKF→filtered obs), lazy init on env, reset event, idempotent step dedup
 - [x] Integration test: swap ball_juggle_hier obs to mode="ekf", run short training (50 iters) — PASSED, mean_len=123 at iter 50, pipeline stable
-- [ ] Oracle vs d435i vs EKF comparison: run compare_perception_modes.py (50 iters each, 4096 envs) — script rewritten with subprocess isolation (old version hung on env.close()+gym.make), awaiting GPU (policy agent has 12288-env 1200-iter training running)
+- [x] Oracle vs d435i vs EKF comparison: 2048 envs × 50 iters — oracle 294/22.0, d435i 317/20.1, ekf 279/19.3 (ep_len/reward). EKF 12% below oracle on reward. Fixed critical vel-view covariance bug.
 - [x] Body-frame gravity in EKF: pass projected_gravity_b * 9.81 into EKF.predict() to account for trunk tilt
 - [x] Handoff to policy agent: document how to enable EKF mode in env_cfg (swap noise_cfg, add reset event), provide example config diff — PERCEPTION_HANDOFF.md committed
 - [x] Perception diagnostics: added _PerceptionDiagnostics to PerceptionPipeline (pos/vel RMSE, detection rate, EKF improvement %)

@@ -136,7 +136,7 @@ class BallEKF:
                 Pass ``robot.data.projected_gravity_b * 9.81`` to account
                 for trunk tilt.
         """
-        vel = self._x[:, 3:]  # (N, 3)
+        vel = self._x[:, 3:].clone()  # (N, 3) — clone to avoid view mutation
 
         # Acceleration: gravity + drag
         if gravity_b is not None:
@@ -147,11 +147,7 @@ class BallEKF:
         a_drag = -self.cfg.drag_coeff * speed * vel  # quadratic drag
         a = g + a_drag  # (N, 3)
 
-        # State prediction
-        self._x[:, :3] += vel * dt + 0.5 * a * dt**2
-        self._x[:, 3:] += a * dt
-
-        # Linearised state transition F = dxnew/dx
+        # Linearised state transition F = dxnew/dx (compute BEFORE state mutation)
         # F is identity + off-diagonal blocks from dynamics linearisation
         F = torch.eye(6, device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1).clone()
         F[:, :3, 3:] = torch.eye(3, device=self.device) * dt  # d(pos)/d(vel) = I*dt
@@ -159,11 +155,14 @@ class BallEKF:
         # Drag Jacobian: d(a_drag)/d(vel)
         # a_drag = -c * |v| * v → da/dv = -c * (|v|*I + v⊗v/|v|)
         c = self.cfg.drag_coeff
-        v_hat = vel / speed  # (N, 3)
-        # da_dv = -c * (speed * I + v ⊗ v_hat)
+        v_hat = vel / speed  # (N, 3) — safe because vel is cloned
         I3 = torch.eye(3, device=self.device).unsqueeze(0)
         da_dv = -c * (speed.unsqueeze(-1) * I3 + torch.bmm(vel.unsqueeze(-1), v_hat.unsqueeze(-2)))
         F[:, 3:, 3:] += da_dv * dt  # d(vel_new)/d(vel) = I + da_dv * dt
+
+        # State prediction (mutates self._x)
+        self._x[:, :3] += vel * dt + 0.5 * a * dt**2
+        self._x[:, 3:] += a * dt
 
         # Process noise Q
         Q = torch.zeros(6, 6, device=self.device)
@@ -172,6 +171,11 @@ class BallEKF:
 
         # Covariance prediction: P = F @ P @ F^T + Q
         self._P = torch.bmm(torch.bmm(F, self._P), F.transpose(-1, -2)) + Q.unsqueeze(0)
+        # Enforce symmetry to prevent numerical drift
+        self._P = 0.5 * (self._P + self._P.transpose(-1, -2))
+        # State clamping — physically, ball can't be >5m away or >20m/s
+        self._x[:, :3].clamp_(-5.0, 5.0)
+        self._x[:, 3:].clamp_(-20.0, 20.0)
 
     def update(self, z: torch.Tensor, detected: torch.Tensor) -> None:
         """Update step: incorporate measurement where detected.
@@ -193,26 +197,26 @@ class BallEKF:
         # Kalman gain: K = P @ H^T @ S^{-1}
         # P @ H^T = P[:, :, :3] (since H^T has non-zero only in first 3 rows)
         PH_T = self._P[:, :, :3]  # (N, 6, 3)
-        S_inv = torch.linalg.inv(S)  # (N, 3, 3)
-        K = torch.bmm(PH_T, S_inv)  # (N, 6, 3)
+        # Regularise S to prevent singular matrices from numerical drift
+        S += torch.eye(3, device=self.device).unsqueeze(0) * 1e-8
+        K = torch.linalg.solve(S.transpose(-1, -2), PH_T.transpose(-1, -2)).transpose(-1, -2)  # (N, 6, 3)
 
         # State update: x = x + K @ y (only for detected envs)
         dx = torch.bmm(K, y.unsqueeze(-1)).squeeze(-1)  # (N, 6)
         mask = detected.unsqueeze(-1).float()  # (N, 1)
         self._x += dx * mask
 
-        # Covariance update: P = (I - K @ H) @ P
-        # Joseph form for numerical stability: P = (I-KH) @ P @ (I-KH)^T + K @ R @ K^T
+        # Covariance update: P = (I - K @ H) @ P (standard form)
         I6 = torch.eye(6, device=self.device).unsqueeze(0)
         H_expanded = self._H.unsqueeze(0).expand(self.num_envs, -1, -1)
         IKH = I6 - torch.bmm(K, H_expanded)
-
-        # Only update covariance for detected envs
-        P_new = torch.bmm(torch.bmm(IKH, self._P), IKH.transpose(-1, -2)) + \
-                torch.bmm(torch.bmm(K, self._R.unsqueeze(0).expand(self.num_envs, -1, -1)), K.transpose(-1, -2))
+        P_new = torch.bmm(IKH, self._P)
 
         # Blend: detected envs get new P, undetected keep old P
         self._P = torch.where(detected.view(-1, 1, 1), P_new, self._P)
+        # Enforce symmetry + small regularization for positive definiteness
+        self._P = 0.5 * (self._P + self._P.transpose(-1, -2))
+        self._P += I6 * 1e-8
 
     def step(
         self,

@@ -461,7 +461,10 @@ def ball_pos_perceived(
         robot: Articulation = env.scene[robot_cfg.name]
         gravity_b = robot.data.projected_gravity_b * 9.81  # (N, 3)
         pipeline.step(pos_b, env.common_step_counter, gravity_b=gravity_b)
-        return pipeline.pos.clone()
+        out = pipeline.pos.clone()
+        # Guard against EKF divergence — NaN/Inf would corrupt PPO gradients
+        out = torch.nan_to_num(out, nan=0.0, posinf=1.0, neginf=-1.0)
+        return out.clamp(-5.0, 5.0)
 
     raise ValueError(f"Unknown noise mode: {noise_cfg.mode!r}")
 
@@ -502,7 +505,9 @@ def ball_vel_perceived(
             gt_vel_b=vel_b if pipeline._diagnostics_enabled else None,
             gravity_b=gravity_b,
         )
-        return pipeline.vel.clone()
+        out = pipeline.vel.clone()
+        out = torch.nan_to_num(out, nan=0.0, posinf=5.0, neginf=-5.0)
+        return out.clamp(-10.0, 10.0)
 
     raise ValueError(f"Unknown noise mode: {noise_cfg.mode!r}")
 

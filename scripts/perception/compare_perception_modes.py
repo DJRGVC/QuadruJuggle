@@ -208,25 +208,34 @@ def _run_single_mode(args):
     metrics = {"mode": mode}
     ep_lengths = []
     reward_sums = []
+    timeout_pcts = []
     perception_diags = []
     iteration_count = [0]
 
     original_log = runner.log
 
     def _metric_log(locs, *args_log, **kwargs):
+        import statistics
+
         original_log(locs, *args_log, **kwargs)
         iteration_count[0] += 1
+
+        # Read from RSL-RL's rewbuffer/lenbuffer (deques of per-episode values)
+        lenbuf = locs.get("lenbuffer", [])
+        rewbuf = locs.get("rewbuffer", [])
+        if len(lenbuf) > 0:
+            ep_lengths.append(statistics.mean(lenbuf))
+        if len(rewbuf) > 0:
+            reward_sums.append(statistics.mean(rewbuf))
+
+        # Also capture termination breakdown from ep_infos
         ep_infos = locs.get("ep_infos", [])
         if ep_infos:
             for key in ep_infos[0]:
-                if "len" in key.lower() or "length" in key.lower():
+                if "time_out" in key.lower() or "timeout" in key.lower():
                     vals = [float(ep[key]) for ep in ep_infos if key in ep]
                     if vals:
-                        ep_lengths.append(sum(vals) / len(vals))
-                if "rew" in key.lower() and "mean" not in key.lower():
-                    vals = [float(ep[key]) for ep in ep_infos if key in ep]
-                    if vals:
-                        reward_sums.append(sum(vals) / len(vals))
+                        timeout_pcts.append(sum(vals) / len(vals))
 
         if mode == "ekf" and iteration_count[0] % DIAG_LOG_INTERVAL == 0:
             pipeline = getattr(env.unwrapped, "_perception_pipeline", None)
@@ -253,6 +262,8 @@ def _run_single_mode(args):
         metrics["max_ep_len"] = round(max(ep_lengths), 1)
     if reward_sums:
         metrics["mean_reward_final10"] = round(sum(reward_sums[-10:]) / len(reward_sums[-10:]), 1)
+    if timeout_pcts:
+        metrics["timeout_pct_final10"] = round(100 * sum(timeout_pcts[-10:]) / len(timeout_pcts[-10:]), 1)
 
     if perception_diags:
         avg_diag = {}

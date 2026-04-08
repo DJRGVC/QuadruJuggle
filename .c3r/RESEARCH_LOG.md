@@ -137,3 +137,18 @@ Change:     (1) Rewrote compare_perception_modes.py to use subprocess isolation 
 Command:    /home/daniel-grant/Research/c3r/c3r spawn /home/daniel-grant/Research/QuadruJuggle lit-review generic "..." --model sonnet --parent perception
 Result:     lit-review spawned (thread 1491325907695177789), currently in error state from iter 0 (API 529 overload) — agent loop will auto-retry. Compare script AST-parses correctly. GPU still occupied by policy agent's 1200-iter d435i training (PID 161679, 12288 envs).
 Decision:   Next iter: if GPU is free, run the subprocess-based comparison test. If lit-review has produced output, review it. If GPU still busy, look into whether we can run a reduced comparison (fewer envs, fewer iters) or work on EKF parameter analysis offline.
+
+---
+
+## iter_016 — EKF bug fix + oracle vs d435i vs ekf comparison  (2026-04-08T07:15:00Z)
+Hypothesis: Fixing the EKF vel-view mutation bug and running a 3-mode comparison (oracle/d435i/ekf, 2048 envs × 50 iters) will quantify the perception pipeline's impact on early training.
+Change:     (1) Fixed critical EKF covariance bug: `vel = self._x[:, 3:]` is a view that mutates after state update, causing `v_hat = vel/speed` to use new velocity with old speed (1e-8), inflating P[5,5] to 74M → singular S → NaN → PPO crash. Fix: `vel = self._x[:, 3:].clone()` + compute F BEFORE state mutation. (2) Replaced Joseph-form covariance update with standard form `P = (I-KH)@P` + symmetrization + eps regularization (simpler, avoids PSD violation from diagonal clamping). (3) Replaced `linalg.inv(S)` with `linalg.solve` + 1e-8 diagonal regularization. (4) Added NaN/Inf clamping on EKF output observations (safety net). (5) Fixed compare_perception_modes.py metric capture: reads `locs["rewbuffer"]`/`locs["lenbuffer"]` instead of parsing ep_infos keys. (6) Added state clamping: pos ±5m, vel ±20m/s.
+Command:    `gpu_lock.sh uv run --active python scripts/perception/compare_perception_modes.py --pi2-checkpoint .../2026-03-12_09-04-32/model_best.pt --num_envs 2048 --max_iterations 50 --headless --modes oracle d435i ekf`
+Result:     All three modes complete (no crashes). 50-iter comparison (2048 envs):
+  | Mode   | ep_len_final10 | reward_final10 | timeout% |
+  |--------|----------------|----------------|----------|
+  | oracle | 294.0          | 22.0           | 0.0%     |
+  | d435i  | 317.4          | 20.1           | 0.3%     |
+  | ekf    | 278.6          | 19.3           | 0.0%     |
+  Oracle leads on reward (+12% over EKF). D435i raw noise surprisingly leads on ep_len (noise as regularization?). Gaps are modest at 50 iters — real differentiation expected at 500+ iters.
+Decision:   Core perception pipeline is feature-complete and stable. Next: update fix_plan (mark comparison done), check lit-review subagent, then pursue EKF parameter tuning or longer training comparison.

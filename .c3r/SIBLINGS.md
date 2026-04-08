@@ -26,7 +26,7 @@ Siblings will see it in their next SIBLINGS.md refresh.
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
 - **status**: running · iter #3 · ctx 0%
-- **last iter**: 1h ago
+- **last iter**: 2h ago
 
 ### Recent commits on `agent/policy`
 ```
@@ -66,4 +66,21 @@ git show agent/policy:.c3r/PROMPT.md
 git show agent/policy:.c3r/RESEARCH_LOG.md
 git show agent/policy:.c3r/SIBLINGS.md
 ```
+
+## lit-review
+- **role**: generic
+- **focus**: survey perception-for-manipulation papers (ETH noise injection, teacher-student distillation, event cameras, learned state estimators) and critique our D435i+EKF approach
+- **status**: running · iter #0 · ctx 0%
+- **parent**: perception (this is a sub-agent)
+
+### Recent commits on `agent/lit-review`
+```
+aab3845 torso tracking edit
+9c4793a pi_2 with v trackign works
+3841f54 working on pi_1 + pi_2
+085e457 frank-proofed requirements.txt
+7256612 added req + install explainer
+```
+### Files modified on `agent/lit-review` (relative to `c3r/QuadruJuggle`)
+_(none)_
 
