@@ -1,0 +1,52 @@
+name: Render and publish Quarto site
+
+on:
+  push:
+    branches:
+      - main
+      - 'c3r/**'
+  workflow_dispatch:
+
+# Modern deploy-pages flow — no gh-pages branch, no manual repo settings.
+# `c3r report init` enables this build type via the gh API at scaffold
+# time, so the user never has to touch the GitHub UI.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Don't queue more than one deploy at a time
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Quarto needs full history for some features
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Render Quarto site
+        run: quarto render
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

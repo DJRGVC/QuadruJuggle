@@ -214,3 +214,7 @@ __marimo__/
 # Claude notes
 claude_cc/
 logs/
+
+# Quarto build output
+_site/
+.quarto/
