@@ -44,8 +44,8 @@ parser.add_argument(
 )
 parser.add_argument(
     "--noise-mode", type=str, default="oracle",
-    choices=["oracle", "d435i"],
-    help="Ball observation noise mode: 'oracle' (ground truth) or 'd435i' (structured camera noise).",
+    choices=["oracle", "d435i", "ekf"],
+    help="Ball observation noise mode: 'oracle' (ground truth), 'd435i' (structured camera noise), or 'ekf' (d435i→EKF filter).",
 )
 parser.add_argument(
     "--wandb", action="store_true", default=False,
@@ -157,7 +157,14 @@ class EarlyStopException(Exception):
 
 
 def _bj_set_noise_scale(rl_env, noise_scale: float) -> None:
-    """Update noise_scale on ball_pos / ball_vel obs term params (in-place)."""
+    """Update noise_scale on live perception pipeline or obs term params."""
+    # Prefer the stateful pipeline (EKF/d435i modes — created on first obs call)
+    try:
+        from go1_ball_balance.perception.ball_obs_spec import update_perception_noise_scale
+        update_perception_noise_scale(rl_env, noise_scale)
+    except ImportError:
+        pass
+    # Also update static noise_cfg params (stateless d435i fallback)
     obs_group = getattr(rl_env.observation_manager, "_group_obs_term_cfgs", {})
     for _group, term_cfgs in obs_group.items():
         for cfg in term_cfgs:

@@ -46,8 +46,8 @@ parser.add_argument(
          "Defaults to all curriculum stage targets.",
 )
 parser.add_argument(
-    "--noise-mode", type=str, default="oracle", choices=["oracle", "d435i"],
-    help="Ball observation noise mode: oracle (no noise) or d435i (structured camera noise).",
+    "--noise-mode", type=str, default="oracle", choices=["oracle", "d435i", "ekf"],
+    help="Ball observation noise mode: oracle (no noise), d435i (structured camera noise), or ekf (d435i→EKF filter).",
 )
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)

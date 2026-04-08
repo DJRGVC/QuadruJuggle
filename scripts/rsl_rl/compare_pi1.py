@@ -178,9 +178,9 @@ def main():
     parser.add_argument("--ckpt-b", required=True, help="Checkpoint B (comparison)")
     parser.add_argument("--label-a", default="A", help="Label for checkpoint A")
     parser.add_argument("--label-b", default="B", help="Label for checkpoint B")
-    parser.add_argument("--noise-mode-a", default="oracle", choices=["oracle", "d435i"],
+    parser.add_argument("--noise-mode-a", default="oracle", choices=["oracle", "d435i", "ekf"],
                         help="Noise mode for checkpoint A eval")
-    parser.add_argument("--noise-mode-b", default="oracle", choices=["oracle", "d435i"],
+    parser.add_argument("--noise-mode-b", default="oracle", choices=["oracle", "d435i", "ekf"],
                         help="Noise mode for checkpoint B eval")
     parser.add_argument("--num_envs", type=int, default=256)
     parser.add_argument("--episodes", type=int, default=50)
