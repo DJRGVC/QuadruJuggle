@@ -45,6 +45,10 @@ parser.add_argument(
     help="Comma-separated target heights to evaluate (e.g. '0.30,0.50,0.70,0.86'). "
          "Defaults to all curriculum stage targets.",
 )
+parser.add_argument(
+    "--noise-mode", type=str, default="oracle", choices=["oracle", "d435i"],
+    help="Ball observation noise mode: oracle (no noise) or d435i (structured camera noise).",
+)
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
@@ -116,6 +120,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # Inject pi2 checkpoint
     if _pi2_checkpoint_path is not None and hasattr(env_cfg.actions, "torso_cmd"):
         env_cfg.actions.torso_cmd.pi2_checkpoint = os.path.abspath(_pi2_checkpoint_path)
+
+    # Inject noise mode
+    if args_cli.noise_mode != "oracle":
+        from go1_ball_balance.perception.ball_obs_spec import BallObsNoiseCfg
+        noise_cfg = BallObsNoiseCfg(mode=args_cli.noise_mode)
+        env_cfg.observations.policy.ball_pos.params["noise_cfg"] = noise_cfg
+        env_cfg.observations.policy.ball_vel.params["noise_cfg"] = noise_cfg
 
     log_root_path = os.path.abspath(os.path.join("logs", "rsl_rl", agent_cfg.experiment_name))
 
