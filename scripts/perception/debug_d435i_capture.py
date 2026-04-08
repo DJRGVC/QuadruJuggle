@@ -47,16 +47,21 @@ import gymnasium as gym
 import isaaclab_tasks  # noqa: F401
 import go1_ball_balance  # noqa: F401
 
-from isaaclab.envs import ManagerBasedRLEnvCfg
+from go1_ball_balance.tasks.ball_juggle_hier.ball_juggle_hier_env_cfg import BallJuggleHierEnvCfg_PLAY
 
 
 def main():
-    # If hierarchical task, set pi2 checkpoint
-    if _pi2_checkpoint_path is not None:
-        from go1_ball_balance.tasks.torso_tracking.action_term import TorsoCommandActionCfg
-        TorsoCommandActionCfg._pi2_checkpoint_override = _pi2_checkpoint_path
+    # Build the env config directly (avoids Hydra wiring)
+    env_cfg = BallJuggleHierEnvCfg_PLAY()
+    env_cfg.scene.num_envs = args_cli.num_envs
 
-    env = gym.make(args_cli.task, cfg_entry_point="env_cfg_entry_point")
+    # Inject pi2 checkpoint for hierarchical tasks
+    if _pi2_checkpoint_path is not None:
+        if hasattr(env_cfg, "actions") and hasattr(env_cfg.actions, "torso_cmd"):
+            env_cfg.actions.torso_cmd.pi2_checkpoint = os.path.abspath(_pi2_checkpoint_path)
+            print(f"[debug_capture] pi2 checkpoint: {env_cfg.actions.torso_cmd.pi2_checkpoint}")
+
+    env = gym.make(args_cli.task, cfg=env_cfg)
     obs, _ = env.reset()
 
     # Step the environment to let the ball drop onto the paddle
