@@ -211,3 +211,21 @@ Result:     from_checkerboard() no longer a stub. Gravity-alignment tested:
 Decision:   Next: YOLO detector is the last stub but blocked on TensorRT.
             Could implement a lightweight fallback (colour thresholding on
             depth) or wait for policy results. Check policy progress next iter.
+
+## Iteration 143 — Extrinsics to_yaml() round-trip + Quarto update  (2026-04-09T20:00:00Z)
+Hypothesis: Adding to_yaml() to CameraCalibrator completes the calibration
+            persistence workflow (calibrate → save → load at deploy time).
+Change:     (1) Added CameraCalibrator.to_yaml(): saves R_cam_body and
+            t_cam_body to YAML via yaml.dump(). (2) Added 3 round-trip tests:
+            identity, non-trivial 45° rotation, and from_known_mount → save
+            → load. (3) Updated Quarto page with iters 141-143 (D435i wrapper,
+            calibrator, to_yaml).
+Command:    pytest scripts/perception/ -x -q → 588/588 passed (12.30s)
+Result:     Test count: 585 → 588 (+3). Round-trip verified for identity,
+            arbitrary rotation + translation, and from_known_mount output.
+            Quarto page updated with real-hardware component summaries.
+            Policy agent at iter 32, 81% context, planning Stage G retrain.
+Decision:   Next: check policy progress. If Stage G retrain available,
+            re-validate gap predictions. Otherwise, YOLO detector is the
+            last real-hardware stub but blocked on TensorRT — consider
+            implementing a lightweight depth-blob detector as alternative.

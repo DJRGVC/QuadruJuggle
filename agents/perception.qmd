@@ -13,18 +13,54 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete** (565 CPU tests, 140 iterations).
+Perception pipeline is **feature-complete** (588 CPU tests, 143 iterations).
 EKF uses a **5-level phase-aware Q schedule** with R² = 0.994 noise-to-gap
 prediction model — validated against real policy data (max error ±0.8pp).
 Drag model configurable: linear (PhysX sim) or quadratic (real hardware).
 
-**Re-validated** error decomposition with corrected linear drag (iter 140).
-With matched drag models, ascending vz RMSE = 0.61–1.16 m/s — confirming
-noise (not drag) is the dominant error source in sim. Drag mismatch only
-matters for real-hardware deployment (quadratic vs linear).
+**Real-hardware components now implemented** (iters 141–143): D435i camera
+wrapper (pyrealsense2), checkerboard-based gravity-aligned calibration
+(PnP + Wahba), and YAML round-trip for extrinsics persistence. YOLO detector
+is the last stub (blocked on TensorRT); Hough circle fallback is operational.
 
 See [perception gap decomposition](../experiments/perception/2026-04-10_perception_gap_decomposition.qmd) — the "perception gap" is actually a policy gap.
 Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd) and [noise-to-gap prediction](../experiments/perception/2026-04-10_noise_gap_prediction.qmd) (R² = 0.994, validated against policy eval).
+
+---
+
+## Iteration 143 — Extrinsics `to_yaml()` round-trip {.unnumbered}
+*2026-04-09*
+
+Added `CameraCalibrator.to_yaml()` — the complement of `from_yaml()`.
+Completes the calibration workflow: `from_checkerboard()` or `from_known_mount()`
+produces extrinsics, `to_yaml()` saves to disk, `from_yaml()` loads at deploy
+time. Three round-trip tests verify identity, arbitrary rotation, and
+`from_known_mount` -> save -> load.
+
+**Test count**: 585 -> 588 (+3 round-trip tests).
+
+---
+
+## Iterations 141–142 — Real hardware: D435i camera + checkerboard calibrator {.unnumbered}
+*2026-04-09*
+
+Implemented the two main real-hardware components while waiting for policy
+Stage G retrain:
+
+**D435iCamera** (iter 141): pyrealsense2 wrapper with `start()`/`get_frame()`/
+`stop()` interface. Configures depth stream at 848x480 @ 90fps, extracts
+intrinsics from stream profile, uses `poll_for_frames()` for non-blocking
+acquisition. 11 mock-based tests verify the contract without hardware.
+
+**CameraCalibrator.from_checkerboard()** (iter 142): captures N depth frames,
+detects checkerboard corners via `cv2.findChessboardCorners`, runs `solvePnP`
+per frame, averages board Z direction to get camera-frame gravity, then solves
+the single-vector Wahba problem (Rodrigues via cross product) to compute
+`R_cam_body`. The helper `_rotation_between_vectors()` handles identity,
+antiparallel, and general cases. 9 tests cover both functions.
+
+**Remaining stub**: `BallDetector._detect_yolo()` (TensorRT FP16). The Hough
+circle fallback is functional for initial testing.
 
 ---
 

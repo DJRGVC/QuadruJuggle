@@ -87,6 +87,23 @@ class CameraCalibrator:
         return CameraExtrinsics(R_cam_body=R, t_cam_body=t)
 
     @staticmethod
+    def to_yaml(extrinsics: CameraExtrinsics, path: str) -> None:
+        """Save extrinsics to YAML file (round-trips with from_yaml).
+
+        Args:
+            extrinsics: The extrinsics to save.
+            path: Output file path.
+        """
+        import yaml
+
+        data = {
+            "R_cam_body": extrinsics.R_cam_body.tolist(),
+            "t_cam_body": extrinsics.t_cam_body.tolist(),
+        }
+        with open(path, "w") as f:
+            yaml.dump(data, f, default_flow_style=None, sort_keys=False)
+
+    @staticmethod
     def from_checkerboard(
         camera,  # D435iCamera instance
         board_size: tuple[int, int] = (7, 5),

@@ -279,5 +279,55 @@ t_cam_body: [0.0, 0.0, 0.0]
             CameraCalibrator.from_yaml("/nonexistent/path.yaml")
 
 
+class TestCalibratorToYaml(unittest.TestCase):
+    """CameraCalibrator.to_yaml() saves extrinsics and round-trips with from_yaml."""
+
+    def test_round_trip_identity(self):
+        """Save identity extrinsics → load back → matches."""
+        ext = CameraExtrinsics(R_cam_body=np.eye(3), t_cam_body=np.zeros(3))
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as f:
+            path = f.name
+        try:
+            CameraCalibrator.to_yaml(ext, path)
+            loaded = CameraCalibrator.from_yaml(path)
+            np.testing.assert_allclose(loaded.R_cam_body, ext.R_cam_body, atol=1e-10)
+            np.testing.assert_allclose(loaded.t_cam_body, ext.t_cam_body, atol=1e-10)
+        finally:
+            os.unlink(path)
+
+    def test_round_trip_nontrivial(self):
+        """Save arbitrary rotation + translation → load back → matches."""
+        # 45-degree rotation about Z
+        c, s = np.cos(np.pi / 4), np.sin(np.pi / 4)
+        R = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]], dtype=np.float64)
+        t = np.array([0.12, -0.05, 0.07], dtype=np.float64)
+        ext = CameraExtrinsics(R_cam_body=R, t_cam_body=t)
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as f:
+            path = f.name
+        try:
+            CameraCalibrator.to_yaml(ext, path)
+            loaded = CameraCalibrator.from_yaml(path)
+            np.testing.assert_allclose(loaded.R_cam_body, R, atol=1e-10)
+            np.testing.assert_allclose(loaded.t_cam_body, t, atol=1e-10)
+        finally:
+            os.unlink(path)
+
+    def test_from_known_mount_round_trip(self):
+        """from_known_mount → to_yaml → from_yaml → matches original."""
+        ext = CameraCalibrator.from_known_mount(
+            mount_position_body=np.array([0.0, 0.0, 0.07]),
+            mount_orientation_rpy=np.array([0.0, -np.pi / 4, 0.0]),
+        )
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as f:
+            path = f.name
+        try:
+            CameraCalibrator.to_yaml(ext, path)
+            loaded = CameraCalibrator.from_yaml(path)
+            np.testing.assert_allclose(loaded.R_cam_body, ext.R_cam_body, atol=1e-10)
+            np.testing.assert_allclose(loaded.t_cam_body, ext.t_cam_body, atol=1e-10)
+        finally:
+            os.unlink(path)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
