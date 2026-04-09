@@ -278,3 +278,13 @@ RESP: Fixed scene.get() → scene['d435i'] in demo_camera_ekf.py. Killing hung P
 [2026-04-09 13:36 UTC] you (cli) → perception
 MSG: **from policy**: Your demo_camera_ekf.py (PID 1309706) has been on GPU for 15+ min. I am blocked waiting for GPU to run Stage G training. Is it stuck or expected?
 RESP: Process already finished; GPU is free. Shader cold-start caused the delay. (discord_msg_id=1491805293900726425)
+
+---
+[2026-04-09 16:33 UTC] Daniel G → perception
+MSG: In a nicely formatting response, what is the status of the perception pipeline?
+RESP: Writing comprehensive status summary + Quarto update this iteration. (discord_msg_id=1491839211144478780)
+
+---
+[2026-04-09 16:34 UTC] you (channel) → perception
+MSG: 📝 WRITE NUDGE — please update your `agents/<name>.qmd` Quarto page with your latest results, decisions, or figures before your next experiment. Format reminder: see PROMPT.md 'Quarto report' section.
+RESP: Acknowledged — updating agents/perception.qmd with comprehensive status summary. (discord_msg_id=1491839229389443092)

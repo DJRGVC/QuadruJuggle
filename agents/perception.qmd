@@ -13,12 +13,78 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete** (534 CPU tests). High-height readiness
-analysis confirms EKF tracks ball accurately at juggling heights (0.5–1.0m):
-apex error 2.7–4.6mm, detection rate 70–81%. Pipeline is ready for when
-policy learns to juggle. Bottleneck remains policy energy modulation.
+Perception pipeline is **feature-complete** (534 CPU tests, 128 iterations).
+Waiting on policy agent to unlock true juggling behaviour (energy modulation).
 
 See [full Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd).
+
+---
+
+## Iteration 129 — Comprehensive Status Summary {.unnumbered}
+*2026-04-09*
+
+### Pipeline Architecture
+
+The perception system follows an **ETH-style noise-injected EKF** architecture (not teacher-student distillation). Only pi1 (ball planner) needs perception-aware retraining; pi2 (torso tracker) is fully isolated.
+
+```
+D435i Camera (sim) → SimBallDetector → D435i Noise Model → 6-DOF EKF → pi1 observations
+```
+
+### What's Built (feature-complete)
+
+| Component | Status | Tests | Key specs |
+|---|---|---|---|
+| **D435i noise model** | ✅ Done | 50+ | Height-dependent pos/vel noise, 20% dropout below 0.5m |
+| **6-DOF EKF** | ✅ Done | 100+ | Adaptive R, 3-level Q, flight NIS ≈ 3.3–3.8 |
+| **SimBallDetector** | ✅ Done | 17 | Pixel projection from TiledCamera float32 depth |
+| **Paddle anchor** | ✅ Done | 9 | Virtual measurement during contact phase (R=5mm) |
+| **P-clamping** | ✅ Done | 8 | p_max_pos=0.25m, p_max_vel=5.0 m/s |
+| **Ball phase tracker** | ✅ Done | 21 | Contact/ascending/descending state machine |
+| **Camera scheduling** | ✅ Done | 4 | Skip detection during contact (saves compute) |
+| **GPU demo pipeline** | ✅ Done | — | `run_gpu_demo.sh` — camera → detect → EKF → video |
+| **Eval infrastructure** | ✅ Done | — | `run_perception_eval.sh`, `demo_camera_ekf.py --pi1-checkpoint` |
+| **Analysis/viz tools** | ✅ Done | 80+ | 8 plotting scripts (noise profile, training history, trajectory, gap decomposition, etc.) |
+| **Total test suite** | ✅ | **534/534** | All CPU, ~12s |
+
+### EKF Accuracy at Juggling Heights (simulated ballistic arcs)
+
+| Target height | Apex error | Flight RMSE | Detection rate | Dropout |
+|---|---|---|---|---|
+| 0.50 m | 2.7 mm | 32.0 mm | 81.2% | 20% |
+| 0.70 m | 2.8 mm | 37.5 mm | 70.3% | 25.8% |
+| 1.00 m | 4.6 mm | 44.2 mm | 69.8% | 32.3% |
+
+Apex accuracy < 5 mm at all heights — excellent for pi1 energy modulation.
+
+### Current Bottleneck: Policy, Not Perception
+
+The Stage G eval (iters 125–128) showed:
+
+- **Neither oracle nor D435i model juggles** — max ball height is 246mm at ALL target heights (0.10–0.50m)
+- Both modes are **balancing**, not juggling — flight time 2–9%
+- Camera detection rate is only 1–6% because the ball never reaches camera-visible heights (>200mm)
+- D435i-trained policy achieves 50% timeout at high targets (0.42–0.50m) vs oracle's 0% — but this reflects different training stages (G vs F), not a perception gap
+
+![Perception gap decomposition — error by ball phase](../images/perception/perception_gap_decomposition_iter128.png){width=100%}
+
+![High-height readiness — EKF tracks accurately at 0.5–1.0m](../images/perception/high_height_readiness_iter127.png){width=100%}
+
+### What's Next
+
+1. **Waiting on policy agent** — Stage G retraining with ES metric fix (switched to per-step reward)
+2. **When policy juggles**: re-run gap decomposition with ball actually in flight
+3. **Cross-eval**: run oracle checkpoint through D435i pipeline (isolate noise vs training effect)
+4. **Real hardware** (blocked on Go1 + D435i access): camera wrapper, YOLO detector, calibration
+
+### Key Decisions Made
+
+- **No teacher-student distillation** — ETH noise injection is simpler and sufficient
+- **Paddle anchor** during contact phase — prevents EKF divergence when ball is on paddle
+- **Camera scheduling** — skip detection during contact (ball invisible anyway)
+- **D435i noise model validated** — noise is NOT the Stage G bottleneck (iter 123)
+
+534/534 tests passing. Pipeline ready for policy to unlock juggling.
 
 ---
 

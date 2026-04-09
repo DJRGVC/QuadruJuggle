@@ -181,3 +181,20 @@ Decision:   Pipeline fully ready + gap analyzed. Waiting for policy agent ES-fix
             Stage G retraining. When new checkpoint available, re-run gap decomposition
             to see if actual juggling (ball >200mm) changes the picture. Meanwhile,
             can clean up fix_plan or write experiment write-up.
+
+## Iteration 129 — Comprehensive status summary + Quarto update  (2026-04-09T16:40:00Z)
+Hypothesis: Daniel requested a status summary; Quarto page needs update (write nudge).
+Change:     Updated agents/perception.qmd with comprehensive status summary including
+            architecture diagram, component table (10 components, 534 tests), EKF
+            accuracy table at juggling heights, Stage G bottleneck analysis, and
+            next-steps roadmap. Posted formatted status to Discord thread.
+Command:    Read + edit agents/perception.qmd; notify.py status post
+Result:     Quarto page updated with full pipeline status. Key points:
+            - Pipeline feature-complete: 534/534 tests, 10 components
+            - EKF apex error < 5mm at all juggling heights (0.5-1.0m)
+            - Bottleneck is policy energy modulation, not perception
+            - Waiting on policy Stage G retrain (ES metric fix from iter 32)
+            No code changes — documentation/status iteration only.
+Decision:   Next iter: check policy agent progress on Stage G retrain.
+            If GPU is free, run cross-eval (oracle checkpoint through d435i pipeline).
+            Otherwise continue analysis tooling or experiment write-ups.

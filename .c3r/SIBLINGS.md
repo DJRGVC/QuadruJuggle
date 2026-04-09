@@ -27,15 +27,15 @@ Siblings will see it in their next SIBLINGS.md refresh.
 ## policy
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
-- **status**: running · iter #20 · ctx 81%
+- **status**: running · iter #21 · ctx 81%
 
 ### Recent commits on `agent/policy`
 ```
+e8af8a4 Iteration 32: fix ES metric bug — switch to per-step reward for multi-target stages
 e92a1df Iteration 31: Stage G training launched — mixed targets + height-dependent noise sync
 67aef9d Iteration 30: cross-eval analysis + Stage G preparation
 3b94cfd Iteration 29: fix eval partial-episode bug + corrected cross-eval
 c1236f9 Iteration 28: cross-eval — d435i vs oracle under swapped obs modes
-cce1b18 Iteration 27: d435i reaches Stage F — full comparison (apex +59% vs oracle)
 ```
 ### Files modified on `agent/policy` (relative to `c3r/QuadruJuggle`)
 ```
@@ -69,7 +69,7 @@ scripts/parse_cross_eval.py
 scripts/plot_cross_eval.py
 scripts/rsl_rl/compare_pi1.py
 scripts/rsl_rl/cross_eval.sh
-... and 15 more
+... and 16 more
 ```
 ### Read one with:
 ```
@@ -78,5 +78,39 @@ git show agent/policy:.c3r/INBOX_ARCHIVE.md
 git show agent/policy:.c3r/PROMPT.md
 git show agent/policy:.c3r/RESEARCH_LOG.md
 git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
+```
+
+## fix-quarto-testing-interface
+- **role**: fix-it
+- **focus**: please give me a run-down of what was done overnight.
+- **status**: running · iter #0 · ctx 0%
+
+### Recent commits on `agent/fix-quarto-testing-interface`
+```
+977ac4a Iteration 1: overnight run-down summary
+aab3845 torso tracking edit
+9c4793a pi_2 with v trackign works
+3841f54 working on pi_1 + pi_2
+085e457 frank-proofed requirements.txt
+```
+### Files modified on `agent/fix-quarto-testing-interface` (relative to `c3r/QuadruJuggle`)
+```
+.c3r/INBOX.md
+.c3r/INBOX_ARCHIVE.md
+.c3r/PROMPT.md
+.c3r/RESEARCH_LOG.md
+.c3r/SIBLINGS.md
+.c3r/agent.conf
+.c3r/env.sh
+.c3r/fix_plan.md
+.claude/settings.json
+```
+### Read one with:
+```
+git show agent/fix-quarto-testing-interface:.c3r/INBOX.md
+git show agent/fix-quarto-testing-interface:.c3r/INBOX_ARCHIVE.md
+git show agent/fix-quarto-testing-interface:.c3r/PROMPT.md
+git show agent/fix-quarto-testing-interface:.c3r/RESEARCH_LOG.md
+git show agent/fix-quarto-testing-interface:.c3r/SIBLINGS.md
 ```
 
