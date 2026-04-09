@@ -101,3 +101,27 @@ Result:     CRITICAL FINDING: Camera scheduling death spiral confirmed.
             Re-eval needed to verify fix works.
 Decision:   Next iter: re-run Stage G eval with starvation fix to verify detection rate
             improves. Then run oracle baseline for comparison.
+
+## Iteration 115 — Starvation override threshold reduction  (2026-04-09T07:30:00Z)
+Hypothesis: The camera scheduling death spiral (iter 114: 1.1% detection rate) is
+            caused by SCHED_STARVE_LIMIT=50 being too high. At 50Hz, 50 steps = 1s,
+            during which the ball completes a full bounce cycle with no measurements.
+            Reducing to 10 steps (0.2s) will break the spiral near episode start
+            while preserving contact-phase camera savings.
+Change:     1. Reduced default SCHED_STARVE_LIMIT from 50 to 10 steps.
+            2. Added --starve-limit CLI arg to demo_camera_ekf.py for tuning.
+            3. Wired --starve-limit into run_perception_eval.sh.
+            4. Root cause analysis: phase_tracker.reset() → CONTACT, but ball spawns
+               above paddle → camera stays off → EKF never gets first measurement.
+               With limit=10, camera fires within 0.2s of episode start.
+            5. Added 2 tests for starvation override logic (test_phase_tracker.py).
+            6. Updated Quarto page with iter 112-114 findings (death spiral writeup).
+            7. All 449/449 tests pass.
+Command:    pytest scripts/perception/ -x -q → 449/449 passed (9.96s). No GPU (blocked
+            by policy agent Stage G training PID 1334185).
+Result:     Code ready. GPU eval needed to verify detection rate improvement.
+            Expected: detection rate should jump from ~1% to >30% with limit=10,
+            since ball spends ~30-40% of episode in flight (at Stage G targets).
+Decision:   Next iter: run Stage G eval with starve_limit=10 when GPU free. Compare
+            detection rates vs iter 114 (limit=50). If GPU still blocked, consider
+            preparing the anchor ablation analysis or Quarto experiment page.

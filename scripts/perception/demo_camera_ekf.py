@@ -49,6 +49,9 @@ parser.add_argument("--no-anchor", action="store_true", dest="no_anchor",
 parser.add_argument("--camera-scheduling", action="store_true", dest="camera_scheduling",
                     help="Skip camera detection during contact phase (uses phase tracker from previous step). "
                          "Saves compute when ball is on paddle and anchor handles estimation.")
+parser.add_argument("--starve-limit", type=int, default=10, dest="starve_limit",
+                    help="Force camera on after N steps without a real measurement (starvation override). "
+                         "Prevents EKF drift → wrong phase → no detection death spiral. Default: 10.")
 
 # Strip --pi2-checkpoint
 _pi2_checkpoint_path = None
@@ -337,11 +340,13 @@ def main():
         # Starvation override: if EKF hasn't had a measurement for too long, force
         # camera on to prevent EKF drift → wrong phase → no detection death spiral.
         use_scheduling = getattr(args_cli, "camera_scheduling", False)
-        SCHED_STARVE_LIMIT = 50  # force camera on after 50 steps without measurement
+        starve_limit = getattr(args_cli, "starve_limit", 10)
         if use_scheduling:
             schedule_mask = phase_tracker.in_flight.clone()  # (N,) bool — True = need detection
-            # Override: force detection for starved envs
-            starved = ekf.steps_since_measurement > SCHED_STARVE_LIMIT
+            # Starvation override: force camera on after N steps without a real
+            # measurement.  Prevents the death spiral discovered in iter 114:
+            # wrong phase → no detection → EKF drift → wrong phase → ...
+            starved = ekf.steps_since_measurement > starve_limit
             schedule_mask = schedule_mask | starved
         else:
             schedule_mask = torch.ones(n_envs, dtype=torch.bool)  # detect all

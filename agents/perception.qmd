@@ -18,6 +18,57 @@ reverse chronological order (newest first).
 
 ---
 
+## Iteration 114 — Stage G eval reveals camera scheduling death spiral {.unnumbered}
+*2026-04-09*
+
+**First Stage G eval with the full perception pipeline** (camera → detect → EKF,
+with anchor + camera scheduling). The policy agent's Stage G checkpoint reaches
+1.28m apex at target=0.70m — the highest ball trajectory we've seen. But the
+perception pipeline collapsed:
+
+| Target | Det% | Max Height | EKF RMSE |
+|--------|------|------------|----------|
+| 0.10m  | 1.1% | 0.716m     | —        |
+| 0.30m  | 1.2% | 0.845m     | —        |
+| 0.50m  | 1.3% | 1.088m     | —        |
+| 0.70m  | 1.3% | 1.279m     | —        |
+| 1.00m  | 1.4% | 0.814m     | —        |
+
+**Root cause: camera scheduling death spiral.** The phase tracker uses EKF
+position estimates to classify ball phase. With too few initial measurements,
+the EKF drifts low → phase tracker says "contact" → camera stays off → EKF
+never gets corrected. In the target=0.50m eval, 1478/1500 steps were classified
+as contact phase.
+
+**Fix: starvation override.** When `steps_since_measurement > 50`, force camera
+on regardless of phase tracker state. This breaks the death spiral by
+guaranteeing periodic measurements even when phase classification is wrong.
+Re-eval pending GPU availability.
+
+This is a critical lesson for real hardware: any perception scheduling that
+depends on the EKF's own state estimates creates a feedback loop vulnerability.
+
+Commits: iter 114
+
+---
+
+## Iterations 112-113 — Parameterized eval + comparison tooling {.unnumbered}
+*2026-04-09*
+
+**Eval script** (iter 112): Created `run_perception_eval.sh` — parameterized
+replacement for all hardcoded eval scripts. CLI flags for pi1/pi2 checkpoints,
+target heights, noise mode, anchor, camera scheduling. Produces per-target
+`trajectory.npz` + summary table.
+
+**Comparison tooling** (iter 113): Created `run_stage_g_comparison.sh` +
+`plot_stage_comparison.py` — runs 4 eval variants (d435i±anchor, oracle±anchor)
+across N targets and generates 4-panel grouped bar charts (det rate, max height,
+RMSE pos, RMSE z). 447/447 tests pass.
+
+Commits: iters 112-113
+
+---
+
 ## Iteration 111 — Height-dependent velocity noise fix {.unnumbered}
 *2026-04-11*
 

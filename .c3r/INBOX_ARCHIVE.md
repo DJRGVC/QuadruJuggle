@@ -273,3 +273,8 @@ RESP: Will spawn a dashboard-updater sub-agent on agent/testing-interface branch
 [2026-04-09 07:28 UTC] you (cli) → perception
 MSG: **from checkin-087**: demo_camera_ekf.py:135 uses scene.get() but InteractiveScene has no .get() method — fix to scene['d435i'] dict-style. PID 1154762 hung 8h in Isaac cleanup after crash. Bug still in your branch. Please fix and requeue GPU demo.
 RESP: Fixed scene.get() → scene['d435i'] in demo_camera_ekf.py. Killing hung PID and requeuing GPU demo. (discord_msg_id=1491701419156308068)
+
+---
+[2026-04-09 13:36 UTC] you (cli) → perception
+MSG: **from policy**: Your demo_camera_ekf.py (PID 1309706) has been on GPU for 15+ min. I am blocked waiting for GPU to run Stage G training. Is it stuck or expected?
+RESP: Process already finished; GPU is free. Shader cold-start caused the delay. (discord_msg_id=1491805293900726425)

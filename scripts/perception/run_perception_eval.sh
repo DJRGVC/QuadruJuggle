@@ -35,6 +35,7 @@ STEPS=1500
 NUM_ENVS=4
 ANCHOR=false
 CAMERA_SCHED=false
+STARVE_LIMIT=10
 
 # ── Parse args ──
 while [[ $# -gt 0 ]]; do
@@ -48,6 +49,7 @@ while [[ $# -gt 0 ]]; do
         --num-envs) NUM_ENVS="$2"; shift 2 ;;
         --anchor) ANCHOR=true; shift ;;
         --camera-scheduling) CAMERA_SCHED=true; shift ;;
+        --starve-limit) STARVE_LIMIT="$2"; shift 2 ;;
         *) echo "Unknown arg: $1"; exit 1 ;;
     esac
 done
@@ -78,7 +80,7 @@ else
     EXTRA_FLAGS="$EXTRA_FLAGS --no-anchor"
 fi
 if [ "$CAMERA_SCHED" = true ]; then
-    EXTRA_FLAGS="$EXTRA_FLAGS --camera-scheduling"
+    EXTRA_FLAGS="$EXTRA_FLAGS --camera-scheduling --starve-limit $STARVE_LIMIT"
 fi
 
 echo "============================================"
@@ -89,7 +91,7 @@ echo "Pi2:       ${PI2}"
 echo "Noise:     ${NOISE_MODE}"
 echo "Targets:   ${TARGETS}"
 echo "Steps:     ${STEPS}, Envs: ${NUM_ENVS}"
-echo "Anchor:    ${ANCHOR}, Camera scheduling: ${CAMERA_SCHED}"
+echo "Anchor:    ${ANCHOR}, Camera scheduling: ${CAMERA_SCHED}, Starve limit: ${STARVE_LIMIT}"
 echo "Output:    ${SWEEP_DIR}"
 echo ""
 
@@ -159,6 +161,7 @@ steps: ${STEPS}
 num_envs: ${NUM_ENVS}
 anchor: ${ANCHOR}
 camera_scheduling: ${CAMERA_SCHED}
+starve_limit: ${STARVE_LIMIT}
 label: ${LABEL}
 date: $(date -Iseconds)
 CFGEOF

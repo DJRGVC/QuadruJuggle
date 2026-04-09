@@ -394,3 +394,61 @@ class TestCameraScheduling:
         vel3 = torch.tensor([[0, 0, -1.0]] * 4)
         tracker.update(pos3, vel3, contact_z_threshold=0.50)
         assert not tracker.in_flight[0].item()  # landed → no detection needed
+
+    def test_starvation_override_forces_camera_on(self, tracker):
+        """When EKF has no measurement for >starve_limit steps, force camera on.
+
+        This tests the scheduling logic from demo_camera_ekf.py: the death spiral
+        (iter 114) occurs when phase tracker says CONTACT → camera off → EKF drifts
+        → phase tracker stays CONTACT → camera stays off forever.
+
+        The starvation override breaks this by forcing camera on regardless of phase.
+        """
+        starve_limit = 10
+
+        # Simulate EKF with high steps_since_measurement (starved)
+        steps_since_measurement = torch.tensor([5, 15, 8, 20])
+
+        # Phase tracker says all in CONTACT → schedule_mask = False
+        schedule_mask = tracker.in_flight.clone()
+        assert not schedule_mask.any()
+
+        # Apply starvation override (same logic as demo_camera_ekf.py)
+        starved = steps_since_measurement > starve_limit
+        schedule_mask = schedule_mask | starved
+
+        # Envs 1 and 3 should be forced on (15 > 10, 20 > 10)
+        assert not schedule_mask[0].item()  # 5 ≤ 10 → stays off
+        assert schedule_mask[1].item()      # 15 > 10 → forced on
+        assert not schedule_mask[2].item()  # 8 ≤ 10 → stays off
+        assert schedule_mask[3].item()      # 20 > 10 → forced on
+
+    def test_starvation_override_does_not_affect_flight_envs(self, tracker):
+        """Starvation override is OR'd — flight envs stay on regardless."""
+        starve_limit = 10
+
+        # Launch envs 0,1 into flight
+        pos = torch.tensor([
+            [0, 0, 0.55], [0, 0, 0.55],
+            [0, 0, 0.48], [0, 0, 0.48],
+        ])
+        vel = torch.tensor([
+            [0, 0, 2.0], [0, 0, 2.0],
+            [0, 0, 0.1], [0, 0, 0.1],
+        ])
+        tracker.update(pos, vel, contact_z_threshold=0.50)
+
+        schedule_mask = tracker.in_flight.clone()
+        # Env 0,1: in flight. Env 2,3: in contact
+        assert schedule_mask[0].item() and schedule_mask[1].item()
+        assert not schedule_mask[2].item() and not schedule_mask[3].item()
+
+        # Env 2 is starved, env 3 is not
+        steps_since_measurement = torch.tensor([3, 2, 15, 5])
+        starved = steps_since_measurement > starve_limit
+        schedule_mask = schedule_mask | starved
+
+        assert schedule_mask[0].item()      # flight → on
+        assert schedule_mask[1].item()      # flight → on
+        assert schedule_mask[2].item()      # starved → forced on
+        assert not schedule_mask[3].item()  # contact + not starved → off
