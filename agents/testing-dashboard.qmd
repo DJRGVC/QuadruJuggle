@@ -30,7 +30,7 @@ Press **R** to stop, **X** for full reset, **Q** to quit.
 **Guide format**: step-by-step reference (not a live widget) — Isaac Lab requires a local Linux machine with an NVIDIA GPU. See [Step 2](#step-2) for full options including `--noise-mode` for camera perception.
 :::
 
-### Live status (2026-04-09 ~08:10 UTC)
+### Live status (2026-04-09 ~09:30 UTC)
 
 | Component | Status | Details |
 |---|---|---|
@@ -38,8 +38,30 @@ Press **R** to stop, **X** for full reset, **Q** to quit.
 | pi1 oracle baseline | ✅ Stage F complete | `logs/go1_ball_juggle_hier/2026-04-08_21-16-05/model_best.pt` — apex=0.86 |
 | pi1 d435i (1500 iters) | ✅ Stage E — apex=1.50 | **+176% vs oracle at Stage E** |
 | pi1 d435i continuation | ✅ Stage F complete | step 3049, apex=1.39, reward=41.7, timeout=54.3% — `2026-04-08_22-51-56/model_best.pt` |
-| Camera GPU demo | ❌ Step 2 failed | Step 1 (debug_d435i_capture.py) ✅; Step 2 crash: `InteractiveScene` has no `.get()` — fix needed in `demo_camera_ekf.py:135` |
-| EKF perception pipeline | ✅ Code complete | World-frame EKF, adaptive R_xy — blocked on GPU validation |
+| Camera GPU demo | ⏳ Awaiting bug fix | `scene.get()` → `scene["d435i"]` fix pending in perception branch (PID 1154762 hung 8h, Isaac cleanup) |
+| EKF perception pipeline | ✅ Code complete | World-frame EKF, adaptive R_xy, 311/311 CPU tests — blocked on GPU validation |
+| Policy next step | 🔜 Cross-eval + video | Noise vs oracle robustness eval + play.py video capture (policy iter 27) |
+
+---
+
+## Iteration 9 — GPU demo hung + bug fix tracking {.unnumbered}
+*2026-04-09*
+
+**GPU demo process stuck**: `demo_camera_ekf.py` (PID 1154762) has been running for 8+ hours holding 3 GB of GPU VRAM. It crashed after 15 seconds (`InteractiveScene.get()` AttributeError at line 135) but Isaac Lab's cleanup hung and the process never exited. No sentinel file written. The timeout 300s wrapper (PID 1154757) also did not terminate it — Isaac Lab's `atexit` handlers appear stuck.
+
+**Bug not yet fixed in perception branch**: `demo_camera_ekf.py:135` still uses `unwrapped.scene.get("d435i")`. Fix is trivial: change to `unwrapped.scene["d435i"]` (dict-style). Perception agent pinged. Once fixed, GPU demo can re-run.
+
+**Policy Stage G not planned**: The 6-stage curriculum (A–F) treats Stage F (target=0.5m, σ=0.05) as the final stage. Stage G is aspirational only (1.0m target). Policy agent's next priorities: cross-eval (noise checkpoint vs oracle obs) + `play.py` video capture.
+
+**D435i vs oracle summary** (Stage F, avg last 50 iters):
+| | Oracle | D435i |
+|---|---|---|
+| apex height | 0.88m | 1.40m (+59%) |
+| mean reward | 40.3 | 38.7 |
+| timeout% | 62.9% | 54.6% |
+| ball_below% | 37.0% | 45.4% |
+
+Updated by `checkin-087`.
 
 ---
 
