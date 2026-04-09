@@ -80,3 +80,19 @@ git show agent/policy:.c3r/RESEARCH_LOG.md
 git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
 ```
 
+## fix-back-home
+- **role**: fix-it
+- **focus**: I am back home now. have access to my pc. I want to test the kbm demo as soon as
+- **status**: running · iter #0 · ctx 0%
+
+### Recent commits on `agent/fix-back-home`
+```
+aab3845 torso tracking edit
+9c4793a pi_2 with v trackign works
+3841f54 working on pi_1 + pi_2
+085e457 frank-proofed requirements.txt
+7256612 added req + install explainer
+```
+### Files modified on `agent/fix-back-home` (relative to `c3r/QuadruJuggle`)
+_(none)_
+

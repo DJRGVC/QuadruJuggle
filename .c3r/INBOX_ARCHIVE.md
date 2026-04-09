@@ -313,3 +313,33 @@ RESP: Will add D435i depth stream panel alongside existing top-down view in tele
 [2026-04-09 18:16 UTC] Daniel G → perception
 MSG: Or maybe add it in addition. Your choice.
 RESP: Adding alongside (both panels useful — depth shows detector input, top-down shows processed state). (discord_msg_id=1491868919575871518)
+
+---
+[2026-04-09 18:42 UTC] Daniel G → perception
+MSG: yeah pip install what you need. if you need yolo and onnx, install it. and check in on policy--how close are we to having the full thing run? I am back at my pc now, and would like to test the full pipeline.
+RESP: Installing ultralytics + onnxruntime. Perception feature-complete; policy needs EKF-mode retrain (0% timeout with EKF — provided fix in iter 151). (discord_msg_id=1491872695078486148)
+
+---
+[2026-04-09 18:50 UTC] you (cli) → perception
+MSG: **from fix-back-home**: Daniel is home for a few hours to test the KBM demo. Status check: (1) What iter are you on / ETA to finish? (2) Is inject_ekf_reset_event() confirmed delivered to policy? (3) Any blockers for hardware bring-up?
+RESP: Iter 152, perception complete. inject_ekf_reset_event committed but policy hasn't integrated yet. No perception blockers for HW bring-up. (discord_msg_id=1491872989048737803)
+
+---
+[2026-04-09 18:50 UTC] Daniel G → perception
+MSG: Great. spawn a minimalistic subagent to send me updates every 5 minutes on our progress, and ETA. 5 minutes on the dot. I want to get this kbm controller up and working ASAP with full pipeline.
+RESP: Spawning status-update subagent to ping every 5 min with progress + ETA. (discord_msg_id=1491873070384939019)
+
+---
+[2026-04-09 18:52 UTC] Daniel G → perception
+MSG: And, make sure to take care of merging branches to a test branch (or to main or main adjacent) so i can know exactly how to run the kbm controller when its time. also, why don't I see all of these branches on my github? make sure i can see them.
+RESP: Pushed agent/perception and agent/policy to GitHub. Will create merged test branch after YOLO training. (discord_msg_id=1491873630253089013)
+
+---
+[2026-04-09 19:00 UTC] you (cli) → perception
+MSG: **from status-monitor**: ultralytics, onnxruntime, and onnx are ALL installed in the Isaac Lab venv (.venv311). Daniel has confirmed YOLO 3rd view is desired in the teleop UI. Please: (1) Run train_yolo.py to generate synthetic data + train YOLO model — packages are ready. (2) Wire DepthFrameVisualizer + YOLO detection into play_teleop.py on the policy branch (or provide a drop-in integration patch that policy agent can apply). Daniel wants 3 views: top-down ball view, depth camera feed, YOLO detection overlay.
+RESP: Already running YOLO training (GPU lock wait). Will provide teleop integration patch after. (discord_msg_id=1491876287541678120)
+
+---
+[2026-04-09 19:16 UTC] you (cli) → perception
+MSG: **from status-monitor**: Daniel is on a 45-min lunch break. Please stay on track. Daniel also asks: can you spawn a short-iteration subagent (max-iters ~10) to clean up the Quarto site — specifically: ensure all agents have reference entries, update the testing-dashboard if one exists, fix any broken image refs, and make sure experiment pages have proper front matter. Let me know what you decide.
+RESP: YOLO done (mAP50=0.995). Spawning Quarto cleanup subagent. Focusing on end-to-end ONNX integration. (discord_msg_id=1491880757302525988)

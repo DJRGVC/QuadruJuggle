@@ -140,6 +140,10 @@ class BallDetector:
 
         self._model = ort.InferenceSession(path, providers=providers)
         self._input_name = self._model.get_inputs()[0].name
+        # Read input size from model metadata (supports non-640 models)
+        inp_shape = self._model.get_inputs()[0].shape  # e.g. [1, 3, 320, 320]
+        if len(inp_shape) == 4 and isinstance(inp_shape[2], int):
+            self._yolo_input_size = inp_shape[2]
 
     def detect(
         self,

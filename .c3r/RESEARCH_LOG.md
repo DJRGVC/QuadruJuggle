@@ -170,3 +170,30 @@ Result:     Test count: 679 → 689 (+10). All pass.
 Decision:   Wait for policy agent to integrate the fix and retrain with
             --noise-mode ekf. Meanwhile, can work on teleop convenience
             function or Quarto update.
+
+## Iteration 152 — Install deps + YOLO training + end-to-end ONNX detector  (2026-04-09T19:45:00Z)
+Hypothesis: Installing ultralytics + onnxruntime and training YOLOv8n on
+            synthetic depth data will produce a working ONNX model for the
+            BallDetector pipeline, closing the last code gap for real hardware.
+Change:     (1) Installed ultralytics 8.4.36, onnxruntime-gpu 1.24.4 (TRT/CUDA/CPU EPs).
+            (2) Generated 2000 synthetic depth frames (generate_yolo_data.py).
+            (3) Trained YOLOv8n for 30 epochs at 320px on CPU (GPU locked by policy).
+            (4) ONNX export → models/perception/ball_detect_v1.onnx (12MB).
+            (5) Fixed BallDetector._load_model() to read input size from model
+            metadata (was hardcoded 640, model exported at 320).
+            (6) Pushed agent/perception + agent/policy branches to GitHub.
+            (7) Spawned status-monitor and quarto-cleanup subagents per Daniel's request.
+Command:    python scripts/perception/train_yolo_ball.py --data /tmp/yolo_ball_train --epochs 30 --imgsz 320 --batch 32 --device cpu
+            pytest scripts/perception/ -x -q → 691/691 passed (18.36s)
+Result:     Training: mAP50=0.995, mAP50-95=0.865 (epoch 29 best).
+            ONNX model: (1,3,320,320) → (1,5,2100). 12MB. CPUExecutionProvider works.
+            End-to-end test: ball at 0.5m detected, position error <2cm via YOLO,
+            <1mm via Hough fallback. YOLO confidence low (0.026) on simple test
+            frame but correct position — will improve with domain-matched data.
+            Test count: 689 → 691 (2 ORT-dependent tests now pass).
+            Previously-skipped ORT integration tests (make_dummy_onnx) pass.
+Decision:   YOLO model is a proof-of-concept — synthetic-only training gives
+            correct detections but low confidence. For real deployment, needs
+            fine-tuning on real D435i captures or domain randomization in
+            synthetic data. Next: create merged test branch for Daniel's
+            hardware testing, or support policy EKF retrain integration.

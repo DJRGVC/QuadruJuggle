@@ -36,7 +36,9 @@
 - [x] CameraCalibrator.from_checkerboard() — gravity-aligned via PnP + Wahba — iter 142
 - [x] BallDetector._detect_yolo (ONNX Runtime inference, TRT/CUDA/CPU EP) — iter 147
 - [x] Synthetic YOLO training data generator (generate_yolo_data.py) — iter 146
-- [ ] YOLO fine-tune on synthetic + real depth data
+- [x] YOLO training on synthetic data — iter 152 (mAP50=0.995, ONNX exported)
+- [x] End-to-end ONNX detector verified — iter 152 (ball_detect_v1.onnx)
+- [ ] YOLO fine-tune on real D435i depth data (needs hardware captures)
 - [ ] End-to-end hardware test
 
 ## Velocity commands (blocked on policy)
