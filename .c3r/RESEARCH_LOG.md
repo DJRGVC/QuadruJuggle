@@ -53,3 +53,26 @@ Decision:   Next iter: if GPU free, run Stage G eval immediately:
             `run_perception_eval.sh --pi1 .../2026-04-09_04-56-44/model_best.pt
             --targets "0.10 0.30 0.50 0.70 1.00" --anchor --camera-scheduling --label stage_g`
             If GPU still blocked, run anchor ablation or prepare Quarto experiment page.
+
+## Iteration 113 — Stage G comparison tooling + smoke test  (2026-04-09T11:55:00Z)
+Hypothesis: A batch comparison script (oracle vs d435i, anchor ON vs OFF) will enable
+            efficient evaluation of Stage G checkpoint across all conditions in one run.
+Change:     1. Created run_stage_g_comparison.sh — runs 4 eval variants (d435i+anchor,
+               d435i-no-anchor, oracle+anchor, oracle-baseline) across N target heights.
+            2. Created plot_stage_comparison.py — 4-panel comparison figure (det rate,
+               max height, RMSE pos, RMSE z) with grouped bar charts per variant.
+            3. Added test_plot_stage_comparison.py — 7 tests for data loading + plotting.
+            4. All 447/447 tests pass (7 new).
+            5. Policy agent Stage G training completed: 50.7% timeout, ep_len~750,
+               apex=7.0, release_vel=0.8. Checkpoint: 2026-04-09_04-56-44/model_best.pt.
+            6. Launched smoke test (20 steps, 2 envs) — still in cold-start shader
+               compilation after 20 min. Isaac sim cold start is much slower than expected.
+Command:    pytest scripts/perception/ -x -q → 447/447 passed (10.02s).
+            GPU smoke test still running in background (PID 1309706).
+Result:     Tooling ready. Policy Stage G finished successfully. Smoke test blocked by
+            Omniverse cold-start shader compilation (~20 min on first run after idle).
+            Need to account for this in next iteration's time budget.
+Decision:   Next iter: check if smoke test completed (background PID 1309706). If yes,
+            verify trajectory.npz was produced correctly, then run full comparison.
+            If cold start takes >25 min total, run comparison with longer time budget.
+            Stage G checkpoint: /home/daniel-grant/Research/QuadruJuggle-policy/logs/rsl_rl/go1_ball_juggle_hier/2026-04-09_04-56-44/model_best.pt
