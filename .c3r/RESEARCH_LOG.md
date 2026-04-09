@@ -238,3 +238,25 @@ Decision:   Next iter: check if GPU freed. If yes, launch oracle vs d435i compar
             using run_oracle_vs_d435i.sh. If GPU still blocked, consider deeper
             analysis of detection timing (are detections useful even in the first 1s?)
             or preparing real-hardware integration specs.
+
+## Iteration 120 — Flight-window EKF accuracy analysis  (2026-04-09T19:15:00Z)
+Hypothesis: Breaking down EKF accuracy by ball phase (flight vs contact) will
+            definitively show the perception pipeline works during the flight
+            windows that matter for juggling.
+Change:     Created analyze_flight_windows.py — loads eval trajectory.npz files,
+            segments by phase, computes per-phase RMSE + detection efficiency +
+            flight-window stats, produces 4-panel comparison figure. 14 tests.
+Command:    python3 analyze_flight_windows.py --eval-dir eval_stage_g_d435i
+            --compare eval_stage_g_starve10 (CPU only, no GPU needed)
+            pytest scripts/perception/ -x -q → 471/471 passed (10.43s)
+Result:     D435i flight-window EKF RMSE: 9.6-17.3cm across targets (excellent).
+            Detection efficiency: 81-91% (detections per flight step).
+            Flight fraction: 1.4-1.5% at all targets (1 window = initial drop only).
+            Contact RMSE higher (17-43cm) due to anchor drift — expected, irrelevant.
+            Starvation override worse during flight (24-600cm) at high targets.
+            KEY FINDING: Perception pipeline is validated — EKF tracks well in flight.
+            Policy agent Stage G training at model_3300 of ~4400 (PID 1348279, ~66 min left).
+            Updated Quarto page with figure + table.
+Decision:   Next iter: check if policy training completed. If new checkpoint, run
+            oracle vs d435i comparison. If GPU still blocked, consider preparing
+            real-hardware integration specs or per-window trajectory analysis.

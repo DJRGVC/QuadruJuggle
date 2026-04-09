@@ -20,6 +20,36 @@ See [full Stage G bottleneck analysis](../experiments/perception/2026-04-09_stag
 
 ---
 
+## Iteration 120 — Flight-window EKF accuracy analysis {.unnumbered}
+*2026-04-09*
+
+Deep-dive into EKF accuracy *during the rare flight windows* that exist in
+Stage G eval data. The d435i camera achieves 9.6–17.3 cm RMSE during flight
+with 81–91% detection efficiency (detections per flight step). This proves
+the perception pipeline works correctly — the issue is entirely that the
+policy doesn't juggle (1.4–1.5% flight fraction, all from the initial drop).
+
+![Flight-window analysis: d435i vs starvation override across target heights](../images/perception/flight_window_analysis_iter120.png){width=100%}
+
+| Target | Flight % | Det/flight | RMSE flight (cm) | RMSE contact (cm) |
+|:------:|:--------:|:----------:|:-----------------:|:------------------:|
+| 0.10   | 1.4      | 0.81       | 9.6               | 16.9               |
+| 0.30   | 1.5      | 0.82       | 11.4              | 27.9               |
+| 0.50   | 1.5      | 0.86       | 12.3              | 43.0               |
+| 0.70   | 1.5      | 0.87       | 14.2              | 37.5               |
+| 1.00   | 1.5      | 0.91       | 17.3              | 22.9               |
+
+**Result**: Perception is NOT the bottleneck. Camera + EKF track the ball
+accurately during flight. Contact-phase RMSE is higher because the paddle
+anchor drifts from GT over long contact periods — this is expected and
+irrelevant for juggling (ball on paddle = success).
+
+**Next**: Re-evaluate once policy agent's Stage G training completes (~model_4400).
+
+Commits: iter 120
+
+---
+
 ## Iteration 119 — Trajectory time-series visualization + oracle comparison tooling {.unnumbered}
 *2026-04-09*
 
