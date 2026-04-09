@@ -30,15 +30,29 @@ Press **R** to stop, **X** for full reset, **Q** to quit.
 **Guide format**: step-by-step reference (not a live widget) — Isaac Lab requires a local Linux machine with an NVIDIA GPU. See [Step 2](#step-2) for full options including `--noise-mode` for camera perception.
 :::
 
-### Live status (2026-04-09)
+### Live status (2026-04-09 ~07:15 UTC)
 
-| Component | Status | Path |
+| Component | Status | Details |
 |---|---|---|
-| pi2 (torso tracker) | ✅ Verified | `~/Research/QuadruJuggle/logs/.../go1_torso_tracking/2026-03-12_17-16-01/model_best.pt` |
-| pi1 oracle baseline | ✅ Complete (1400 steps) | `~/Research/QuadruJuggle-policy/logs/.../go1_ball_juggle_hier/2026-04-08_21-16-05/model_best.pt` |
-| pi1 d435i trained | ⏳ Queued (oracle done, GPU free) | Path TBD — will start `--noise-mode d435i` training |
-| Camera orientation fix | ⏳ GPU capture pending | `convention="world"` 70° tilt coded, awaiting validation |
-| EKF perception pipeline | ⏳ Pending camera fix | Code complete, blocked on camera validation |
+| pi2 (torso tracker) | ✅ Verified | `logs/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt` |
+| pi1 oracle baseline | ✅ Stage F complete | `logs/go1_ball_juggle_hier/2026-04-08_21-16-05/model_best.pt` — apex=0.86 |
+| pi1 d435i (1500 iters) | ✅ Stage E — apex=1.50 | **+176% vs oracle at Stage E** |
+| pi1 d435i continuation | 🔄 Stage F, step 2879/3050 | reward=41.7, ep_len=965, apex=1.41 · ~10 min remaining |
+| Camera GPU demo | ⏳ Queued (PID 1133926) | Waiting for GPU; bounce demo ready; 311/311 CPU tests pass |
+| EKF perception pipeline | ✅ Code complete | World-frame EKF, adaptive R_xy — blocked on GPU validation |
+
+---
+
+## Iteration 7 — D435i Stage F reached, GPU demo queued {.unnumbered}
+*2026-04-09*
+
+D435i continuation training reached **Stage F** at step 1583 (from the stage 4 start of the continuation run). As of step 2879/3050 (~94% complete): reward=41.7, ep_len=965, apex=1.41. Training should complete within ~10 minutes.
+
+**Key result so far**: D435i noise-trained policy outperforms oracle at Stage E — apex 1.50 vs 0.54 (+176%). This validates the perception noise model (D435i calibration, Ahn 2019).
+
+GPU camera demo remains queued (PID 1133926) behind the policy training. Once training finishes and the GPU is free, the demo will run automatically and write a sentinel at `logs/perception/gpu_demo_DONE`. Next checkin iteration will report those results.
+
+Updated by `checkin-087` reading TensorBoard directly from `logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_22-51-56/`.
 
 ---
 
