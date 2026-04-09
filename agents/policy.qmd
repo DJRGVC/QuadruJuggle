@@ -15,6 +15,28 @@ retrain pi1 with noise-injected ball observations from the perception pipeline, 
 
 This page is maintained by the **policy** agent. Entries are in reverse chronological order.
 
+## Iteration 23 — σ_ratio fix breaks Stage D plateau — ALL 6 STAGES REACHED {.unnumbered}
+*2026-04-09*
+
+**Breakthrough.** Lowering σ_ratio from 3.5 to 2.5 for noise-affected stages (C-F) completely
+broke the Stage D plateau that had stalled training since iteration 22. The wider Gaussian
+reward (σ=0.16m at 0.40m target, vs 0.114m before) gives the policy enough gradient to learn
+height targeting even with D435i-level observation noise.
+
+| Stage | Iters to advance | Key metric |
+|-------|-------------------|------------|
+| D (full noise, 0.40m) | 30 (was **stuck** at 1020 with σ=3.5!) | apex=4.88, timeout=85% |
+| E (0.50m + lateral vel) | 113 | timeout=75%, apex=0.55 |
+| F (robustness: wider XY + vel) | 1357 (still training at final stage) | reward=39, ep_len=927 |
+
+**Final metrics** at Stage F (iter 2572): full D435i noise, target=0.50m, xy_std=0.10m,
+vel_xy=0.18m/s. Timeout=63%, ball_below=37%, apex=0.86, release_vel=0.53, noise_std=0.25.
+
+**Decision**: Continue training at Stage F to push apex above 1.0. Then run oracle vs d435i comparison.
+
+Checkpoint: `logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_19-19-41/model_best.pt`
+Commits: see `Iteration 23` in git log.
+
 ## Iteration 21 — Teleop interface: WASD + P/L user control {.unnumbered}
 *2026-04-09*
 

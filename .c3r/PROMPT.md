@@ -211,6 +211,19 @@ context window. The files on disk are your only persistent memory.
 8. **Stay on your branch.** You are on `agent/policy`. Sibling agents:
    perception. If you need a change in a sibling's scope, write a note to
    `NEEDS_PERCEPTION.md` and keep moving. Never touch another agent's files.
+
+   **Talking to a sibling agent.** You can send a sibling a message via:
+   ```
+   $C3R_BIN/../c3r ping <sibling-name> "**from policy**: <message>"
+   ```
+   The `**from policy**:` prefix is REQUIRED — without it the
+   listener treats your post as a self-acknowledgement and drops it.
+   The message lands in the sibling's `INBOX.md` and gets the same
+   treatment as a human message: they reply with `↩ Reply:` and you
+   (and Daniel) see the response in their thread on the next iter.
+   Use this for brief coordination ("blocked on X", "FYI sweep done",
+   "can you read my docs/EKF_NOTE.md and tell me what's wrong"). Keep
+   it sparing — sibling INBOX is not a chat room.
 9. **Never exit "complete".** Research is open-ended. Do not emit STATUS: COMPLETE,
    EXIT_SIGNAL, or any other termination marker. When the queue is empty, propose a
    new line of inquiry based on the last log entries.

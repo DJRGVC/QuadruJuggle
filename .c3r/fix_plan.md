@@ -6,10 +6,10 @@
 
 - [x] Redesign curriculum: 16 stages → 6 stages (A-F), max target 0.50m.
       Literature-aligned (Rudin 4, Zhuang 4, ROGER 4). Daniel approved.
-- [ ] Run fresh training with new 6-stage curriculum from scratch (Stage A).
-      Budget: profile 1 iter, then ~1500 iters (~30 min). Train from scratch
-      since old checkpoints were trained on different stage definitions.
-- [ ] If Stage A-C reached in first run: continue with resume to push through D-F
+- [x] Run fresh training with new 6-stage curriculum from scratch (Stage A).
+      DONE: iter 22 trained A→D (stuck). iter 23 fixed σ_ratio 3.5→2.5, ALL 6 STAGES REACHED.
+- [x] If Stage A-C reached in first run: continue with resume to push through D-F
+      DONE: D→E→F in 1500 iters (78 min). Checkpoint: 2026-04-08_19-19-41/model_best.pt
 - [ ] Validate: does policy actively bounce ball at 0.50m target? (apex reward + visual)
 - [ ] Oracle vs d435i comparison once Stage E/F reached
 

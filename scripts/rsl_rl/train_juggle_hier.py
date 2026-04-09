@@ -124,14 +124,15 @@ _BJ_STAGES = [
     # tgt_min  tgt_max  σ_ratio  xy_std  vel_xy_std  noise_scale
     # Simplified 6-stage curriculum (was 16). Literature uses 3-6 stages (Rudin 4, Zhuang 4,
     # ROGER 4). Each stage changes ONE thing: height OR noise OR robustness.
-    # σ_ratio=3.5 makes ball-at-rest earn only 0.2% of max apex reward.
+    # σ_ratio=2.5 for noise stages (C-F): wider Gaussian gives gradient for near-miss heights
+    # with noisy obs. At target=0.40m, σ=0.16m (was 0.114m with 3.5). Ball-at-rest ≈7% reward.
     # Max target 0.50m — within pi2 single-bounce ceiling (0.80m).
     (0.10,     0.10,    2.5,     0.020,  0.00,       0.00),  # A  — bootstrap bounce, oracle
     (0.20,     0.20,    3.0,     0.025,  0.00,       0.00),  # B  — stronger bounce, oracle
-    (0.30,     0.30,    3.5,     0.035,  0.00,       0.50),  # C  — introduce 50% d435i noise
-    (0.40,     0.40,    3.5,     0.050,  0.00,       1.00),  # D  — full noise, higher target
-    (0.50,     0.50,    3.5,     0.070,  0.10,       1.00),  # E  — final target + lateral vel
-    (0.50,     0.50,    3.5,     0.100,  0.18,       1.00),  # F  — robustness: wider XY + vel
+    (0.30,     0.30,    2.5,     0.035,  0.00,       0.50),  # C  — introduce 50% d435i noise
+    (0.40,     0.40,    2.5,     0.050,  0.00,       1.00),  # D  — full noise, higher target
+    (0.50,     0.50,    2.5,     0.070,  0.10,       1.00),  # E  — final target + lateral vel
+    (0.50,     0.50,    2.5,     0.100,  0.18,       1.00),  # F  — robustness: wider XY + vel
 ]
 _BJ_THRESHOLD      = 0.30   # lowered from 0.75: active juggling has ~63% timeout
 _BJ_APEX_THRESHOLD = 0.5     # ball at rest earns ~0.05/step; threshold requires active throwing

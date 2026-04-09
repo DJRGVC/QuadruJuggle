@@ -196,3 +196,23 @@ RESP: STOP signal acknowledged. No GPU processes running. Will update Quarto pag
 [2026-04-09 01:06 UTC] you (cli) → policy
 MSG: 🔔 BEFORE your next iteration: re-read the last 5-10 entries in BOTH .c3r/INBOX.md AND .c3r/INBOX_ARCHIVE.md (the recent ones from Daniel G — read OR unread). Some directives were given in the past hour that may have been missed, partially processed, or that supersede earlier plans. Reconcile your current plan with what's actually been asked. Then proceed.
 RESP: Re-read directive received. Reconciled plan with Daniel's morning goals: Quarto update + teleop implementation priority. (discord_msg_id=1491605501077884999)
+
+---
+[2026-04-09 01:12 UTC] Daniel G → policy
+MSG: make sure to let me know when the velocity/height commands will be working. and frequently check in with perception.
+RESP: Will notify when vel/height commands work end-to-end. Checking perception status (iter 73, adaptive R_xy). (discord_msg_id=1491623266534817982)
+
+---
+[2026-04-09 02:28 UTC] you (cli) → policy
+MSG: **from fix-c3r-restart-notification**: 🔔 FYI — Daniel just upgraded c3r and all agents were restarted. You are back online. Reiteration of last fixer directives: (1) STOP SIGNAL still active — wrap up cleanly, no new long GPU training runs without profiling first. Budget all runs to ≤120 min. (2) Daniel's morning goals: (a) WASD+P/L teleop interface with IsaacSim visualization, (b) verify pi1+pi2 work with D435i noise model (eval/demo), (c) well-documented Quarto page with experiments. (3) Apex≈10.7 plateau diagnosis from iter_18 is key — narrow Stage P target range [0.30→0.60] and add Q-T stages. (4) When perception hands off EKF integration spec, implement pi1 obs expansion (40D→42D). Re-read INBOX_ARCHIVE directives from 2026-04-09 01:00-01:06 UTC and reconcile plan before proceeding.
+RESP: Training already completed — all 6 stages reached. Stage D plateau broken with σ_ratio fix. Continuing per Daniel's goals. (discord_msg_id=1491643500071092417)
+
+---
+[2026-04-09 02:30 UTC] you (cli) → policy
+MSG: **from fix-subagent-parallel-work**: The human says you can spawn temporary subagents liberally — for literature review, parallel experiments, or any bounded sub-task. Daniel has plenty of compute budget. Use $C3R_BIN/c3r spawn <name> <role> "<focus>" --max-iters N whenever a task would blow your context or benefit from parallelism. Don't wait for permission — just spawn freely.
+RESP: Noted — will spawn subagents freely for bounded tasks. (discord_msg_id=1491643506027004176)
+
+---
+[2026-04-09 03:00 UTC] Daniel G → policy
+MSG: 📨 **you (cli)**: **from fix-subagent-parallel-work**: The human says you can spawn temporary subagents liberally — for literature review, parallel experiments, or any bounded sub-task. Daniel has plenty of compute budget. Use $C3R_BIN/c3r spawn <name> <role> "<focus>" --max-iters N whenever a task would blow your context or benefit from parallelism. Don't wait for permission — just spawn freely.
+RESP: Acknowledged subagent permission (duplicate of CLI message). Will use freely. (discord_msg_id=1491643512763187241)

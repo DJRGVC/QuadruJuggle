@@ -192,3 +192,26 @@ Result:     Training completed in 62 min (3.01s/iter). Advanced A→B→C→D (3
 Decision:   Next iteration: lower σ_ratio from 3.5 to 2.0 for Stages C-F. This widens the
             Gaussian (σ=0.20m at 0.40m target) giving much more gradient for near-miss heights.
             Resume from model_best.pt at start-stage 3 (Stage D).
+
+## Iteration 23 — σ_ratio 3.5→2.5 breaks Stage D plateau — ALL 6 STAGES REACHED  (2026-04-09T02:20Z)
+Hypothesis: Lowering σ_ratio from 3.5 to 2.5 for Stages C-F widens the Gaussian reward (σ=0.16m
+            at 0.40m target instead of 0.114m), giving more gradient for near-miss heights with
+            noisy observations.
+Change:     σ_ratio: 3.5→2.5 for Stages C, D, E, F (Stages A=2.5, B=3.0 unchanged).
+Command:    gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+              --task Isaac-BallJuggleHier-Go1-v0 --num_envs 12288 --headless --max_iterations 1500 \
+              --pi2-checkpoint .../2026-03-12_17-16-01/model_best.pt \
+              --resume --load_run 2026-04-08_18-12-53 --checkpoint model_best.pt --start-stage 3
+            Log dir: logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_19-19-41/
+Result:     **ALL 6 STAGES REACHED (A→F) in 1500 iters (78 min).** Stage D plateau BROKEN.
+            - Stage D: 30 iters to advance (was STUCK for 1020 iters with σ_ratio=3.5!)
+            - Stage E: 113 iters to advance (target=0.50m + lateral velocity)
+            - Stage F: 1357 iters at final stage, ES only 73/1500
+            Final metrics (Stage F, iter 2572):
+              reward=39.0, ep_len=927, timeout=63%, ball_below=37%
+              apex=0.86, release_vel=0.53, noise_std=0.25
+              Full D435i noise, target=0.50m, xy_std=0.10m, vel_xy=0.18m/s
+            Checkpoints: model_best.pt (peak), model_2572.pt (final)
+Decision:   This is the best pi1 result so far — Stage F with full noise and velocity perturbations.
+            Next: continue training at Stage F to improve apex (currently 0.86, want >1.0 for proper
+            juggling height). Then run oracle vs d435i comparison.
