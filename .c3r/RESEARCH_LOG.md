@@ -92,3 +92,28 @@ Decision:   Next: install ultralytics + onnxruntime and do a real training
             run on synthetic data, OR create a dummy ONNX model using the
             onnx package for end-to-end integration testing without
             ultralytics. Check if ultralytics can be pip-installed.
+
+## Iteration 149 — Dummy ONNX model builder for integration testing  (2026-04-10T03:00:00Z)
+Hypothesis: A minimal dummy ONNX model matching YOLOv8 output format enables
+            end-to-end integration testing of the detector pipeline without
+            ultralytics or a trained model.
+Change:     Added make_dummy_onnx.py (builds valid ONNX model with fixed
+            detection at image centre, shape (1,5,8400)) and 9 tests
+            verifying structure, embedded values, custom params, and
+            onnxruntime loading+inference (auto-skipped when ORT unavailable).
+            Updated Quarto page with iters 146-149 hardware pipeline progress.
+Command:    pytest scripts/perception/test_make_dummy_onnx.py -x -q → 9/9 + 2 skipped
+            pytest scripts/perception/ -x -q → 659/659 passed, 2 skipped (17.97s)
+Result:     Test count: 650 → 659 (+9, +2 conditional skips). All pass.
+            Dummy model passes onnx.checker, correct I/O shapes, embedded
+            detection values verified. ORT integration tests ready for when
+            onnxruntime is installed.
+            Policy agent at iter 32 (81% context): Stage G eval shows 80%
+            timeout at 0.10-0.20m targets (energy modulation fixed), but
+            48-63% at 0.40-0.50m (perception gap grows with height). ES
+            metric bug fixed, planning longer Stage G retrain.
+Decision:   Next: ask Daniel about installing ultralytics + onnxruntime
+            so we can do a real training run on synthetic data. Without these
+            deps, the YOLO pipeline is code-complete but untestable end-to-end.
+            Alternatively, focus on EKF tuning with noise-trained checkpoint
+            when policy provides one.

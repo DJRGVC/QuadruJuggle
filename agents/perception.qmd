@@ -13,18 +13,99 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete** (595 CPU tests, 145 iterations).
+Perception pipeline is **feature-complete** (659 CPU tests, 149 iterations).
 EKF uses a **5-level phase-aware Q schedule** with R² = 0.994 noise-to-gap
 prediction model — validated against real policy data (max error ±0.8pp).
 Drag model configurable: linear (PhysX sim) or quadratic (real hardware).
 
-**Real-hardware components now implemented** (iters 141–143): D435i camera
-wrapper (pyrealsense2), checkerboard-based gravity-aligned calibration
-(PnP + Wahba), and YAML round-trip for extrinsics persistence. YOLO detector
-is the last stub (blocked on TensorRT); Hough circle fallback is operational.
+**YOLO detector pipeline now complete** (iters 146–149): synthetic depth data
+generator, ONNX inference with TRT/CUDA/CPU fallback, training script with
+depth-appropriate augmentation, and dummy ONNX model builder for integration
+testing. Real-hardware components (D435i camera, calibration, extrinsics)
+from iters 141–143. Only remaining step: ultralytics + onnxruntime install
+for actual model training and live inference.
 
 See [perception gap decomposition](../experiments/perception/2026-04-10_perception_gap_decomposition.qmd) — the "perception gap" is actually a policy gap.
 Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd) and [noise-to-gap prediction](../experiments/perception/2026-04-10_noise_gap_prediction.qmd) (R² = 0.994, validated against policy eval).
+
+---
+
+## Iteration 149 — Dummy ONNX model builder for integration testing {.unnumbered}
+*2026-04-10*
+
+Created `make_dummy_onnx.py` — builds a minimal valid ONNX model that mimics
+the YOLOv8n single-class output format (input: `images` float32 `(1,3,640,640)`,
+output: `output0` float32 `(1,5,8400)`). The model embeds a fixed high-confidence
+detection at the image centre, enabling end-to-end integration testing of the
+`_load_model()` → `_preprocess()` → `_detect_yolo()` → deprojection chain
+*without* needing ultralytics or a trained model.
+
+When `onnxruntime` is available, the test suite additionally validates model
+loading and inference — including a full `BallDetector.detect()` call that
+goes through ONNX session creation, blob preprocessing, output parsing, depth
+lookup, and 3D deprojection. These tests auto-skip on environments without
+`onnxruntime`.
+
+**Test count**: 650 → 659 (+9 tests, +2 conditional skips).
+
+---
+
+## Iteration 148 — YOLO training + ONNX export script {.unnumbered}
+*2026-04-10*
+
+Added `train_yolo_ball.py` wrapping the ultralytics YOLOv8 training pipeline
+for depth-only ball detection. Key design choices for depth data:
+
+- Colour jitter disabled (`hsv_h/s/v=0`) — depth images have no colour channels
+- Mosaic and mixup disabled — depth scale must remain physically consistent
+- `flipud` and `fliplr` enabled — valid geometric augmentations for depth
+- Early stopping with `patience=20` to prevent overfitting on synthetic data
+- Automatic dataset splitting (85/15 train/val) with deterministic seed
+- `depth_png_to_rgb()` converts uint16 depth PNGs to 3-channel uint8
+
+All utility functions fully tested (18 tests); `train()` itself requires
+ultralytics which is not yet installed.
+
+---
+
+## Iteration 147 — YOLO ONNX inference in BallDetector {.unnumbered}
+*2026-04-10*
+
+Implemented `BallDetector._detect_yolo()` — the primary detection path for
+real hardware. Pipeline: uint16 depth → 8-bit normalise → letterbox 640×640 →
+3-channel NCHW float32 blob → ONNX session → parse detections → un-letterbox →
+median depth lookup → deproject to 3D camera frame.
+
+Handles both YOLOv8 output layouts: `(1,5,N)` (standard export) and `(1,N,5)`
+(alternative). Model loading uses TensorRT → CUDA → CPU execution provider
+fallback chain for Jetson/desktop/CI compatibility.
+
+**Verified**: off-centre ball at `(0.05, -0.03, 0.40)m` correctly deprojected
+within 2cm XY / 5cm Z tolerance through the full letterbox→un-letterbox chain.
+
+**Test count**: 609 → 632 (+23 tests using mock ONNX session).
+
+---
+
+## Iteration 146 — Synthetic YOLO training data generator {.unnumbered}
+*2026-04-10*
+
+Created `generate_yolo_data.py` — generates synthetic depth images with
+physically-accurate ball projections for YOLO training. Key features:
+
+- **Ray-sphere intersection**: renders true sphere geometry (not just a disc)
+  into uint16 depth frames, producing realistic edge falloff
+- **D435i noise model**: σ_z = base + quad·z² applied per-pixel, matching
+  the measured D435i depth noise profile from our lit review
+- **Background simulation**: ~30% invalid pixels simulating sky/ceiling as
+  seen by the upward-facing camera
+- **YOLO format output**: `images/` + `labels/` + `dataset.yaml` ready for
+  ultralytics training
+
+Validated: median depth within 25mm of ground truth, ball apparent size
+scales inversely with distance (3.3× larger at close range vs far).
+
+**Test count**: 595 → 609 (+14 tests).
 
 ---
 
