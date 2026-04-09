@@ -31,7 +31,7 @@
 - [ ] Support policy agent with noise curriculum tuning (when requested)
 
 ## Real Hardware Integration (blocked on Go1 + D435i access)
-- [ ] D435iCamera wrapper (pyrealsense2, depth-only 848x480 @ 90fps)
+- [x] D435iCamera wrapper (pyrealsense2, depth-only 848x480 @ 90fps) — iter 141
 - [ ] BallDetector._detect_yolo (TRT FP16 inference)
 - [ ] CameraCalibrator.from_checkerboard()
 - [ ] YOLO training data collection + fine-tune

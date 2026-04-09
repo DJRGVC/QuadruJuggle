@@ -154,3 +154,32 @@ Decision:   RE-VALIDATE task complete. Next priorities:
             (1) Wait for policy Stage G retrain results to re-validate gap model
             (2) Consider real-hardware prep: D435i wrapper skeleton (low priority)
             (3) Check if policy agent needs support
+
+## Iteration 141 — Implement D435iCamera pyrealsense2 wrapper  (2026-04-09T04:00:00Z)
+Hypothesis: Replacing the D435iCamera stubs with real pyrealsense2 calls
+            (start/get_frame/stop) and adding mock-based tests will validate
+            the camera driver design before hardware is available.
+Change:     (1) Implemented D435iCamera.start() — configures rs.pipeline,
+            enables depth stream at requested resolution/fps, extracts
+            intrinsics from depth stream profile, blocks until first frame.
+            (2) Implemented D435iCamera.get_frame() — non-blocking poll via
+            poll_for_frames(), returns (depth_u16, timestamp_s) or None.
+            Hardware timestamp converted from ms to seconds.
+            (3) Implemented D435iCamera.stop() — stops pipeline, sets to None.
+            (4) Created test_d435i_camera.py — 11 tests using mock pyrealsense2:
+            start extracts intrinsics, configures depth stream, handles serial,
+            waits for first frame; get_frame returns depth+timestamp or None;
+            stop releases resources; ImportError guard works.
+Command:    pytest scripts/perception/ -x -q → 576/576 passed (12.19s)
+Result:     D435iCamera is no longer a stub. All 3 methods implemented with
+            pyrealsense2 API. 11 new mock-based tests verify the contract.
+            Total test count: 565 → 576. No regressions.
+            Implementation choices:
+            - poll_for_frames() for non-blocking (vs wait_for_frames which blocks)
+            - np.asanyarray with reshape for zero-copy depth access
+            - wait_for_frames(5000ms) in start() to confirm device is live
+            - stop() sets pipeline=None so get_frame returns None after stop
+Decision:   Next: YOLO detector stub is the next real-hardware item, but it
+            requires TensorRT which we don't have in this env. Better to wait
+            for policy retrain or work on checkerboard calibration (from_checkerboard).
+            Check policy agent progress — still at iter 32 with 81% context.

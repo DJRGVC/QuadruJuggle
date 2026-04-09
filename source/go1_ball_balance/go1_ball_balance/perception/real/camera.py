@@ -75,10 +75,30 @@ class D435iCamera:
 
     def start(self) -> None:
         """Enable depth stream. Blocks until first frame arrives."""
-        raise NotImplementedError(
-            "D435iCamera.start() is a stub — implement when hardware is available. "
-            "See docs/hardware_pipeline_architecture.md §3.1 for spec."
+        cfg = rs.config()
+        if self._serial:
+            cfg.enable_device(self._serial)
+        cfg.enable_stream(
+            rs.stream.depth, self._width, self._height, rs.format.z16, self._fps
         )
+
+        self._pipeline = rs.pipeline()
+        profile = self._pipeline.start(cfg)
+
+        # Extract intrinsics from the depth stream profile
+        depth_stream = profile.get_stream(rs.stream.depth).as_video_stream_profile()
+        intr = depth_stream.get_intrinsics()
+        self._intrinsics = CameraIntrinsics(
+            fx=intr.fx,
+            fy=intr.fy,
+            cx=intr.ppx,
+            cy=intr.ppy,
+            width=intr.width,
+            height=intr.height,
+        )
+
+        # Block until we receive the first valid frame (confirms device is live)
+        self._pipeline.wait_for_frames(timeout_ms=5000)
 
     def get_frame(self) -> tuple[np.ndarray, float] | None:
         """Non-blocking poll. Returns (depth_u16, timestamp_s) or None.
@@ -86,7 +106,26 @@ class D435iCamera:
         depth_u16: (H, W) uint16 array, values in millimetres.
         timestamp_s: hardware timestamp in seconds (monotonic).
         """
-        raise NotImplementedError("D435iCamera.get_frame() is a stub.")
+        if self._pipeline is None:
+            return None
+
+        frames = self._pipeline.poll_for_frames()
+        if not frames:
+            return None
+
+        depth_frame = frames.get_depth_frame()
+        if not depth_frame:
+            return None
+
+        # Hardware timestamp in milliseconds → convert to seconds
+        timestamp_s = depth_frame.get_timestamp() / 1000.0
+
+        # Zero-copy view of the depth data as uint16 (millimetres)
+        depth_u16 = np.asanyarray(depth_frame.get_data(), dtype=np.uint16).reshape(
+            self._height, self._width
+        )
+
+        return depth_u16, timestamp_s
 
     def get_intrinsics(self) -> CameraIntrinsics:
         """Return depth stream intrinsics. Call after start()."""
@@ -96,4 +135,6 @@ class D435iCamera:
 
     def stop(self) -> None:
         """Release device and pipeline resources."""
-        raise NotImplementedError("D435iCamera.stop() is a stub.")
+        if self._pipeline is not None:
+            self._pipeline.stop()
+            self._pipeline = None
