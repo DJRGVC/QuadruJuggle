@@ -190,7 +190,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         ep_timeouts = []
         ep_apex_rewards = []
         step_apex_accum = torch.zeros(args_cli.num_envs, device=rl_env.device)
+        # After flush, envs are mid-episode. Track which envs have completed
+        # a full reset in the collection loop so we only record complete episodes.
         step_counts = torch.zeros(args_cli.num_envs, device=rl_env.device)
+        fresh_env = torch.zeros(args_cli.num_envs, dtype=torch.bool, device=rl_env.device)
 
         steps = 0
         while len(ep_lengths) < min_episodes and steps < max_steps_per_target:
@@ -212,13 +215,18 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 for idx in done_ids:
                     idx_int = idx.item()
                     ep_len = step_counts[idx_int].item()
-                    if ep_len > 1:  # skip degenerate resets
+                    # Only record episodes that started fresh (after a reset
+                    # in the collection loop), not partial first episodes
+                    # carried over from the flush.
+                    if fresh_env[idx_int] and ep_len > 1:
                         ep_lengths.append(ep_len)
                         ep_timeouts.append(time_outs[idx_int].item())
                         ep_apex_rewards.append(
                             step_apex_accum[idx_int].item() / max(ep_len, 1)
                         )
 
+                    # Mark this env as fresh for its next episode
+                    fresh_env[idx_int] = True
                     step_apex_accum[idx_int] = 0.0
                     step_counts[idx_int] = 0.0
 

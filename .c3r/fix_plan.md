@@ -14,11 +14,20 @@
 - [x] Continue d435i training to Stage F — DONE (log dir 2026-04-08_22-51-56, step 3049)
 - [x] D435i vs oracle comparison at Stage F — DONE: d435i +59% apex, +34% noise_std
 - [x] Cross-eval: noise-trained checkpoint under oracle obs vs d435i obs — DONE iter 28
-      Oracle: noise-robust on apex (-2.7%) but drops more (100%→81% timeout)
-      D435i: +53% apex but 13× shorter episodes. Not noise-dependent (+1.5% under oracle).
+      **iter 28 numbers were WRONG** — eval had partial-episode bug. Fixed iter 29.
+- [x] Fix eval_juggle_hier.py partial-episode bug — iter 29
+      Bug: after flush, step_counts=0 but episode_length_buf mid-episode → short ep_len + false timeouts.
+      Fix: track `fresh_env` flag, only record episodes that started after a collection-loop reset.
+- [x] Re-run cross-eval with fixed eval — CORRECTED RESULTS (iter 29):
+      Oracle→Oracle: 100% timeout, 1500 steps everywhere (perfect stability)
+      Oracle→D435i:  60-94% timeout, 1100-1450 mean_len (moderate noise degradation)
+      D435i→D435i:   0-73% timeout (0% at easy targets, 73% at hard), 300-1219 mean_len
+      D435i→Oracle:  0-83% timeout, 442-1345 mean_len (better than d435i→d435i)
+      KEY: d435i model overshoots easy targets, performs reasonably at hard ones
 - [ ] Capture play.py video of d435i checkpoint for Quarto (Daniel requested videos)
-- [ ] Diagnose d435i short episodes: 70% timeout / 111 mean steps vs oracle 100% / 1496
-      Likely needs: stronger ball_on_paddle weight OR survival pressure OR catch reward
+- [ ] Diagnose d435i target overshoot at easy targets (0.10-0.20m)
+      At target=0.10m: 0% timeout, 310 steps — policy throws too hard
+      At target=0.42m: 73% timeout, 1187 steps — much better match
 
 ## NEXT — Validate juggling behavior
 

@@ -27,15 +27,15 @@ Siblings will see it in their next SIBLINGS.md refresh.
 ## perception
 - **role**: generic
 - **focus**: implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline following ETH-style architecture, producing noisy ball observations usable by pi1 in Isaac Lab sim.
-- **status**: running · iter #73 · ctx 51%
+- **status**: running · iter #75 · ctx 51%
 
 ### Recent commits on `agent/perception`
 ```
+8416ddd Iteration 88: wire camera pipeline into live policy eval
+791b78d Iteration 87: GPU camera demo SUCCESS — scene.get fix + first validated frames
 eeb9d53 Iteration 86: GPU demo queued + timeout/sentinel improvements
 26ac01f Iteration 85: bounce demo mode + combined GPU runner
 2b3bc0c Iteration 84: pixel projection tests + camera convention derivation
-4ad66d0 Iteration 83: Quarto update + video workflow + child cleanup
-be3b5c5 Iteration 82: sim pipeline integration tests — 8 new tests (294/294 pass)
 ```
 ### Files modified on `agent/perception` (relative to `c3r/QuadruJuggle`)
 ```
@@ -64,12 +64,12 @@ experiments/perception/2026-04-09_adaptive_rxy_sweep.qmd
 experiments/perception/2026-04-09_q_vel_sweep.qmd
 images/README.md
 images/perception/.gitkeep
+images/perception/demo_camera_ekf_summary.png
+images/perception/gpu_demo_depth_iter087.png
+images/perception/gpu_demo_frame_iter087.png
+images/perception/gpu_demo_summary_iter087.png
 images/perception/q_vel_sweep_combined.png
-images/perception/q_vel_sweep_iter_069.png
-images/policy/.gitkeep
-images/shared/.gitkeep
-index.qmd
-... and 58 more
+... and 62 more
 ```
 ### Read one with:
 ```
@@ -78,41 +78,5 @@ git show agent/perception:.c3r/INBOX_ARCHIVE.md
 git show agent/perception:.c3r/PROMPT.md
 git show agent/perception:.c3r/RESEARCH_LOG.md
 git show agent/perception:.c3r/RESEARCH_LOG_ARCHIVE.md
-```
-
-## checkin-087
-- **role**: generic
-- **focus**: Check perception and policy progress, update testing-dashboard status table
-- **status**: running · iter #2 · ctx 0%
-- **parent**: perception (this is a sub-agent)
-
-### Recent commits on `agent/checkin-087`
-```
-d4ac9cb Iteration 2: policy Stage F (step 2879, apex=1.41) + dashboard update + role clarification
-50cb036 Iteration 1: initial status check + testing-dashboard.md
-aab3845 torso tracking edit
-9c4793a pi_2 with v trackign works
-3841f54 working on pi_1 + pi_2
-```
-### Files modified on `agent/checkin-087` (relative to `c3r/QuadruJuggle`)
-```
-.c3r/INBOX.md
-.c3r/INBOX_ARCHIVE.md
-.c3r/PROMPT.md
-.c3r/RESEARCH_LOG.md
-.c3r/SIBLINGS.md
-.c3r/agent.conf
-.c3r/env.sh
-.c3r/fix_plan.md
-.claude/settings.json
-docs/testing-dashboard.md
-```
-### Read one with:
-```
-git show agent/checkin-087:.c3r/INBOX.md
-git show agent/checkin-087:.c3r/INBOX_ARCHIVE.md
-git show agent/checkin-087:.c3r/PROMPT.md
-git show agent/checkin-087:.c3r/RESEARCH_LOG.md
-git show agent/checkin-087:.c3r/SIBLINGS.md
 ```
 

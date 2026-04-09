@@ -11,6 +11,41 @@ Decision:   Next iteration: check continuation run progress. If Stage F reached,
             formal eval with eval_juggle_hier.py for publication-quality comparison table.
             Also need to update fix_plan.md to mark d435i training as done.
 
+## Iteration 29 — Fix eval partial-episode bug + corrected cross-eval  (2026-04-09T08:00Z)
+Hypothesis: The iter 28 cross-eval metrics (mean_len=111, timeout=70% for d435i) were
+            internally inconsistent (86.7% timeout but 92 mean steps — impossible if
+            timeout means 1500-step episodes). Suspected eval_juggle_hier.py bug.
+Change:     Fixed eval_juggle_hier.py: after flush loop, step_counts=0 but env's internal
+            episode_length_buf was mid-episode. Envs that reset early in flush were deep
+            into their next episode when collection started, so first recorded episodes
+            had tiny step_counts with stale timeout flags. Fix: track `fresh_env` flag,
+            only record episodes that completed a full cycle within the collection loop.
+Command:    gpu_lock.sh bash scripts/rsl_rl/cross_eval_fixed.sh (4 combos × 5 targets × 30 eps)
+Result:     CORRECTED cross-eval results:
+            Oracle→Oracle: 100% timeout, 1500 steps at all targets (perfect stability)
+            Oracle→D435i:  60-94% timeout, 1110-1451 mean_len (moderate noise degradation)
+            D435i→D435i:   0-73% timeout, 310-1219 mean_len (overshoots easy targets)
+            D435i→Oracle:  0-83% timeout, 442-1346 mean_len (better than d435i obs)
+
+            Per-target breakdown (d435i→d435i):
+            target=0.10: timeout=0%,   apex=10.33, len=310  — massive overshoot
+            target=0.20: timeout=0%,   apex=6.49,  len=439  — still overshoots
+            target=0.30: timeout=40%,  apex=4.28,  len=886  — starting to match
+            target=0.42: timeout=73%,  apex=2.92,  len=1187 — good performance
+            target=0.50: timeout=70%,  apex=2.43,  len=1219 — good performance
+
+            KEY REVISION: d435i model is MUCH better than iter 28 reported.
+            Main issue is target overshoot at easy targets (0.10-0.20m), not
+            general instability. At harder targets the model performs well.
+            Results dir: experiments/iter_029_cross_eval_fixed/
+Decision:   The d435i model is viable but overshoots at easy targets. Two possible fixes:
+            (1) Retrain with ball_release_vel weight reduced (currently 8.0, very high)
+            (2) The overshoot may be a natural consequence of training to Stage F
+            (target=0.80) — the policy learned high-energy launches that are overkill
+            for low targets. This might be acceptable if we only care about hard targets.
+            Next: investigate whether the overshoot matters for the real task. If so,
+            reduce ball_release_vel weight from 8.0 → 3.0 and retrain.
+
 ## Iteration 28 — Cross-eval: d435i vs oracle under swapped obs  (2026-04-09T07:40Z)
 Hypothesis: Cross-evaluating d435i-trained and oracle-trained checkpoints under both noise
             modes will reveal whether noise training creates noise-robust or noise-dependent
