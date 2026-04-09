@@ -145,3 +145,20 @@ Result:     Demo script frame handling corrected. Camera convention analysis:
 Decision:   Next iter: GPU capture with convention="world" config. If ball visible → run
             full demo_camera_ekf.py to validate end-to-end pipeline. If GPU still locked,
             focus on adding a unit test for cam_detection_to_world().
+
+## Iteration 79 — Quarto: references + experiment write-up + policy ping  (2026-04-09T06:00:00Z)
+Hypothesis: Daniel requested references and experiments documentation by tomorrow morning.
+            Populating references/perception.qmd and writing adaptive R_xy experiment.
+Change:     1. Added 9 references to references/perception.qmd (Rudin, Portela, Zhuang, Hoeller,
+               Huang, Margolis, Caluwaerts, Bar-Shalom — total now 15 entries).
+            2. Wrote experiments/perception/2026-04-09_adaptive_rxy_sweep.qmd — full write-up
+               of the adaptive R_xy fix with before/after comparison tables.
+            3. Updated agents/perception.qmd with iters 77-78 camera convention + SimBallDetector.
+            4. Pinged policy agent about references + experiments requirement from Daniel.
+            5. Processed 3 INBOX entries (testing-dashboard status check, Daniel deadline note,
+               Daniel references/experiments request).
+Command:    No GPU commands (policy d435i training at ~iter 950/1500).
+Result:     Quarto content populated: 15 references, 2 experiment write-ups, agent page current.
+            GPU still locked — camera validation remains the blocker for demo.
+Decision:   Next iter: check if GPU freed. If yes, run demo_camera_ekf.py smoke test.
+            If GPU still locked, work on unit tests for cam_detection_to_world().

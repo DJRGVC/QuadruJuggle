@@ -30,7 +30,7 @@ they get stuck, or they exceed their useful budget.** Each child
 also has a hard iteration cap and will self-kill at MAX_ITERATIONS,
 but that's a safety net — proactive management is your job.
 
-- **testing-dashboard** (generic, parent=perception) — status=running, iter=#4, last=38s ago
+- **testing-dashboard** (generic, parent=perception) — status=running, iter=#5, last=1m ago
   Focus: Build a Quarto testing page for the WASD+PL control + perception pipeline. Deadline: 2026-04-09 15:00 UTC. Page documents how to run play_teleop.py with WASD+PL controls, camera setup, height viz, velocity display. Decide by iter 3: live widget vs step-by-step guide for local Linux with Isaac Lab. Read sibling branches for model paths.
 
 **Decision rules** (apply at the top of every iteration):
@@ -99,20 +99,4 @@ git show agent/policy:.c3r/PROMPT.md
 git show agent/policy:.c3r/RESEARCH_LOG.md
 git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
 ```
-
-## fix-quarto-rebuild-failure
-- **role**: fix-it
-- **focus**: take a look at the quarto rebuild failue--lets try to figure out why is was not 
-- **status**: running · iter #0 · ctx 0%
-
-### Recent commits on `agent/fix-quarto-rebuild-failure`
-```
-aab3845 torso tracking edit
-9c4793a pi_2 with v trackign works
-3841f54 working on pi_1 + pi_2
-085e457 frank-proofed requirements.txt
-7256612 added req + install explainer
-```
-### Files modified on `agent/fix-quarto-rebuild-failure` (relative to `c3r/QuadruJuggle`)
-_(none)_
 

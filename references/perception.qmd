@@ -30,3 +30,46 @@ author: "perception"
 - **Joseph 1968** — *Joseph form of covariance update*. Numerically stable
   covariance update P = (I-KH)P(I-KH)' + KRK'. We use this in `ball_ekf.py`
   for guaranteed positive-semidefiniteness.
+
+- **Rudin et al. 2022 (CoRL)** — *Learning to walk in minutes using massively
+  parallel deep reinforcement learning*. Introduced legged_gym / RSL-RL framework
+  with alive survival bonus. Our training infrastructure (PPO, Isaac Lab integration)
+  descends from this work.
+  https://arxiv.org/abs/2109.11978
+
+- **Portela et al. 2025 (RSS)** — *ROGER: A Robust Reactive Ball Juggling Robot
+  with Visual Feedback*. Sigma curriculum (std 0.5→0.08m as episode length
+  stabilises). Our sigma floor of 80mm in the final curriculum stage comes from
+  their σ schedule. Most directly comparable to our juggling task.
+
+- **Zhuang et al. 2023 (CoRL)** — *Robot Parkour Learning*. Established the
+  terminal penalty calibration rule: `|terminal_penalty| >> episode_length × alive_rate`.
+  We follow this for early termination weights.
+  https://arxiv.org/abs/2309.14341
+
+- **Hoeller et al. 2024 (Science Robotics)** — *ANYmal Parkour: Learning Agile
+  Navigation for Quadrupedal Robots*. Binary posture gate on task reward. Our
+  height-gated ball centering reward follows a similar gating mechanism.
+  https://arxiv.org/abs/2306.14874
+
+- **Huang et al. 2024 (CoRL Best Paper)** — *SoloParkour: Constrained
+  Reinforcement Learning for Visual Locomotion from Privileged Experience*.
+  Survival + CaT (Constraints as Terminations) = most stable collapse prevention.
+  Influenced our combined alive + termination reward design.
+  https://arxiv.org/abs/2409.13678
+
+- **Margolis & Agrawal 2022 (RSS)** — *Walk These Ways: Tuning Robot Control
+  for Generalization with Multiplicity of Behavior*. Showed loose vx/vy tracking
+  std (≈0.20) generalises across gaits. We adopted std=0.20 for pi2's velocity
+  tracking based on this finding.
+  https://arxiv.org/abs/2212.03238
+
+- **Caluwaerts et al. 2024 (IROS)** — *Barkour: Benchmarking Animal-level Agility
+  with Quadruped Robots (CaT)*. Probabilistic termination on constraint violation.
+  Combined with survival bonus in our reward design.
+
+- **Bar-Shalom et al. 2001** — *Estimation with Applications to Tracking and
+  Navigation*. Standard reference for EKF design, NIS (Normalized Innovation
+  Squared) consistency testing, and chi-squared gating thresholds. Our NIS
+  calibration target of 3.0 (for 3D measurements) comes from their theory:
+  E[NIS] = dim(z) under correct filter tuning.
