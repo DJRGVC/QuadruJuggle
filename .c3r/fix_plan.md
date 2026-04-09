@@ -34,9 +34,11 @@
 - [x] **BUG FIX: ES metric used total episode return** — non-monotonic for multi-target
       training (easy targets → short episodes → low total return). Fixed to per-step reward.
       Updated _ES_MIN_DELTA from 0.5 → 0.002.
-- [ ] **NEXT: Retrain Stage G with fixed ES metric** — resume from Stage F checkpoint
-      (model_best.pt from 2026-04-08_22-51-56). Should converge further now that ES
-      won't kill training prematurely. Target: improve 0.40-0.50m while maintaining 0.10-0.30m.
+- [x] **Retrain Stage G with fixed ES metric** — DONE. model_4100 from 2026-04-09_09-32-21.
+      Oracle: 80-99% timeout. D435i: 37-67%. EKF: 0% (incompatible — trained on raw d435i).
+- [ ] **NEXT: Retrain pi1 with EKF noise mode** — the deployment pipeline uses EKF-filtered
+      obs. Raw d435i training creates incompatible models (0% under EKF). Must retrain from
+      Stage C onwards with --noise-mode ekf. Start noise_scale=0.5 at Stage C.
 - [ ] Capture play.py video of d435i checkpoint for Quarto (Daniel requested videos)
 
 ## NEXT — Validate juggling behavior

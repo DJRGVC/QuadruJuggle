@@ -27,15 +27,15 @@ Siblings will see it in their next SIBLINGS.md refresh.
 ## perception
 - **role**: generic
 - **focus**: implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline following ETH-style architecture, producing noisy ball observations usable by pi1 in Isaac Lab sim.
-- **status**: running · iter #110 · ctx 51%
+- **status**: running · iter #130 · ctx 51%
 
 ### Recent commits on `agent/perception`
 ```
-3d5720d Iteration 124: D435i vs oracle training history dashboard
-36232b8 Iteration 123: D435i noise profile analysis — noise not the Stage G bottleneck
-0865416 Iteration 122: TensorBoard training monitor + live plateau analysis
-f517f82 Iteration 121: Stage G training plateau diagnosis
-2df0019 Iteration 120: flight-window EKF accuracy analysis
+2c6bd05 Iteration 144: Pipeline latency tracking for hardware bring-up
+758991e Iteration 143: Extrinsics to_yaml() round-trip + Quarto update
+71fc36c Iteration 142: Implement CameraCalibrator.from_checkerboard()
+b0d4b31 Iteration 141: Implement D435iCamera pyrealsense2 wrapper
+8b888a9 Iteration 140: Re-validate EKF error decomposition with linear drag
 ```
 ### Files modified on `agent/perception` (relative to `c3r/QuadruJuggle`)
 ```
@@ -64,12 +64,12 @@ experiments/perception/2026-04-09_adaptive_rxy_sweep.qmd
 experiments/perception/2026-04-09_camera_pipeline_validation.qmd
 experiments/perception/2026-04-09_q_vel_sweep.qmd
 experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd
+experiments/perception/2026-04-10_noise_gap_prediction.qmd
 experiments/perception/2026-04-10_oracle_vs_d435i_eval.qmd
+experiments/perception/2026-04-10_perception_gap_decomposition.qmd
 images/README.md
 images/perception/.gitkeep
-images/perception/d435i_noise_profile_iter123.png
-images/perception/demo_camera_ekf_summary.png
-... and 124 more
+... and 150 more
 ```
 ### Read one with:
 ```
@@ -79,4 +79,20 @@ git show agent/perception:.c3r/PROMPT.md
 git show agent/perception:.c3r/RESEARCH_LOG.md
 git show agent/perception:.c3r/RESEARCH_LOG_ARCHIVE.md
 ```
+
+## fix-keyboard-vision-control-ui
+- **role**: fix-it
+- **focus**: great. so what is left for me being able to have keyboard-based control of a vis
+- **status**: running · iter #0 · ctx 0%
+
+### Recent commits on `agent/fix-keyboard-vision-control-ui`
+```
+aab3845 torso tracking edit
+9c4793a pi_2 with v trackign works
+3841f54 working on pi_1 + pi_2
+085e457 frank-proofed requirements.txt
+7256612 added req + install explainer
+```
+### Files modified on `agent/fix-keyboard-vision-control-ui` (relative to `c3r/QuadruJuggle`)
+_(none)_
 

@@ -144,6 +144,39 @@ Decision:   Next iteration: launch Stage G continuation training from d435i mode
             (start-stage 6, noise-mode d435i). This is the highest-priority item.
             GPU was blocked this entire iteration by perception agent's demo runs.
 
+## Iteration 33 — Stage G retrained eval + perception gap analysis  (2026-04-09T18:30Z)
+Hypothesis: Retraining Stage G with fixed ES metric (per-step reward) will converge further
+            and improve 0.40-0.50m targets while maintaining 0.10-0.30m performance.
+Change:     Analysis iteration — evaluated model_4100 from the ES-fixed retrain (run
+            2026-04-09_09-32-21, 1601 iters in Stage G). Tested under oracle, d435i, and EKF obs.
+Command:    eval_juggle_hier.py on model_4100 × 3 noise modes × 5 targets × 30 episodes
+Result:     ES FIX CONFIRMED: training ran full 1600 Stage G iters without early stop.
+            
+            Model_4100 eval (timeout %):
+            Target  Oracle  D435i   Gap     EKF
+            0.10    94.9%   50.0%   -44.9%  0.0%
+            0.20    80.0%   36.7%   -43.3%  0.0%
+            0.30    98.7%   35.5%   -63.2%  0.0%
+            0.40    93.3%   67.7%   -25.6%  0.0%
+            0.50    80.0%   66.7%   -13.3%  0.0%
+            
+            KEY FINDINGS:
+            1. Oracle performance strong (80-99%) — the policy is good, not the bottleneck.
+            2. D435i gap worst at mid-targets (0.30m = -63pp), smallest at 0.50m (-13pp).
+            3. EKF mode = 0% timeout — model was trained on raw d435i noise, not EKF-filtered.
+               EKF smooths/lags observations differently → distribution shift → catastrophic.
+            4. Compared to early-stop model: model_4100 is significantly better at 0.40-0.50m
+               (67% vs 0-45%) but similar at 0.10-0.30m (35-50% vs 47%).
+            
+            Checkpoint: logs/.../2026-04-09_09-32-21/model_4100.pt (global iter 4101)
+            Experiments: experiments/iter_033_stage_g_retrain/
+Decision:   The deployment pipeline uses EKF, so the model MUST be retrained with EKF-mode obs.
+            Raw d435i training creates a model that's incompatible with EKF observations.
+            Next iteration: launch Stage G retrain with --noise-mode ekf from the oracle
+            Stage B checkpoint (model_best from 2026-04-08_22-51-56 Stage F). Start with
+            noise_scale=0.5 in Stage C to ease the transition. This is the critical path
+            for closing the perception gap.
+
 ## Iteration 32 — ES metric bug fix + Stage G eval  (2026-04-09T16:30Z)
 Hypothesis: Stage G training (mixed targets 0.10-0.50m, d435i noise) early-stopped
             prematurely due to a bug in the ES metric — episode return is non-monotonic

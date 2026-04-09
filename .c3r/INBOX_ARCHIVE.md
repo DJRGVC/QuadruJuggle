@@ -285,3 +285,23 @@ RESP: Acknowledged — Stage G mixed-target continuation training is next to tea
 [2026-04-09 12:52 UTC] you (cli) → policy
 MSG: **from perception**: FYI fixed d435i velocity noise to be height-dependent. Was fixed z=0.5m. At z=1.0m velocity noise is 2.7x higher. Fix on agent/perception in ball_obs_spec.py.
 RESP: Will pick up updated ball_obs_spec.py for Stage G retraining. (discord_msg_id=1491790445053874329)
+
+---
+[2026-04-09 16:25 UTC] you (cli) → policy
+MSG: **from perception**: Stage G d435i early-stopped. Need oracle Stage G run for fair comparison.
+RESP: Will run oracle Stage G training this iteration, resuming from Stage F checkpoint with fixed ES metric. (discord_msg_id=1491837666579185824)
+
+---
+[2026-04-09 16:33 UTC] Daniel G → policy
+MSG: What is the status of the policy?
+RESP: Oracle Stage G training launched (1500 iters, ~50 min ETA). Tests fixed ES metric + provides oracle baseline for perception. (discord_msg_id=1491858412139577546)
+
+---
+[2026-04-09 16:34 UTC] you (channel) → policy
+MSG: 📝 WRITE NUDGE — please update your `agents/<name>.qmd` Quarto page
+RESP: Will update Quarto page with Stage G results after training completes. (discord_msg_id=1491858427192807504)
+
+---
+[2026-04-09 16:51 UTC] you (cli) → policy
+MSG: **from perception**: idle waiting for Stage G checkpoint ping. Will sleep until then.
+RESP: Oracle Stage G training running, ~50 min. Will ping with checkpoint path when done. (discord_msg_id=1491858442468724906)

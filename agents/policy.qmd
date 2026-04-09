@@ -15,6 +15,65 @@ retrain pi1 with noise-injected ball observations from the perception pipeline, 
 
 This page is maintained by the **policy** agent. Entries are in reverse chronological order.
 
+## Iteration 33 — Perception gap analysis: oracle vs d435i vs EKF {.unnumbered}
+*2026-04-09*
+
+Comprehensive evaluation of the ES-fixed Stage G retrain (model_4100, 1601 iters in Stage G,
+no early stop). Tested under three observation modes × 5 target heights × 30 episodes.
+
+| Target | Oracle TO% | D435i TO% | Gap | EKF TO% |
+|--------|-----------|-----------|-----|---------|
+| 0.10m  | 94.9%     | 50.0%     | −44.9pp | 0.0% |
+| 0.20m  | 80.0%     | 36.7%     | −43.3pp | 0.0% |
+| 0.30m  | 98.7%     | 35.5%     | −63.2pp | 0.0% |
+| 0.40m  | 93.3%     | 67.7%     | −25.6pp | 0.0% |
+| 0.50m  | 80.0%     | 66.7%     | −13.3pp | 0.0% |
+
+**Key findings**:
+
+1. **Oracle performance is strong** (80--99%) --- the policy is fundamentally good.
+2. **D435i gap is height-dependent**: worst at 0.30m (−63pp), smallest at 0.50m (−13pp).
+   Low targets are harder because ball-to-paddle distance is small relative to noise.
+3. **EKF mode is catastrophic** (0% timeout everywhere). The model was trained on raw d435i
+   noise; EKF-filtered observations are a completely different distribution. This means we
+   **must retrain with EKF mode** since the deployment pipeline uses EKF.
+
+**Decision**: Retrain pi1 from scratch with `--noise-mode ekf`. The raw d435i approach
+creates models that only work with raw noisy observations, not with the EKF filter that
+will be used in deployment.
+
+Commits: `e8af8a4` (ES fix), this iter (eval analysis).
+
+## Iteration 32 — ES metric bug fix + Stage G eval {.unnumbered}
+*2026-04-09*
+
+**Critical bug found and fixed**: the early-stopping (ES) metric used **total episode return**
+as the improvement signal. In Stage G (mixed targets 0.10--0.50m), this is non-monotonic ---
+easy targets produce shorter episodes with lower total return, even though per-step performance
+improves. The ES counter never found a new "best" and killed training after 1531 stage iters.
+
+**Fix**: switched ES metric to **per-step reward** (total_return / ep_len), updated
+`_ES_MIN_DELTA` from 0.5 to 0.002.
+
+Despite the premature early stop, Stage G **fixed energy modulation**:
+
+![Stage G energy modulation fix — d435i before/after Stage G vs oracle](../images/policy/stage_g_energy_modulation.png){width=90%}
+
+| Target | D435i Pre-G | D435i Post-G | Oracle (F) | Gap |
+|--------|-------------|--------------|------------|-----|
+| 0.10m  | 0%          | **80.6%**    | 80.9%      | -0.3% |
+| 0.20m  | 0%          | **80.0%**    | 80.0%      |  0.0% |
+| 0.30m  | 40%         | **81.4%**    | 85.0%      | -3.6% |
+| 0.40m  | 73%         | **63.3%**    | 73.3%      | -10.0% |
+| 0.50m  | 70%         | **48.4%**    | 66.7%      | -18.3% |
+
+**Key results**: Easy targets (0.10--0.30m) went from 0--40% to 80%+ timeout. Perception
+gap is <4% at targets <= 0.30m but grows to 18% at 0.50m.
+
+**Next**: Retrain Stage G with fixed ES metric (should converge further, improving 0.40--0.50m).
+
+Commits: `e8af8a4`
+
 ## Iteration 30 — Cross-eval analysis + Stage G prep {.unnumbered}
 *2026-04-09*
 
