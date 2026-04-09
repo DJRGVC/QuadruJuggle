@@ -26,6 +26,11 @@
     Added --noise-mode and --target-height flags to demo_camera_ekf.py.
     GPU queued (PID 1204960, behind policy training lock). Target=0.42m.
     Next: check oracle_eval_DONE sentinel, parse logs/perception/oracle_eval.log
+  - [x] Created compare_eval_runs.py — multi-run comparison (bar chart + timeseries)
+  - [x] 8 tests for comparison script (335/335 total)
+  - [x] run_comparison.sh — one-command comparison once logs ready
+  - [ ] Parse oracle eval results when GPU run completes
+  - [ ] Generate oracle vs d435i comparison figure for Quarto experiment
 
 # EKF tuning (lower priority, mostly done)
 - [x] GPU sweep at higher target heights (0.3-0.5m) — bounce mode sweep done (iter 90)

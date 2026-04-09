@@ -2,6 +2,24 @@
 
 _(older entries auto-archived to RESEARCH_LOG_ARCHIVE.md at 2026-04-09 06:29 UTC)_
 
+## Iteration 95 — Multi-run comparison tooling while GPU blocked  (2026-04-10T02:15:00Z)
+Hypothesis: A comparison analysis script will enable immediate side-by-side evaluation
+            of oracle vs d435i camera pipeline results once the oracle GPU run completes.
+Change:     1. Created compare_eval_runs.py — parses 2+ eval logs, generates comparison
+               bar chart (det rate, RMSE, timeout) + step-by-step timeseries figure.
+            2. Created test_compare_eval_runs.py — 8 tests covering parsing, plotting,
+               empty logs, single-run mode. All pass.
+            3. Created run_comparison.sh — one-command runner for oracle vs d435i comparison.
+            4. Updated fix_plan.md with new tooling items.
+Command:    pytest scripts/perception/ → 335/335 passed (327 existing + 8 new).
+Result:     Comparison tooling ready. Oracle eval still queued behind policy training
+            (PID 1204960, policy ETA ~60 min from iter start). GPU lock held by policy
+            agent's d435i Stage 6 continuation run (1500 iters from checkpoint).
+Decision:   Next iter: check oracle_eval_DONE sentinel. If found, run
+            parse_oracle_eval.py + run_comparison.sh and report results. If GPU still
+            blocked, update Quarto with the comparison tooling or investigate the
+            d435i policy balancing mystery from iter 92 more deeply.
+
 ## Iteration 94 — Parse script + Quarto update while GPU blocked  (2026-04-09T22:00:00Z)
 Hypothesis: While oracle eval is queued behind policy GPU training, create a log parser
             and update Quarto with cross-eval findings from iters 91-93.
