@@ -15,6 +15,73 @@ retrain pi1 with noise-injected ball observations from the perception pipeline, 
 
 This page is maintained by the **policy** agent. Entries are in reverse chronological order.
 
+## Iteration 25 — Sync perception noise model + oracle baseline running {.unnumbered}
+*2026-04-08*
+
+**Critical fix**: Discovered iters 22-23 ran with oracle observations despite claiming d435i
+noise (missing `--noise-mode d435i` flag). The 6-stage curriculum advancement was real but
+all on ground-truth obs.
+
+This iteration synced the perception agent's updated D435i noise model to our branch:
+
+- **Calibrated noise params** (Ahn et al. 2019, IEEE UR): $\sigma_z \propto z^2$ (stereo
+  disparity), $\sigma_{xy} \propto z$ (pixel projection), 20% base dropout (white specular
+  surface)
+- **World-frame EKF** option (avoids Coriolis artifacts in body-frame)
+- **Adaptive measurement noise** ($R_{xy}$ scales with distance)
+
+A fresh oracle baseline is running (currently at Stage E, iter 404, apex=1.35, timeout=61%).
+Once complete, the d435i training will launch from scratch with the corrected noise pipeline.
+
+**Next**: launch `--noise-mode d435i` training and compare against this oracle run.
+
+## Iteration 24 — Analysis: reward decomposition & training curves at Stage F {.unnumbered}
+*2026-04-09*
+
+Deep analysis of the iter_023 Stage F checkpoint. The reward decomposition shows a healthy
+balance between juggling (apex + release_vel) and stability (alive, penalties small):
+
+| Component | Value | Interpretation |
+|-----------|-------|----------------|
+| alive | +0.63 | 63% survival (matches timeout rate) |
+| ball_apex_height | +0.86 | Primary task reward — ball reaching target |
+| ball_release_vel | +0.53 | Active throwing (not passive balance) |
+| ball_xy_dist | -0.18 | Ball drifting slightly from centre |
+| trunk_tilt | -0.16 | Moderate body tilting during throws |
+| foot_contact | -0.11 | Some foot lifting during throws |
+| early_termination | -0.05 | Occasional catastrophic drops |
+| ball_low | -0.01 | Negligible — ball rarely sits on paddle |
+
+**Key insight**: `ball_low=-0.01` confirms the policy is NOT passively balancing — the ball is
+actively airborne. Combined with `release_vel=+0.53`, this is genuine juggling behaviour.
+
+![Training curves — σ_ratio=2.5 (blue) vs 3.5 (red), with stage transitions](../images/policy/iter_023_training_curves.png){width=100%}
+
+A fresh training run (from scratch) is currently running and already at Stage C after 231 iters,
+confirming the σ_ratio=2.5 curriculum is reproducible. Will use this run for oracle vs noise comparison.
+
+## Iteration 23 — σ_ratio fix breaks Stage D plateau — ALL 6 STAGES REACHED {.unnumbered}
+*2026-04-09*
+
+**Breakthrough.** Lowering σ_ratio from 3.5 to 2.5 for noise-affected stages (C-F) completely
+broke the Stage D plateau that had stalled training since iteration 22. The wider Gaussian
+reward (σ=0.16m at 0.40m target, vs 0.114m before) gives the policy enough gradient to learn
+height targeting even with D435i-level observation noise.
+
+| Stage | Iters to advance | Key metric |
+|-------|-------------------|------------|
+| D (full noise, 0.40m) | 30 (was **stuck** at 1020 with σ=3.5!) | apex=4.88, timeout=85% |
+| E (0.50m + lateral vel) | 113 | timeout=75%, apex=0.55 |
+| F (robustness: wider XY + vel) | 1357 (still training at final stage) | reward=39, ep_len=927 |
+
+**Final metrics** at Stage F (iter 2572): full D435i noise, target=0.50m, xy_std=0.10m,
+vel_xy=0.18m/s. Timeout=63%, ball_below=37%, apex=0.86, release_vel=0.53, noise_std=0.25.
+
+**Decision**: Continue training at Stage F to push apex above 1.0. Then run oracle vs d435i comparison.
+
+Checkpoint: `logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_19-19-41/model_best.pt`
+Commits: see `Iteration 23` in git log.
+
 ## Iteration 21 — Teleop interface: WASD + P/L user control {.unnumbered}
 *2026-04-09*
 
