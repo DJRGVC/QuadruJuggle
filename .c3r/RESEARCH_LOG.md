@@ -298,3 +298,30 @@ Result:     559/559 tests pass (558 existing + 1 new).
 Decision:   Next iter: check if policy has progressed. If not, consider EKF
             pre-landing inflation (anticipate upcoming contact when descending
             near paddle) as another phase-aware improvement. Or update Quarto.
+
+## Iteration 135 — Pre-landing Q inflation in EKF  (2026-04-09T19:00:00Z)
+Hypothesis: Inflating q_vel when the ball is descending near the paddle (z < 80mm,
+            vz < 0) will prepare the EKF covariance for the upcoming contact
+            discontinuity, reducing NIS spikes at the contact transition and
+            improving the noise-to-gap model fit.
+Change:     Added 5th phase to EKF Q schedule: pre-landing (q_vel=2.0 when
+            ball_z < 0.08m and vz < 0). New config: q_vel_pre_landing=2.0,
+            pre_landing_z_threshold=0.08m. Updated predict_perception_gap.py
+            to include pre-landing fraction in phase-averaged q_vel.
+            Added test_pre_landing_inflated_q_vel test.
+Command:    pytest scripts/perception/ -x -q → 560/560 passed (12.11s)
+            predict_perception_gap.py → R²=0.994 (was 0.866 from iter 134)
+Result:     560/560 tests pass (559 existing + 1 new).
+            5-level Q schedule: contact(50) > post-contact(20) > pre-landing(2.0) > desc(0.40) > asc(0.25)
+            Noise-to-gap model R² jumped from 0.866 → 0.994 — pre-landing phase
+            was the missing explanatory variable. The model now captures the
+            height-gap relationship almost perfectly.
+            Updated predictions: 0.70m → 36.9%, 1.00m → 75.0% (higher than
+            before because pre-landing noise matters more at low heights, steepening
+            the fit). These are policy-limited predictions — actual gaps depend on
+            whether policy can modulate energy.
+            Policy agent still at iter 32 (81% context, no new checkpoint).
+            Figure: images/perception/gap_prediction_iter135.png
+Decision:   Next iter: research log is at ~310 lines — may need compaction soon.
+            Check if policy has progressed. If not, update Quarto with the
+            improved gap prediction model results.

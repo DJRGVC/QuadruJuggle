@@ -377,6 +377,61 @@ class TestContactAwareEKF(unittest.TestCase):
                            f"Descending P growth {dP_descending:.8f} should exceed "
                            f"ascending {dP_ascending:.8f} (q_vel 0.40 vs 0.25)")
 
+    def test_pre_landing_inflated_q_vel(self):
+        """When the ball is descending near the paddle (z < pre_landing_z_threshold,
+        vz < 0), q_vel should inflate to q_vel_pre_landing to prepare the covariance
+        for the upcoming contact discontinuity."""
+        cfg = BallEKFConfig(
+            q_vel=0.40,
+            q_vel_ascending=0.25,
+            q_vel_pre_landing=2.0,
+            pre_landing_z_threshold=0.08,
+            q_vel_contact=50.0,
+            q_vel_post_contact=20.0,
+            post_contact_steps=3,
+            contact_aware=True,
+            contact_z_threshold=0.025,
+        )
+        ekf = BallEKF(num_envs=1, device="cpu", cfg=cfg)
+
+        dt = 0.005
+        # Start high in flight, descending
+        pos = torch.tensor([[0.0, 0.0, 0.20]])
+        vel = torch.tensor([[0.0, 0.0, -2.0]])
+        ekf.reset(torch.tensor([0]), pos, vel)
+
+        # High-altitude descent (z=0.20 > 0.08 threshold) → should use default q_vel
+        P_before_high = ekf._P.clone()
+        ekf.predict(dt=dt)
+        P_after_high = ekf._P.clone()
+        dP_high_desc = (P_after_high[0, 3, 3] - P_before_high[0, 3, 3]).item()
+
+        # Move ball to pre-landing zone (z < 0.08, vz < 0)
+        ekf._x[0, 2] = 0.06  # below pre_landing_z_threshold
+        ekf._x[0, 5] = -1.5  # still descending
+
+        P_before_pre = ekf._P.clone()
+        ekf.predict(dt=dt)
+        P_after_pre = ekf._P.clone()
+        dP_pre_landing = (P_after_pre[0, 3, 3] - P_before_pre[0, 3, 3]).item()
+
+        # Pre-landing should have MORE P growth than default descent
+        # (q_vel 2.0 vs 0.40 → ratio (2.0/0.40)^2 = 25)
+        self.assertGreater(dP_pre_landing, dP_high_desc,
+                           f"Pre-landing P growth {dP_pre_landing:.8f} should exceed "
+                           f"high-altitude descent {dP_high_desc:.8f} (q_vel 2.0 vs 0.40)")
+
+        # But pre-landing should have LESS growth than contact
+        ekf._x[0, 2] = 0.020  # in contact zone
+        ekf._x[0, 5] = -0.5
+        P_before_contact = ekf._P.clone()
+        ekf.predict(dt=dt)
+        P_after_contact = ekf._P.clone()
+        dP_contact = (P_after_contact[0, 3, 3] - P_before_contact[0, 3, 3]).item()
+        self.assertGreater(dP_contact, dP_pre_landing,
+                           f"Contact P growth {dP_contact:.8f} should exceed "
+                           f"pre-landing {dP_pre_landing:.8f} (q_vel 50 vs 2.0)")
+
     def test_reset_after_inference_mode_predict(self):
         """Reset must work even after predict/update ran inside inference_mode.
 

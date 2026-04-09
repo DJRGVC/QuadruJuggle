@@ -79,6 +79,16 @@ class BallEKFConfig:
     # 0.25 vs 0.40 default: ~37% tighter. Still covers residual drag model error
     # (drag_coeff uncertainty ~20% → ~0.1 m/s² at 3 m/s → ~0.02 m/s per step).
 
+    # Pre-landing phase: ball is descending near the paddle. Contact is imminent
+    # and will cause a large velocity discontinuity. Inflating Q before contact
+    # widens the covariance ellipse so the first post-contact measurements get
+    # accepted (lower NIS) and the filter transitions faster to the new velocity.
+    # Ref: Bar-Shalom Ch. 11.6 (manoeuvre detection); D'Ambrosio RSS 2023.
+    q_vel_pre_landing: float = 2.0  # q_vel when ball descending near paddle (m/s/√s)
+    pre_landing_z_threshold: float = 0.08  # activate when ball_z < this AND vz < 0 (m)
+    # 0.08m ≈ 4× ball radius ≈ 16 steps at 200Hz before contact at ~1 m/s descent.
+    # q_vel=2.0: 5× default flight noise, << contact (50) or post-contact (20).
+
     # Measurement noise — matched to D435iNoiseModelCfg (Ahn 2019 calibration)
     r_xy: float = 0.00125   # measurement noise std, XY (m) — 0.0025·z at z=0.5m
     r_xy_per_metre: float = 0.0025  # σ_xy = r_xy_per_metre · z (matched to D435i; Ahn 2019)
@@ -473,11 +483,14 @@ class BallEKF:
             self._x[:, 6:9] = spin * decay_factor
 
         # Process noise Q — contact-aware with phase-aware scheduling.
-        # Four-level q_vel: contact (50) > post-contact (20) > descending (0.4) > ascending (0.25).
+        # Five-level q_vel: contact (50) > post-contact (20) > pre-landing (2.0)
+        #   > descending (0.4) > ascending (0.25).
         # Post-contact window covers the first N steps after bounce where the
         # filter's velocity estimate is stale from the pre-bounce prediction.
         # Ascending phase uses tighter q_vel because ballistic dynamics are highly
         # predictable (gravity + drag), reducing covariance growth during dropout.
+        # Pre-landing phase inflates Q when the ball is descending near the paddle,
+        # preparing the covariance for the upcoming contact discontinuity.
         # Ref: D'Ambrosio RSS 2023, lit_review_ekf_q_tuning iter_031, noise-to-gap iter_131.
         q_pos_sq = (self.cfg.q_pos * dt) ** 2
         if self.cfg.contact_aware:
@@ -495,11 +508,20 @@ class BallEKF:
             # Ascending detection: above contact zone, post-contact expired, vz > 0
             in_ascending = (~in_contact) & (~in_post_contact) & (ball_vz > 0)
 
-            # Four-level q_vel selection (ascending < default < post-contact < contact)
+            # Pre-landing detection: descending near paddle, not yet in contact
+            in_pre_landing = (
+                (~in_contact)
+                & (~in_post_contact)
+                & (ball_vz < 0)
+                & (ball_z < self.cfg.pre_landing_z_threshold)
+            )
+
+            # Five-level q_vel selection (ascending < default < pre-landing < post-contact < contact)
             q_vel_val = torch.full(
                 (self.num_envs,), self.cfg.q_vel, device=self.device
             )
             q_vel_val[in_ascending] = self.cfg.q_vel_ascending
+            q_vel_val[in_pre_landing] = self.cfg.q_vel_pre_landing
             q_vel_val[in_post_contact] = self.cfg.q_vel_post_contact
             q_vel_val[in_contact] = self.cfg.q_vel_contact
 

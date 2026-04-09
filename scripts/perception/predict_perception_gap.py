@@ -140,10 +140,17 @@ def compute_effective_noise_exposure(target_h: float) -> dict:
     mean_consec_misses = dropout_rate / max(1.0 - dropout_rate, 0.01)
     # EKF prediction drift per miss — phase-weighted q_vel:
     # ascending phase uses q_vel=0.25 (tighter, ballistic model accurate),
-    # descending phase uses q_vel=0.40. Flight is ~50/50 ascending/descending.
+    # descending phase: mostly q_vel=0.40, but last 80mm uses q_vel_pre_landing=2.0.
+    # Flight is ~50/50 ascending/descending.
     q_vel_ascending = 0.25
     q_vel_descending = 0.40
-    q_vel = 0.5 * q_vel_ascending + 0.5 * q_vel_descending  # flight-averaged
+    q_vel_pre_landing = 2.0
+    pre_landing_z = 0.08  # m
+    # Pre-landing fraction of descending half: 80mm / apex_height (clamped to 1.0)
+    apex_m = target_h
+    pre_landing_frac = min(pre_landing_z / max(apex_m, 0.01), 1.0)
+    q_vel_desc_avg = (1.0 - pre_landing_frac) * q_vel_descending + pre_landing_frac * q_vel_pre_landing
+    q_vel = 0.5 * q_vel_ascending + 0.5 * q_vel_desc_avg  # flight-averaged
     dt = 1.0 / POLICY_HZ
     predict_drift_mm = q_vel * dt * mean_consec_misses * 1000  # mm
 
