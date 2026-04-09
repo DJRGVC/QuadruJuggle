@@ -31,11 +31,11 @@ Siblings will see it in their next SIBLINGS.md refresh.
 
 ### Recent commits on `agent/policy`
 ```
+bf3d8a8 Iteration 23: σ_ratio 3.5→2.5 breaks Stage D plateau — all 6 stages reached (A→F)
 f4981a6 Iteration 22: fresh 6-stage training — advanced A→D, stuck at D (apex plateau)
 8d8e8d5 Iteration 21: teleop interface — WASD velocity + P/L height control
 6e99ed8 Iteration 18: apex plateau diagnosis + Quarto report
 206e928 iter_017: compaction (summarized iters 009-014)
-e33e0d8 iter_016: continue training from step 5748 — apex plateau at 10.7 after curriculum advance
 ```
 ### Files modified on `agent/policy` (relative to `c3r/QuadruJuggle`)
 ```
@@ -79,20 +79,4 @@ git show agent/policy:.c3r/PROMPT.md
 git show agent/policy:.c3r/RESEARCH_LOG.md
 git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
 ```
-
-## fix-subagent-parallel-work
-- **role**: fix-it
-- **focus**: let both know they can spawn temporary subagents for literature review or parral
-- **status**: running · iter #0 · ctx 0%
-
-### Recent commits on `agent/fix-subagent-parallel-work`
-```
-aab3845 torso tracking edit
-9c4793a pi_2 with v trackign works
-3841f54 working on pi_1 + pi_2
-085e457 frank-proofed requirements.txt
-7256612 added req + install explainer
-```
-### Files modified on `agent/fix-subagent-parallel-work` (relative to `c3r/QuadruJuggle`)
-_(none)_
 

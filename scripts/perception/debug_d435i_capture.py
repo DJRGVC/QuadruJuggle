@@ -233,6 +233,34 @@ def main():
         np.save(os.path.join(out_dir, "frame_000_depth_raw.npy"), depth)
         print(f"[debug_capture] Saved raw depth: frame_000_depth_raw.npy")
 
+        # Run sim ball detector on the depth frame
+        try:
+            from go1_ball_balance.perception.sim_detector import SimBallDetector
+            det = SimBallDetector.from_tiled_camera_cfg()
+            result = det.detect(depth)
+            if result is not None:
+                print(f"[debug_capture] BALL DETECTED: pos_cam=({result.pos_cam[0]:.4f}, "
+                      f"{result.pos_cam[1]:.4f}, {result.pos_cam[2]:.4f}), "
+                      f"depth={result.depth_m:.3f}m, pixels={result.num_pixels}, "
+                      f"uv=({result.pixel_uv[0]:.1f}, {result.pixel_uv[1]:.1f})")
+
+                # Save annotated depth image with detection circle
+                if valid.any():
+                    from PIL import ImageDraw
+                    img_det = Image.fromarray(depth_vis).convert("RGB")
+                    draw = ImageDraw.Draw(img_det)
+                    u, v = result.pixel_uv
+                    r = max(5, int(det._fx * det._ball_radius_m / result.depth_m))
+                    draw.ellipse([u - r, v - r, u + r, v + r], outline=(255, 0, 0), width=2)
+                    draw.text((u + r + 2, v - 8), f"d={result.depth_m:.2f}m", fill=(255, 0, 0))
+                    det_path = os.path.join(out_dir, "frame_000_detection.png")
+                    img_det.save(det_path)
+                    print(f"[debug_capture] Saved detection overlay: {det_path}")
+            else:
+                print("[debug_capture] SimBallDetector: NO DETECTION in depth frame.")
+        except Exception as e:
+            print(f"[debug_capture] SimBallDetector error: {e}")
+
     print("[debug_capture] Done.")
     env.close()
     simulation_app.close()

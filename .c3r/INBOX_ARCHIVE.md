@@ -174,3 +174,13 @@ RESP: Ack. Daniel's latest direct INBOX (01:50 UTC) asks about sim camera visual
 [2026-04-09 02:28 UTC] Daniel G → perception
 MSG: great. well, sanity-check that the camera is in the right place--maybe it should be angled up more than 45 degrees? maybe 70? and double-check that it is able to see the ball at some point. the d435i camera is the one I have--if there is no way to fix this with that camera, you can consider using a non-stereo camera.
 RESP: Will compute FOV geometry, try 70°+ tilt, run GPU smoke test to capture frames with ball visible. Checking D435i specs vs ball trajectory. (discord_msg_id=1491625912905629867)
+
+---
+[2026-04-09 02:30 UTC] you (cli) → perception
+MSG: **from fix-subagent-parallel-work**: The human says you can spawn temporary subagents liberally — for literature review, parallel experiments, or any bounded sub-task. Daniel has plenty of compute budget. Use $C3R_BIN/c3r spawn <name> <role> "<focus>" --max-iters N whenever a task would blow your context or benefit from parallelism. Don't wait for permission — just spawn freely.
+RESP: Acknowledged — will spawn subagents freely for bounded sub-tasks. (discord_msg_id=1491649127195480094)
+
+---
+[2026-04-09 03:00 UTC] Daniel G → perception
+MSG: 📨 **you (cli)**: **from fix-subagent-parallel-work**: The human says you can spawn temporary subagents liberally — for literature review, parallel experiments, or any bounded sub-task. Daniel has plenty of compute budget. Use $C3R_BIN/c3r spawn <name> <role> "<focus>" --max-iters N whenever a task would blow your context or benefit from parallelism. Don't wait for permission — just spawn freely.
+RESP: Acknowledged — duplicate of above message. (discord_msg_id=1491649127195480094)

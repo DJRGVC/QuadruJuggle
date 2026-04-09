@@ -124,10 +124,10 @@ class BallJuggleHierSceneCfg_DEBUG(BallJuggleHierSceneCfg):
     Camera is mounted behind the paddle, tilted 70° upward to track the ball
     during flight.  86° HFOV matches D435i depth module.
 
-    **Convention note**: with ``convention="ros"``, the identity camera looks
-    straight UP (+Z in ROS frame = +Z world = zenith).  To tilt the camera to
-    elevation angle E above horizontal, use rotation = -(90-E)° about X.
-    For E=70°: rot_angle = -20°, q = (cos(-10°), sin(-10°), 0, 0).
+    **Convention note**: with ``convention="world"``, the identity camera looks
+    along body +X (forward) with +Z up.  To tilt the camera to elevation E
+    above horizontal, rotate by -E about the Y axis.
+    For E=70°: q = (cos(-35°), 0, sin(-35°), 0) = (0.8192, 0, -0.5736, 0).
 
     At 70° tilt the VFOV (58°) covers 41°–99° above horizontal.
 
@@ -152,10 +152,10 @@ class BallJuggleHierSceneCfg_DEBUG(BallJuggleHierSceneCfg):
         offset=TiledCameraCfg.OffsetCfg(
             # body-frame: 8 cm behind paddle centre, 6 cm above trunk root
             pos=(-0.08, 0.0, 0.06),
-            # 70° elevation above horizontal.  convention="ros" → identity = zenith.
-            # rot_angle = -(90-70) = -20° about X;  q = (cos(-10°), sin(-10°), 0, 0)
-            rot=(0.9848, -0.1736, 0.0, 0.0),
-            convention="ros",
+            # 70° elevation above horizontal.  convention="world" → identity = +X forward.
+            # Pitch up by 70°: rotate -70° about Y → q = (cos(-35°), 0, sin(-35°), 0)
+            rot=(0.8192, 0.0, -0.5736, 0.0),
+            convention="world",
         ),
     )
 

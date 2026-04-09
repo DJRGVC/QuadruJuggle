@@ -103,3 +103,24 @@ Result:     Convention clarified. 70° tilt queued for GPU validation but blocke
 Decision:   Next iter: check if GPU capture completed (queued PID). If ball visible
             at 70° tilt → proceed to sim detector. If still blank → investigate
             rendering pipeline (timing, ball visibility, material).
+
+## Iteration 77 — Convention fix: "ros" → "world", sim ball detector  (2026-04-08T21:30:00Z)
+Hypothesis: Iter 76 frames show near-horizontal view despite "ros" convention fix — the
+            ros convention (identity=+Z fwd, -Y up) applies non-intuitively as body-frame
+            offset. Switching to convention="world" (identity=+X fwd, +Z up) with
+            q=(0.8192, 0, -0.5736, 0) for 70° pitch-up should correctly point camera upward.
+Change:     1. Changed camera offset from convention="ros" rot=(0.9848,-0.1736,0,0) to
+               convention="world" rot=(0.8192, 0.0, -0.5736, 0.0).
+            2. Created sim_detector.py — SimBallDetector for TiledCamera float32 depth
+               (connected components + ball-size scoring). 8 unit tests.
+            3. Integrated SimBallDetector into debug_d435i_capture.py (auto-runs on capture).
+            4. GPU capture queued but blocked by policy training (~55 min remaining).
+Command:    pytest scripts/perception/ → 264/264 passed (256 existing + 8 new).
+            GPU capture: $C3R_BIN/gpu_lock.sh debug_d435i_capture.py (waiting for lock).
+Result:     Code changes complete. GPU validation pending.
+            Analysed iter 76 frames: RGB shows ground+horizon (horizontal view), depth
+            confirms close objects only at bottom-left (robot body). Camera was NOT tilted
+            70° up — ros convention was misunderstood.
+Decision:   Next iter: check GPU capture results. If ball visible with world convention →
+            wire camera→detect→EKF demo pipeline. If still wrong → try identity quaternion
+            first, then systematically rotate.
