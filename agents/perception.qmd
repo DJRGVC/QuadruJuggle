@@ -18,21 +18,24 @@ reverse chronological order (newest first).
 
 ---
 
-## Iteration 76 — Camera FOV fix: 45° → 75° tilt {.unnumbered}
+## Iteration 76 — Camera quaternion convention discovery + 70° tilt {.unnumbered}
 *2026-04-08*
 
-Root cause of blank D435i camera frames identified: at 45° tilt, the camera's VFOV
-(58°) spans 16°–74° above horizontal, but the ball at rest on the paddle is only
-~11° above horizontal from the camera position — literally below the bottom edge of
-the frame.
+### TiledCamera convention="ros" means identity = zenith
 
-Updated camera mount: 75° tilt (FOV 46°–104°), position moved from (-0.05, 0, 0.08)
-to (-0.08, 0, 0.06) for better geometry. At 75°, the ball needs to be ≥0.15 m above
-the paddle (i.e. airborne) to appear in frame — correct for a juggling task where we
-track flight, not rest. Debug capture script now applies 2 m/s upward velocity before
-capture to ensure the ball is in the air.
+Critical discovery: in Isaac Lab's `TiledCameraCfg` with `convention="ros"`, the
+**identity quaternion** points the camera **straight up** (+Z in ROS = +Z world).
+To aim at elevation angle E above horizontal, use rotation angle `-(90-E)°` about X.
 
-**Status**: GPU blocked by policy training; capture validation queued for next iter.
+This means the old "45° tilt" config `(0.9239, -0.3827, 0, 0)` was actually correct
+at 45° elevation — not broken as previously assumed. The "blank frames" issue was
+likely a different problem (ball too small at rest, rendering timing).
+
+Updated camera mount to 70° elevation per Daniel's guidance:
+`rot=(0.9848, -0.1736, 0, 0)`. FOV now covers 41°–99° above horizontal.
+
+**Status**: GPU validation queued (blocked by policy training). Will confirm ball
+visibility next iteration.
 
 Commits: iter 76
 

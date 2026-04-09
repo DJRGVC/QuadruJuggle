@@ -125,14 +125,15 @@ def main():
     try:
         ball = unwrapped.scene["ball"]
         ball_vel = ball.data.root_vel_w.clone()  # (N, 6): [vx, vy, vz, wx, wy, wz]
-        ball_vel[:, 2] = 2.0  # 2 m/s upward — reaches ~0.2 m apex in ~0.1 s
+        ball_vel[:, 2] = 3.0  # 3 m/s upward — reaches ~0.46 m apex in ~0.3 s
         ball.write_root_velocity_to_sim(ball_vel)
-        print("[debug_capture] Applied 2 m/s upward velocity to ball.", flush=True)
+        print("[debug_capture] Applied 3 m/s upward velocity to ball.", flush=True)
     except Exception as e:
         print(f"[debug_capture] WARNING: could not set ball velocity: {e}", flush=True)
 
-    # Step a few more times to let ball rise into camera FOV
-    capture_delay = max(args_cli.steps - settle_steps, 10)
+    # Step only 5-8 steps (~0.1-0.16 s at 50 Hz) so ball is still rising / near apex.
+    # At 3 m/s up, apex is at t≈0.31s, h≈0.46m above paddle. Capture at ~0.1s → h≈0.25m.
+    capture_delay = 8
     for i in range(capture_delay):
         action = torch.zeros(unwrapped.action_space.shape, device=unwrapped.device)
         obs, _, _, _, _ = env.step(action)
@@ -160,9 +161,28 @@ def main():
 
     print(f"[debug_capture] Camera found: {cam}, data types: {cam.cfg.data_types}", flush=True)
 
-    # Force a camera update
-    cam.update(dt=unwrapped.step_dt)
-    print("[debug_capture] Camera updated.", flush=True)
+    # Force multiple camera updates to ensure rendering catches up
+    for _ in range(5):
+        cam.update(dt=unwrapped.step_dt)
+    print("[debug_capture] Camera updated (5x).", flush=True)
+
+    # Print camera world pose for debugging
+    try:
+        cam_pos_w = cam.data.pos_w[0].cpu().numpy()
+        cam_quat_w = cam.data.quat_w_ros[0].cpu().numpy() if hasattr(cam.data, 'quat_w_ros') else cam.data.quat_w[0].cpu().numpy()
+        print(f"[debug_capture] Camera world pos: ({cam_pos_w[0]:.4f}, {cam_pos_w[1]:.4f}, {cam_pos_w[2]:.4f})", flush=True)
+        print(f"[debug_capture] Camera world quat: ({cam_quat_w[0]:.4f}, {cam_quat_w[1]:.4f}, {cam_quat_w[2]:.4f}, {cam_quat_w[3]:.4f})", flush=True)
+        # Compute look direction from quaternion
+        import numpy as np_diag
+        w, x, y, z = cam_quat_w
+        # Forward direction (Z axis in ROS or camera convention)
+        fwd_x = 2 * (x * z + w * y)
+        fwd_y = 2 * (y * z - w * x)
+        fwd_z = 1 - 2 * (x * x + y * y)
+        pitch_deg = np_diag.degrees(np_diag.arcsin(np_diag.clip(fwd_z, -1, 1)))
+        print(f"[debug_capture] Camera forward: ({fwd_x:.3f}, {fwd_y:.3f}, {fwd_z:.3f}), pitch ≈ {pitch_deg:.1f}°", flush=True)
+    except Exception as e:
+        print(f"[debug_capture] Could not read camera pose: {e}", flush=True)
 
     # Save output directory
     out_dir = os.path.join(
