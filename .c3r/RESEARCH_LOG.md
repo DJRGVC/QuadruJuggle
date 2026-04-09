@@ -88,3 +88,27 @@ Result:     FUNDAMENTAL VISIBILITY GAP: oracle 1.7% det rate, d435i 4.5% det rat
 Decision:   Next iter: re-run eval at higher target heights (0.50-1.00m) where ball spends
             more time in flight. If policy can sustain higher targets, detection rate should
             improve dramatically. Also consider asking Daniel about camera mount alternatives.
+
+## Iteration 102 — Height sweep: policy balances, doesn't juggle  (2026-04-10T11:45:00Z)
+Hypothesis: Higher target heights (0.50-1.00m) should give the ball more airtime and
+            dramatically improve camera detection rate (from 1.7-4.5% at 0.42m).
+Change:     Created run_height_sweep_eval.sh to sweep targets {0.42, 0.50, 0.70, 1.00}m
+            with d435i policy, 1500 steps × 4 envs each. Detailed per-step height analysis
+            and height-above-paddle histograms.
+Command:    $C3R_BIN/gpu_lock.sh bash scripts/perception/run_height_sweep_eval.sh
+            Smoke test: 10 steps at 0.70m — passed. Full sweep: 4 targets × 1500 steps.
+Result:     TARGET-INVARIANT: policy caps at 0.246m max apex above paddle regardless of
+            target setting. Mean ball height above paddle = 0.01m (essentially resting).
+            | Target | Det% | FOV% | Det|FOV% | Mean h | Max h |
+            | 0.42m  | 3.9  | 16.2 | 11.1    | 0.011  | 0.246 |
+            | 0.50m  | 1.1  | 12.3 |  9.2    | 0.004  | 0.246 |
+            | 0.70m  | 1.7  | 16.9 |  6.3    | 0.010  | 0.246 |
+            | 1.00m  | 2.5  |  4.1 | 26.2    | -0.009 | 0.246 |
+            ROOT CAUSE: d435i Stage F policy catches ball on initial drop (17-step
+            flight with 100% detection), then holds it on paddle forever. Zero sustained
+            bouncing. Camera+detector pipeline works perfectly — problem is pure policy.
+            Pinged policy agent about Stage G training.
+Decision:   BLOCKED on policy improvement. Next iter: (a) investigate EKF predict-only mode
+            for sparse measurements during contact phases, (b) consider if camera can also
+            see ball during paddle contact from a different mount angle, (c) wait for
+            policy agent's Stage G progress.

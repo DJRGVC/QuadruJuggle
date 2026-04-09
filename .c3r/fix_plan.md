@@ -27,10 +27,12 @@
   - [x] Experiment write-up: experiments/perception/2026-04-10_oracle_vs_d435i_eval.qmd
   - [x] Fixed SameFileError in analyze_eval_trajectory.py --quarto-copy
 
-# Next: Higher target height eval
-- [ ] Re-run eval at target=0.70m or 1.00m to test if higher apex gives >50% det rate
-- [ ] If policy can't sustain 1.0m, try intermediate targets (0.50, 0.60, 0.70)
-- [ ] Consider alternative camera mount angles if detection still insufficient
+# Next: Higher target height eval — DONE (iter 102)
+- [x] Re-run eval at target=0.42/0.50/0.70/1.00m — policy caps at 0.25m apex regardless
+- [x] ROOT CAUSE: policy is balancing (Stage F), not juggling. Camera works fine during flight.
+- [ ] BLOCKED: need policy agent to produce a sustained-bouncing policy (Stage G+)
+- [ ] Meanwhile: adapt EKF for sparse-measurement regime (predict-only during contact)
+- [ ] Consider "flight window" detection mode — only run detection during known flight arcs
 
 # EKF tuning (lower priority, mostly done)
 - [x] GPU sweep at higher target heights (0.3-0.5m) — bounce mode sweep done (iter 90)

@@ -18,6 +18,41 @@ reverse chronological order (newest first).
 
 ---
 
+## Iteration 102 — Height sweep confirms policy is balancing, not juggling {.unnumbered}
+*2026-04-10*
+
+::: {.callout-important}
+**Root cause identified**: The d435i-trained policy (Stage F) **catches the ball on the
+initial drop and holds it** — zero sustained bouncing. Ball reaches 0.25m max on the
+initial drop, then settles to ±2cm of the paddle surface forever. Detection works perfectly
+(100%) during the 17-step flight window.
+:::
+
+Swept target heights {0.42, 0.50, 0.70, 1.00}m with the d435i policy. Results are
+target-invariant — the policy cannot achieve higher targets:
+
+| Target | Det rate | Ball in FOV | Det when in FOV | Mean h | Max h |
+|--------|----------|-------------|-----------------|--------|-------|
+| 0.42m  | 3.9%     | 16.2%       | 11.1%           | 0.011m | 0.246m|
+| 0.50m  | 1.1%     | 12.3%       | 9.2%            | 0.004m | 0.246m|
+| 0.70m  | 1.7%     | 16.9%       | 6.3%            | 0.010m | 0.246m|
+| 1.00m  | 2.5%     | 4.1%        | 26.2%           | -0.009m| 0.246m|
+
+![Height distribution across targets — ball rarely enters camera FOV](../images/perception/height_sweep_iter102.png){width=100%}
+
+**Key insight**: The camera + detector pipeline is fully functional. The bottleneck is the
+*policy*, which is a balancer (Stage F), not a juggler. For useful camera perception, we
+need a policy that produces sustained periodic bouncing — the detection pipeline will then
+provide continuous measurements during each flight arc.
+
+**Next**: Coordinate with policy agent on Stage G training. Meanwhile, investigate whether
+the EKF can be adapted to work with sparse measurements (predict-only during contact,
+update during brief flight windows at episode boundaries).
+
+Commits: this iteration
+
+---
+
 ## Iteration 101 — Camera eval reveals fundamental visibility gap {.unnumbered}
 *2026-04-10*
 
