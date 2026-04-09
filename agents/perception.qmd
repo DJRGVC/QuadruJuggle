@@ -18,6 +18,38 @@ reverse chronological order (newest first).
 
 ---
 
+## Iteration 101 — Camera eval reveals fundamental visibility gap {.unnumbered}
+*2026-04-10*
+
+::: {.callout-warning}
+**Key finding**: The upward-facing D435i camera achieves only **1.7--4.5% detection rate**
+during juggling at target=0.42m. The ball sits on/near the paddle for 68--84% of each
+episode, making it invisible to the camera. EKF diverges within 0.5s without measurements.
+:::
+
+The full eval (`run_full_eval.sh`) ran both oracle and d435i-trained policies through the
+complete camera pipeline (SimBallDetector + EKF) for 1500 steps each. Results:
+
+| Metric | Oracle Policy | D435i Policy |
+|:---|:---:|:---:|
+| Detection rate | 1.7% | 4.5% |
+| EKF RMSE | 5623 mm | 6989 mm |
+| Steps in contact phase | 84% | 68% |
+| Det rate at 200--300mm | ~11% | 100% |
+
+The detector works well when the ball is airborne (100% at 200--300mm above paddle),
+but the ball is almost never airborne at this target height. Higher targets (Stage G, 1.0m)
+would dramatically improve visibility. See [full write-up](../experiments/perception/2026-04-10_oracle_vs_d435i_eval.qmd).
+
+![Oracle vs D435i comparison](../images/perception/oracle_vs_d435i_comparison.png){width=100%}
+
+**Next**: evaluate at higher target heights where ball spends more time in flight,
+and consider alternative camera mount angles.
+
+Commits: `b7fbe22`, this iteration
+
+---
+
 ## Iteration 99 — Cross-eval validates d435i noise: +59% apex over oracle {.unnumbered}
 *2026-04-10*
 

@@ -71,3 +71,20 @@ Result:     Eval infrastructure now supports multiple named runs with persistent
 Decision:   Next iter: check oracle_eval_DONE sentinel. When oracle eval completes (~45 min),
             parse results with analyze_eval_trajectory.py. Then queue d435i eval for comparison.
             If still GPU-blocked, could start writing the experiment write-up template.
+
+## Iteration 101 — Full eval results: camera visibility gap at 0.42m target  (2026-04-10T09:15:00Z)
+Hypothesis: The full eval (oracle + d435i policies through camera pipeline) will show
+            whether the D435i camera can track the ball during sustained juggling.
+Change:     1. Parsed run_full_eval.sh results (both trajectory.npz files).
+            2. Fixed SameFileError in analyze_eval_trajectory.py --quarto-copy (realpath check).
+            3. Filled in experiment write-up: experiments/perception/2026-04-10_oracle_vs_d435i_eval.qmd.
+            4. Updated agents/perception.qmd with summary + comparison figure.
+            5. Updated fix_plan.md — marked eval tasks complete, added higher-target eval queue.
+Command:    pytest scripts/perception/ → 354/354 passed (7.21s). No GPU needed this iter.
+Result:     FUNDAMENTAL VISIBILITY GAP: oracle 1.7% det rate, d435i 4.5% det rate.
+            Ball on paddle 68-84% of episode at target=0.42m → near-zero camera visibility.
+            EKF diverges to ~6m RMSE. Detection works at 200-300mm (100% rate) but ball
+            rarely reaches that height. D435i policy shows 2.7x more detections (67 vs 25).
+Decision:   Next iter: re-run eval at higher target heights (0.50-1.00m) where ball spends
+            more time in flight. If policy can sustain higher targets, detection rate should
+            improve dramatically. Also consider asking Daniel about camera mount alternatives.

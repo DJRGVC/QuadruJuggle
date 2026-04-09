@@ -21,21 +21,16 @@
   - [x] GPU smoke test with trained pi1 — pipeline works, but policy incompatible (iter 89)
   - [x] UNBLOCKED: synced env config (restitution=0.99, perceived obs, ball_low/release_vel rewards)
   - [x] GPU validation: policy loads + runs (iter 92). Env sync confirmed working.
-  - [~] FIX: d435i policy balances but doesn't juggle → 1% detection rate. Camera needs
-    ball in-flight (≥0.2m above paddle). Trying oracle checkpoint (100% TO, stable juggling).
-    Added --noise-mode, --target-height, --out-dir flags to demo_camera_ekf.py.
-    GPU re-queued (PID 1218087, behind policy training lock). Target=0.42m.
-    Oracle output → logs/perception/oracle_eval/trajectory.npz
-  - [x] Created compare_eval_runs.py — multi-run comparison (bar chart + timeseries)
-  - [x] 8 tests for comparison script (335/335 total)
-  - [x] run_comparison.sh — updated to use dedicated eval output dirs
-  - [x] run_d435i_eval.sh — d435i counterpart for comparison
-  - [ ] Parse oracle eval results when GPU run completes (PID 1218087 queued)
-    - [x] Created analyze_eval_trajectory.py — reads trajectory.npz directly (stdout-independent)
-    - [x] Updated run_oracle_eval.sh with --out-dir logs/perception/oracle_eval/
-    - [x] 12 tests for trajectory analysis (354/354 total)
-  - [ ] Run d435i eval (run_d435i_eval.sh) after oracle completes
-  - [ ] Generate oracle vs d435i comparison figure via run_comparison.sh
+  - [x] Full eval completed (run_full_eval.sh): oracle 1.7% det rate, d435i 4.5% det rate
+    EKF diverges in both — ball on paddle 68-84% of episode at target=0.42m.
+    FINDING: camera works at 200-300mm (100% det rate) but ball rarely reaches that height.
+  - [x] Experiment write-up: experiments/perception/2026-04-10_oracle_vs_d435i_eval.qmd
+  - [x] Fixed SameFileError in analyze_eval_trajectory.py --quarto-copy
+
+# Next: Higher target height eval
+- [ ] Re-run eval at target=0.70m or 1.00m to test if higher apex gives >50% det rate
+- [ ] If policy can't sustain 1.0m, try intermediate targets (0.50, 0.60, 0.70)
+- [ ] Consider alternative camera mount angles if detection still insufficient
 
 # EKF tuning (lower priority, mostly done)
 - [x] GPU sweep at higher target heights (0.3-0.5m) — bounce mode sweep done (iter 90)

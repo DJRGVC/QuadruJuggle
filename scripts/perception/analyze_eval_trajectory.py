@@ -462,9 +462,14 @@ def main():
         repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
         quarto_dst = os.path.join(repo_root, "images", "perception", os.path.basename(args.out))
         if os.path.isdir(os.path.dirname(quarto_dst)):
-            import shutil
-            shutil.copy2(args.out, quarto_dst)
-            print(f"[analyze] Copied to Quarto: {quarto_dst}")
+            src = os.path.realpath(args.out)
+            dst = os.path.realpath(quarto_dst)
+            if src != dst:
+                import shutil
+                shutil.copy2(args.out, quarto_dst)
+                print(f"[analyze] Copied to Quarto: {quarto_dst}")
+            else:
+                print(f"[analyze] Output already at Quarto path: {quarto_dst}")
 
 
 if __name__ == "__main__":

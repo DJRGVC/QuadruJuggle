@@ -42,6 +42,8 @@ parser.add_argument("--target-height", type=float, default=None,
                     help="Fixed target apex height (m). If set, overrides PLAY config's random target range.")
 parser.add_argument("--out-dir", type=str, default=None,
                     help="Output directory for frames, trajectory.npz, summary.png. Defaults to perception/debug/demo.")
+parser.add_argument("--no-camera-render", action="store_true", dest="no_camera_render",
+                    help="Disable camera rendering (for policy-only evaluation without perception).")
 
 # Strip --pi2-checkpoint
 _pi2_checkpoint_path = None
@@ -58,7 +60,7 @@ sys.argv = _clean_argv
 
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
-args_cli.enable_cameras = True
+args_cli.enable_cameras = not getattr(args_cli, "no_camera_render", False)
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
@@ -128,9 +130,13 @@ def main():
         env_cfg.events.randomize_target.params["target_max"] = th
         print(f"[demo] Fixed target apex height: {th:.2f}m")
 
-    # Force DEBUG scene for camera
-    from go1_ball_balance.tasks.ball_juggle_hier.ball_juggle_hier_env_cfg import BallJuggleHierSceneCfg_DEBUG
-    env_cfg.scene = BallJuggleHierSceneCfg_DEBUG(num_envs=args_cli.num_envs, env_spacing=3.5)
+    # Force DEBUG scene with camera (unless --no-camera-render)
+    if not getattr(args_cli, "no_camera_render", False):
+        from go1_ball_balance.tasks.ball_juggle_hier.ball_juggle_hier_env_cfg import BallJuggleHierSceneCfg_DEBUG
+        env_cfg.scene = BallJuggleHierSceneCfg_DEBUG(num_envs=args_cli.num_envs, env_spacing=3.5)
+    else:
+        from go1_ball_balance.tasks.ball_juggle_hier.ball_juggle_hier_env_cfg import BallJuggleHierSceneCfg
+        env_cfg.scene = BallJuggleHierSceneCfg(num_envs=args_cli.num_envs, env_spacing=3.5)
 
     env = gym.make(args_cli.task, cfg=env_cfg)
     obs, _ = env.reset()
@@ -202,24 +208,28 @@ def main():
     ekf.reset(env_ids, ball_pos_w_init, ball_vel_w_init)
     print(f"[demo] EKF initialized for {n_envs} envs at world pos: {ball_pos_w_init[0].numpy()}")
 
-    try:
-        cam = unwrapped.scene["d435i"]
-    except KeyError:
-        print("[demo] ERROR: no d435i camera in scene!")
-        env.close()
-        simulation_app.close()
-        return
+    cam = None
+    if not getattr(args_cli, "no_camera_render", False):
+        try:
+            cam = unwrapped.scene["d435i"]
+        except KeyError:
+            print("[demo] ERROR: no d435i camera in scene!")
+            env.close()
+            simulation_app.close()
+            return
 
-    # Print camera world pose for diagnostic
-    cam.update(dt=0.02)
-    cam_pos_w = cam.data.pos_w[0].cpu().numpy()
-    cam_quat_w_ros = cam.data.quat_w_ros[0].cpu().numpy()
-    R_cam = _quat_to_rotmat(cam_quat_w_ros)
-    cam_fwd = R_cam @ np.array([0, 0, 1])  # ROS Z = optical axis
-    cam_elev = np.degrees(np.arcsin(np.clip(cam_fwd[2], -1, 1)))
-    print(f"[demo] Camera world pos: {cam_pos_w}")
-    print(f"[demo] Camera world quat (ROS): {cam_quat_w_ros}")
-    print(f"[demo] Camera forward (world): {cam_fwd}, elevation: {cam_elev:.1f}°")
+        # Print camera world pose for diagnostic
+        cam.update(dt=0.02)
+        cam_pos_w = cam.data.pos_w[0].cpu().numpy()
+        cam_quat_w_ros = cam.data.quat_w_ros[0].cpu().numpy()
+        R_cam = _quat_to_rotmat(cam_quat_w_ros)
+        cam_fwd = R_cam @ np.array([0, 0, 1])  # ROS Z = optical axis
+        cam_elev = np.degrees(np.arcsin(np.clip(cam_fwd[2], -1, 1)))
+        print(f"[demo] Camera world pos: {cam_pos_w}")
+        print(f"[demo] Camera world quat (ROS): {cam_quat_w_ros}")
+        print(f"[demo] Camera forward (world): {cam_fwd}, elevation: {cam_elev:.1f}°")
+    else:
+        print("[demo] Camera rendering DISABLED (--no-camera-render)")
 
     dt = 0.02  # 50 Hz policy rate
 
@@ -246,6 +256,15 @@ def main():
         if use_policy:
             with torch.inference_mode():
                 actions = policy(policy_obs)
+                # Debug: print obs and action stats for first few steps
+                if step < 5:
+                    obs_t = policy_obs if isinstance(policy_obs, torch.Tensor) else policy_obs["policy"]
+                    obs_np = obs_t[0].cpu().numpy()
+                    act_np = actions[0].cpu().numpy()
+                    print(f"[debug] step={step} obs_shape={obs_t.shape} "
+                          f"ball_pos={obs_np[0:3]} ball_vel={obs_np[3:6]} "
+                          f"target_h={obs_np[-1]:.4f} "
+                          f"actions={act_np}")
                 policy_obs, _, dones, infos = env_wrapped.step(actions)
             # Track episode stats
             if dones.any():
@@ -282,7 +301,6 @@ def main():
                 pass
 
         # Camera update + detection (process all envs, track env 0 for viz)
-        cam.update(dt=dt)
         depth_key = "distance_to_image_plane"
         detection = None  # env 0 detection for visualization
 
@@ -290,7 +308,10 @@ def main():
         z_meas_all = torch.zeros(n_envs, 3)
         detected_all = torch.zeros(n_envs, dtype=torch.bool)
 
-        if depth_key in cam.data.output:
+        if cam is not None:
+            cam.update(dt=dt)
+
+        if cam is not None and depth_key in cam.data.output:
             depth_batch = cam.data.output[depth_key].cpu().numpy()
             cam_pos_w_batch = cam.data.pos_w.cpu().numpy()
             cam_quat_w_ros_batch = cam.data.quat_w_ros.cpu().numpy()
@@ -336,7 +357,7 @@ def main():
         traj["steps"].append(step)
 
         # Save annotated frame periodically (env 0 only)
-        if step % args_cli.capture_interval == 0 and "rgb" in cam.data.output:
+        if cam is not None and step % args_cli.capture_interval == 0 and "rgb" in cam.data.output:
             _save_annotated_frame(cam, detection, out_dir, step, ekf_pos, ball_pos_w)
 
         # Ball height above paddle (approximate)
