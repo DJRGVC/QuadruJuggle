@@ -13,30 +13,46 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete** (713 CPU tests, 174 iterations).
+Perception pipeline is **feature-complete** (713 CPU tests, 175 iterations).
 EKF uses a **5-level phase-aware Q schedule** with R² = 0.994 noise-to-gap
 prediction model — validated against real policy data (max error ±0.8pp).
 Drag model configurable: linear (PhysX sim) or quadratic (real hardware).
 
-**ET=-50 reward modification validated** (iter 174): Active training run
-with the perception-proposed `early_termination=-50` shows a fundamentally
-different learning trajectory from ET=-1000. The model learns **bouncing
-first** (apex 0.13→2.57 over 112 iters), then episode length grows (47→400
-steps) as it learns to land bounces — the opposite of survival mode.
-See comparison analysis below.
+**ET=-50 training reached Stage C** (iter 175): The ET=-50 EKF training run
+completed 197 iterations before hanging (stuck process, alerted Daniel).
+The model passed **both Stage A and Stage B** with strong bouncing metrics,
+reaching the critical Stage C transition where EKF noise (scale=0.25) is
+first introduced.
 
-**Two ET regimes compared** (ET=-1000 vs ET=-50):
+![ET=-50 training trajectory — 197 iters, reached Stage C](../images/perception/et_comparison_iter175.png){width=100%}
 
-| Metric | ET=-1000 (iter 35) | ET=-50 (active) |
-|--------|-------------------|-----------------|
-| Timeout at 97 iters | 97.7% | 0.08% |
-| Apex reward | 0.025 (survival) | 2.24 (bouncing!) |
-| Episode length | 1500 (full) | 357 (growing) |
+**Final metrics** (last 20 iters, Stage B):
+
+| Metric | Value |
+|--------|-------|
+| Timeout | 70.7% |
+| Episode length | 1197 steps |
+| Apex reward | 8.82 (strong bouncing) |
+| Ball Below | 29.3% |
+| Release Vel reward | 0.172 |
+| Ball XY dist | -0.228 |
+
+**Stage transitions**: A→B at iter 162, B→C at iter 196. The process hung
+immediately after starting the B→C blend (noise introduction). When Daniel
+kills the stuck process, training can resume from model_150 checkpoint.
+
+**Two ET regimes compared** (ET=-1000 vs ET=-50, extended):
+
+| Metric | ET=-1000 (97 iters) | ET=-50 (197 iters) |
+|--------|---------------------|---------------------|
+| Timeout | 97.7% | 70.7% |
+| Apex reward | 0.025 (survival) | 8.82 (bouncing!) |
+| Episode length | 1500 (max) | 1197 (growing) |
+| Stage reached | B (survival) | C (bouncing) |
 | Learning mode | Survival first | Bounce first |
 
-The ET=-50 model will likely pass Stage A more slowly but with actual
-juggling skills, not just survival. This validates the reward modification
-proposal from iter 170.
+The ET=-50 model passed Stage A with real juggling skills. The critical
+question is whether bouncing survives EKF noise introduction at Stage C.
 
 **Per-bounce EKF auto-reset** (iter 164): `PerceptionPipeline` detects paddle
 bounces from EKF state alone and auto-resets velocity + covariance. Prevents
@@ -50,6 +66,35 @@ EKF ballistic model handles prediction-only gaps gracefully.
 
 See [perception gap decomposition](../experiments/perception/2026-04-10_perception_gap_decomposition.qmd) — the "perception gap" is actually a policy gap.
 Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd) and [noise-to-gap prediction](../experiments/perception/2026-04-10_noise_gap_prediction.qmd) (R² = 0.994, validated against policy eval).
+
+---
+
+## Iteration 175 — ET=-50 full trajectory analysis + stuck process alert {.unnumbered}
+*2026-04-10*
+
+Parsed the complete ET=-50 training log (197 iterations, 167 metric blocks).
+The model successfully passed both Stage A and Stage B with genuine bouncing
+behavior (apex=8.82, release_vel growing), then transitioned to Stage C
+where EKF noise (scale=0.25) is first introduced.
+
+![ET=-50 training: 4-panel analysis](../images/perception/et_comparison_iter175.png){width=100%}
+
+**Key findings**: (1) Stage A→B transition at iter 162 caused no disruption —
+the model smoothly adapted to target 0.10→0.20m. (2) At Stage B exit, timeout
+was 70.7% with 1197-step episodes, well above the 30% curriculum threshold.
+(3) The process hung immediately after entering Stage C blend (iter 196/197).
+
+**Stuck process alert**: PID 1684850 has been consuming 7.8 GB GPU memory
+for 20 hours with no progress. Last log write was at the B→C transition.
+Alerted Daniel via Discord with @mention. Training can resume from
+`model_150.pt` checkpoint once the process is killed.
+
+**Decision**: When GPU is free, priority is: (1) kill stuck process,
+(2) resume from model_150 at Stage C, (3) evaluate whether bouncing
+survives noise introduction. If it does, the perception→policy integration
+is validated through the noise curriculum.
+
+Commits: `iter175`
 
 ---
 
