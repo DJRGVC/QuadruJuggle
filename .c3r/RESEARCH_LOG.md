@@ -197,3 +197,24 @@ Result:     All numpy→tensor warnings eliminated. Test suite clean. Sweep will
 Decision:   Next iter: check if sweep_q_vel_fixed.json exists with non-zero results. If yes,
             parse with apply_sweep_results.py and update BallEKFConfig defaults. If GPU still
             blocked, wait or check policy agent progress.
+
+## Iteration 69 — GPU q_vel sweep: EKF over-conservative, needs lower q_vel  (2026-04-09T00:10:00Z)
+Hypothesis: Sweeping q_vel=[0.4,2,5,10,20,50] will bracket flight NIS=3.0 and allow bisection
+            to find optimal process noise for the d435i noise model.
+Change:     Relaunched sweep (PID 892945 died with previous session). Full run completed:
+            512 envs × 600 steps × 6 q_vel points. Results saved to sweep_q_vel_fixed.json.
+Command:    gpu_lock.sh sweep_q_vel.py --num_envs 512 --steps 600 --warmup-steps 50
+            --q-vels "0.4,2.0,5.0,10.0,20.0,50.0" --output sweep_q_vel_fixed.json
+Result:     ALL flight NIS values BELOW 3.0 — EKF is over-conservative (opposite of iter-54):
+            q_vel=0.4: flight_NIS=1.73, RMSE=11.55mm (raw=11.69, +1.1%)
+            q_vel=2.0: flight_NIS=1.23, RMSE=11.55mm (raw=11.71, +1.4%)
+            q_vel=5.0: flight_NIS=0.72, RMSE=11.58mm (raw=11.79, +1.8%)
+            q_vel=50:  flight_NIS=0.14, RMSE=11.53mm (raw=11.74, +1.7%)
+            Key insight: EKF RMSE barely varies (~11.5-11.6mm) across all q_vel. d435i noise
+            is already small (~11.7mm raw) so the filter can't improve much. EKF's main value
+            is in missed detections and velocity estimation, not position smoothing.
+            No NIS=3.0 crossing → no bisection ran. Need lower q_vel to find crossing.
+            Queued low-range sweep (q_vel 0.01-0.4) but GPU blocked by policy training.
+Decision:   Next iter: run low-range sweep (q_vel 0.01-0.4) to find NIS=3.0 crossing point.
+            Even if NIS=3.0 isn't achievable (very low q_vel may cause filter divergence),
+            we should identify the practical lower bound. Update BallEKFConfig defaults.

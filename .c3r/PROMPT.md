@@ -448,10 +448,15 @@ is the curated highlights reel.
 <repo-root>/
 ├── _quarto.yml                              # site config (don't touch)
 ├── index.qmd                                # landing page (human curates)
+├── references.qmd                           # listing page (don't touch)
+├── references/
+│   └── perception.qmd                   # ← YOUR refs file — append papers here
+├── experiments.qmd                          # listing page (don't touch)
+├── experiments/
+│   └── perception/                      # ← YOUR experiments — one file per big run
+│       └── YYYY-MM-DD_short_name.qmd
 ├── agents/
 │   └── perception.qmd                   # ← YOUR PAGE — append entries here
-├── experiments/
-│   └── YYYY-MM-DD_short_name.qmd            # one per major experiment write-up
 ├── images/
 │   ├── shared/                              # cross-agent figures
 │   └── perception/                      # ← YOUR images go here
@@ -500,8 +505,84 @@ The σ=0.08 setting held best — see figure below.
 
 **Next**: rerun stages C–F with the new σ, then attempt G.
 
-Commits: `abc1234`, `def5678` · See [full sweep write-up](../experiments/2026-04-08_sigma_curriculum_sweep.qmd)
+Commits: `abc1234`, `def5678`
 ```
+
+### references/perception.qmd — your bibliography
+
+You have your own references file at `references/perception.qmd`.
+The top-level `references.qmd` is a Quarto **listing page** that
+auto-aggregates every agent's per-file bibliography — so each agent
+maintains its own file in parallel without merge conflicts.
+
+**Append to your file whenever you cite a paper, blog post, codebase,
+or dataset that influenced your work** — methods you borrowed,
+baselines you compared against, results you're trying to reproduce,
+etc. Newest first.
+
+Format: one bullet per item with **author/title** in bold, a
+**plain-language 1–2 sentence summary** of why it matters to this
+project, and a link. Don't be precious about formal citation styles —
+readability beats BibTeX.
+
+Example entry:
+
+```markdown
+- **Margolis & Agrawal 2022 (RSS)** — *Walk these ways: gaitless legged
+  loco via reward shaping*. Showed that loose vx/vy tracking std (≈0.20)
+  generalizes across gaits where tight std (≈0.08) overfits. We adopted
+  std=0.20 for pi2's velocity tracking after seeing this.
+  https://arxiv.org/abs/2212.03238
+```
+
+Cite generously — it's the easiest way to make your work legible to a
+collaborator who joins the project later.
+
+### experiments/perception/ — rigorous write-ups of big runs
+
+You also have your own experiments subfolder at
+`experiments/perception/`. The top-level `experiments.qmd` is a
+listing page that auto-aggregates every agent's experiments. Each
+write-up is a separate `.qmd` file.
+
+**This is for publishable-quality work, not routine iteration logs.**
+Use your main agent page for "I tried X, it didn't work, here's the
+plan." Use experiments for runs that satisfy ALL of these:
+
+1. **Big enough to matter** — a sweep, a curriculum stage, a
+   reproduction of a paper, an ablation, a comparison, a milestone.
+2. **Verified correct** — you've checked the code, the metrics aren't
+   gamed, the figures match the data, you can rerun it from scratch.
+3. **Worth persisting** — would you put this in a paper or show it to
+   a collaborator? If yes, write it up. If no, leave it on your main page.
+4. **Rigorous** — includes hypothesis, method (with the exact command),
+   results with figures/tables, discussion, and reproducibility info.
+
+File naming: `experiments/perception/YYYY-MM-DD_short_name.qmd`.
+The date in the filename should match the date in the front matter.
+
+Required sections (use the structure of an academic paper, scaled
+down):
+- **Question** — one paragraph stating the hypothesis
+- **Method** — setup, hyperparameters, what was held constant, the
+  exact command you ran
+- **Results** — headline finding in 1–2 sentences, then figures and
+  tables. **Figures are not optional.** If you can't make a figure,
+  the experiment isn't ready to publish.
+- **Discussion** — what it means, limitations, what's next
+- **Reproducibility** — seed, commit hash, log directory, raw data path
+
+Figures should look **publication-quality**: clear axis labels with
+units, legible legends, descriptive captions, sensible color choices,
+no clipped text. Use `images/perception/<descriptive_name>.png`
+for the source files. Width tag: `{width=80%}` for portrait,
+`{width=100%}` for full-width.
+
+Categories tag the experiment so the listing groups them: e.g.
+`categories: [curriculum, ablation]` or `[reproduction, perception]`.
+
+**Default to NOT writing an experiment.** Most iterations are not
+experiments. When in doubt, append to your main page instead.
 
 ### Adding a figure (the most common thing)
 
