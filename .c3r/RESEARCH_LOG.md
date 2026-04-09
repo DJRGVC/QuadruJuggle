@@ -107,3 +107,26 @@ Decision:   Need oracle Stage G training for fair comparison (same curriculum).
             Will ping policy agent to request oracle Stage G run. Meanwhile, explore
             running oracle checkpoint through d435i pipeline (cross-eval: does the
             noise model degrade oracle performance?).
+
+## Iteration 126 — Dual trajectory comparison analysis  (2026-04-09T23:45:00Z)
+Hypothesis: Side-by-side trajectory visualization will reveal whether oracle and
+            d435i models differ in ball dynamics (bouncing vs balancing pattern).
+Change:     Created plot_dual_trajectory.py — side-by-side oracle vs d435i
+            trajectory figure (rows=targets, cols=modes). 9 new tests, 506/506 pass.
+            Generated dual_trajectory_iter126.png from Stage G eval data.
+            Updated Quarto page with figure and summary table.
+Command:    python plot_dual_trajectory.py --oracle-dir .../eval_stage_g_final_oracle
+              --d435i-dir .../eval_stage_g_final_d435i --out .../dual_trajectory_iter126.png
+            pytest scripts/perception/ -x -q → 506/506 passed (10.86s)
+Result:     NEITHER MODEL JUGGLES — BALANCING ONLY:
+            - Peak ball height: 0.246m across ALL targets (0.10–0.50m) and BOTH modes
+            - Flight time: 2–9% (almost entirely contact phase)
+            - Detection: 15–29 events per 1000 steps (during brief bounces)
+            - D435i shows slightly more flight at 0.30–0.42m (noise dislodges ball)
+            - Policy cannot modulate launch energy at all
+            Policy agent's Stage G d435i training completed (early-stopped 53.6%).
+            Policy agent now evaluating early_stop checkpoint (PID 1391572 on GPU).
+Decision:   Perception pipeline is mature and waiting for policy improvement.
+            Next: monitor policy agent's Stage G eval results. If policy still can't
+            juggle, the gap is pure policy skill (energy modulation), not perception.
+            May need to coordinate on reward structure changes to unlock juggling.

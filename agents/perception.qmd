@@ -13,10 +13,43 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete**. Stage G d435i training early-stopped
-at 53.6% timeout (1500 ES patience exhausted). Oracle vs d435i comparison eval
-complete — d435i outperforms oracle at mixed-target juggling (Stage G vs Stage F).
+Perception pipeline is **feature-complete** (506 CPU tests). Stage G d435i training
+early-stopped at 53.6% timeout. Dual trajectory analysis confirms both oracle and
+d435i models are balancing, not juggling — peak ball height capped at ~0.25m above
+paddle regardless of target. Detection rate 1–2% because ball rarely reaches camera
+FOV (>200mm). Bottleneck is policy energy modulation, not perception noise.
+
 See [full Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd).
+
+---
+
+## Iteration 126 — Dual trajectory comparison analysis {.unnumbered}
+*2026-04-09*
+
+Created side-by-side oracle vs d435i trajectory visualization showing ball height
+over time for all 5 target heights (0.10–0.50m). The dual-panel figure makes it
+visually clear that **neither model is juggling** — the ball sits on the paddle
+with only occasional small bounces.
+
+![Oracle (left) vs D435i (right) ball trajectories across 5 target heights — 1000 steps each](../images/perception/dual_trajectory_iter126.png){width=100%}
+
+| Target | Oracle flight% | D435i flight% | Oracle det | D435i det | Peak height |
+|--------|---------------|---------------|-----------|----------|-------------|
+| 0.10m  | 2.3%          | 2.2%          | 26        | 16       | 0.246m      |
+| 0.20m  | 2.3%          | 2.2%          | 26        | 16       | 0.246m      |
+| 0.30m  | 2.3%          | 5.0%          | 25        | 27       | 0.246m      |
+| 0.42m  | 2.3%          | 8.5%          | 25        | 25       | 0.246m      |
+| 0.50m  | 2.8%          | 2.2%          | 29        | 15       | 0.246m      |
+
+**Key insight**: Peak ball height is identical (0.246m) across all targets and both
+modes — the policy has learned to balance but cannot modulate launch energy. D435i
+shows slightly more flight at medium targets (0.30–0.42m) suggesting the noise
+perturbations occasionally dislodge the ball.
+
+**New tooling**: `plot_dual_trajectory.py` — reusable for future oracle vs d435i
+comparisons as policy agent trains stronger models.
+
+Commits: this iter.
 
 ---
 
