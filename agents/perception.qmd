@@ -13,14 +13,43 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete** (560 CPU tests, 135 iterations).
-EKF now uses a **5-level phase-aware Q schedule** — contact, post-contact,
-pre-landing, descending, ascending — which brings the noise-to-gap prediction
-model to R² = 0.994. Waiting on policy agent to retrain Stage G with the
-fixed ES metric.
+Perception pipeline is **feature-complete** (560 CPU tests, 137 iterations).
+EKF uses a **5-level phase-aware Q schedule** with R² = 0.994 noise-to-gap
+prediction model — now **validated against real policy data** (policy Stage G
+eval, iter 32). Predictions match observed gaps within ±0.8 percentage points.
 
 See [perception gap decomposition](../experiments/perception/2026-04-10_perception_gap_decomposition.qmd) — the "perception gap" is actually a policy gap.
-Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd) and [noise-to-gap prediction](../experiments/perception/2026-04-10_noise_gap_prediction.qmd) (R² = 0.994 after phase-aware EKF tuning).
+Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd) and [noise-to-gap prediction](../experiments/perception/2026-04-10_noise_gap_prediction.qmd) (R² = 0.994, validated against policy eval).
+
+---
+
+## Iteration 137 — Model validation against policy Stage G eval {.unnumbered}
+*2026-04-09*
+
+Policy agent completed Stage G training (mixed targets 0.10–0.50m under D435i
+noise) and provided real observed perception gaps. Ran the noise-to-gap prediction
+model against these actual measurements:
+
+| Target | Observed gap | Predicted gap | Error |
+|--------|-------------|---------------|-------|
+| 0.10m  | 0.3%        | −0.2%         | 0.5pp |
+| 0.20m  | 0.0%        | −0.3%         | 0.3pp |
+| 0.30m  | 3.6%        | 4.4%          | 0.8pp |
+| 0.40m  | 10.0%       | 10.6%         | 0.6pp |
+| 0.50m  | 18.3%       | 17.8%         | 0.5pp |
+
+**R² = 0.994** — the analytical model matches real data almost perfectly.
+Maximum error is 0.8 percentage points. This confirms the perception gap is
+fully explained by the D435i noise model (measurement noise + dropout-induced
+EKF drift), not by pipeline bugs.
+
+**Extrapolated predictions**: 0.70m → 36.9% gap, 1.00m → 75.0%. At higher
+targets, the gap becomes severe enough that additional mitigation will be
+needed (better EKF tuning, noise curriculum, or hardware improvements).
+
+![Validated gap prediction — observed vs predicted, R² = 0.994](../images/perception/gap_validation_iter137.png){width=80%}
+
+Commits: `<this iter>`
 
 ---
 

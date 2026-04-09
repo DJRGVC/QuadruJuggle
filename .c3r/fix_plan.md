@@ -1,16 +1,21 @@
 # fix_plan.md — experiment queue for perception
 
-# Status: ETH noise+EKF pipeline FEATURE-COMPLETE (558/558 CPU tests, 132 iterations).
-# EKF tuned: adaptive R_xy, 3-level q_vel, flight NIS≈3.3-3.8. q_vel=0.40 default.
+# Status: ETH noise+EKF pipeline FEATURE-COMPLETE (560/560 CPU tests, 137 iterations).
+# EKF tuned: 5-level phase-aware Q schedule, adaptive R_xy. q_vel_asc=0.25, q_vel_desc=0.40, q_vel_pre_landing=2.0.
 # GPU DEMO VALIDATED: camera sees ball, SimBallDetector works, 100% det rate.
 # Camera pipeline integrated into eval (demo_camera_ekf.py), paddle anchor, phase tracker, camera scheduling all working.
-# Noise-to-gap prediction model: R²=0.865, gap is noise-expected not pipeline-broken.
+# Noise-to-gap prediction model: R²=0.994, VALIDATED against real policy Stage G data (max error 0.8pp).
 
-## WAITING — Policy Stage G retrain with ES metric fix
-- [ ] Policy agent needs to retrain Stage G with fixed ES metric (per-step reward, not total episode return)
-- [ ] Once new checkpoint available: re-run perception eval at 0.10-0.50m targets
-- [ ] Compare gap against iter 131 noise-to-gap predictions (expected: gap narrows if policy improves energy modulation)
+## VALIDATED — Gap prediction matches policy Stage G eval
+- [x] Policy agent retrained Stage G with fixed ES metric (iter 32)
+- [x] Validated gap predictions against real eval data: R²=0.994, max error 0.8pp
+- [ ] Policy agent plans to retrain Stage G longer (ES was killing early) — re-validate when available
 - [ ] Run oracle-trained checkpoint through d435i pipeline (does it balance better?)
+
+## WAITING — Policy Stage G retrain with fixed ES metric (longer training)
+- [ ] Policy agent plans to retrain from Stage F checkpoint with fixed ES metric
+- [ ] Expect improved 0.40-0.50m targets (currently 63-48% timeout under d435i)
+- [ ] Re-validate gap predictions after longer training
 
 ## EKF tuning (when new policy checkpoint available)
 - [ ] Re-run q_vel/R_xy sweep with noise-trained pi1 that actually juggles

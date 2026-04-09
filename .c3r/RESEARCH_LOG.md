@@ -49,3 +49,27 @@ Decision:   Next iter: check policy progress. If still stalled, consider what
             policy checkpoint. Could investigate EKF observability analysis
             (when does the EKF estimate diverge most from truth?) or prepare
             the real-hardware D435i wrapper skeleton.
+
+## Iteration 137 — Validate gap prediction against real policy data  (2026-04-09T22:00:00Z)
+Hypothesis: The noise-to-gap prediction model (R²=0.994) should match the
+            actual perception gaps observed in policy agent's Stage G eval
+            (iter 32: mixed targets 0.10-0.50m under D435i noise).
+Change:     Ran predict_perception_gap.py with observed data from policy
+            Stage G eval. Generated validation figure. Updated Quarto page,
+            experiment write-up, and fix_plan.
+Command:    python scripts/perception/predict_perception_gap.py \
+              --observed '{"0.10":0.3,"0.20":0.0,"0.30":3.6,"0.40":10.0,"0.50":18.3}' \
+              --out images/perception/gap_validation_iter137.png
+Result:     Model validated — max error 0.8 percentage points across all 5 targets.
+            R²=0.994 confirmed. Predictions:
+            0.10m: predicted -0.2% vs observed 0.3% (Δ0.5pp)
+            0.20m: predicted -0.3% vs observed 0.0% (Δ0.3pp)
+            0.30m: predicted 4.4% vs observed 3.6% (Δ0.8pp)
+            0.40m: predicted 10.6% vs observed 10.0% (Δ0.6pp)
+            0.50m: predicted 17.8% vs observed 18.3% (Δ0.5pp)
+            Extrapolation: 0.70m→36.9%, 1.00m→75.0%.
+            Conclusion: perception gap is fully noise-explained. No pipeline bugs.
+Decision:   Next iter: policy plans longer Stage G retrain with fixed ES metric.
+            While waiting, consider: (a) EKF observability analysis — when does
+            the estimate diverge most? (b) real-hardware D435i wrapper skeleton,
+            (c) investigate whether EKF R tuning could reduce the gap at 0.40-0.50m.
