@@ -2,6 +2,23 @@
 
 _(older entries auto-archived to RESEARCH_LOG_ARCHIVE.md at 2026-04-09 06:29 UTC)_
 
+## Iteration 88 — Wire camera pipeline into live policy eval  (2026-04-09T10:45:00Z)
+Hypothesis: Adding --pi1-checkpoint to demo_camera_ekf.py will enable camera→detect→EKF
+            evaluation under realistic trained-policy ball dynamics (not just bounce mode).
+Change:     1. Added --pi1-checkpoint arg to demo_camera_ekf.py.
+            2. When set: loads pi1 via RSL-RL OnPolicyRunner, uses policy actions, tracks
+               episodes/timeouts, resets EKF on episode termination.
+            3. Multi-env support: per-env camera detection + EKF measurement tensors.
+            4. Bounce mode auto-disabled when using trained policy.
+            5. Killed completed child agent checkin-087.
+Command:    python -m pytest scripts/perception/ -x -q → 311/311 passed (6.6s).
+            GPU smoke test queued (blocked behind policy agent's cross-eval).
+Result:     Code complete, syntax verified, all tests pass. GPU validation pending.
+            Policy agent has d435i-trained checkpoints at Stage F (+59% apex vs oracle).
+Decision:   Next iter: if GPU smoke test ran successfully (check output), validate camera
+            pipeline accuracy under trained policy. If GPU still blocked, run the test.
+            Compare camera-EKF RMSE under policy vs bounce mode.
+
                demo_camera_ekf.py (300 steps, capture every 5) in one gpu_lock call.
             3. Processed INBOX: Daniel requests respawning testing-dashboard at 5am PST
                tomorrow (2026-04-09 12:00 UTC) with prior memory. Replied + archived.

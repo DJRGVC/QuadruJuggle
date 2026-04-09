@@ -14,7 +14,11 @@
 - [x] Wire camera→detect→EKF pipeline for visual demo (iter 87 — summary.png + 60 frames)
 - [x] Demo script Daniel can run + capture video for Quarto (iter 87 — run_gpu_demo.sh)
 - [x] Add video to Quarto page (iter 87 — gpu_demo_iter087.mp4)
-- [ ] Wire camera pipeline into live eval with trained policy (eval_perception_live.py + camera)
+- [~] Wire camera pipeline into live eval with trained policy (demo_camera_ekf.py --pi1-checkpoint)
+  - [x] Add --pi1-checkpoint flag + RSL-RL policy loading to demo_camera_ekf.py
+  - [x] Multi-env EKF + per-env camera detection loop
+  - [x] Episode tracking (timeouts, resets) with EKF re-init on done
+  - [ ] GPU smoke test with trained pi1 (queued behind policy cross-eval)
 
 # EKF tuning (lower priority, mostly done)
 - [ ] GPU sweep at higher target heights (0.3-0.5m) to confirm EKF beats raw at distance

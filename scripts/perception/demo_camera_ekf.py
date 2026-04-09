@@ -30,6 +30,8 @@ parser.add_argument("--num_envs", type=int, default=1)
 parser.add_argument("--steps", type=int, default=200, help="Total sim steps to run.")
 parser.add_argument("--capture_interval", type=int, default=10, help="Save annotated frame every N steps.")
 parser.add_argument("--no_bounce", action="store_true", help="Disable periodic ball impulses (use with trained policy).")
+parser.add_argument("--pi1-checkpoint", type=str, default=None,
+                    help="Path to trained pi1 checkpoint. When set, uses policy actions instead of zeros and disables bounce mode.")
 
 # Strip --pi2-checkpoint
 _pi2_checkpoint_path = None
@@ -62,6 +64,10 @@ import gymnasium as gym
 
 import isaaclab_tasks  # noqa: F401
 import go1_ball_balance  # noqa: F401
+
+from rsl_rl.runners import OnPolicyRunner
+
+from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
 
 from go1_ball_balance.tasks.ball_juggle_hier.ball_juggle_hier_env_cfg import BallJuggleHierEnvCfg_PLAY
 from go1_ball_balance.perception.sim_detector import SimBallDetector
@@ -103,10 +109,39 @@ def main():
     obs, _ = env.reset()
     unwrapped = env.unwrapped
 
+    # --- Load pi1 policy if checkpoint provided ---
+    policy = None
+    env_wrapped = None
+    pi1_path = getattr(args_cli, "pi1_checkpoint", None)
+    if pi1_path is not None:
+        pi1_path = os.path.abspath(pi1_path)
+        if not os.path.isfile(pi1_path):
+            raise FileNotFoundError(f"pi1 checkpoint not found: {pi1_path}")
+        print(f"[demo] Loading pi1 checkpoint: {pi1_path}")
+
+        env_wrapped = RslRlVecEnvWrapper(env)
+
+        # Load agent config from run directory
+        run_dir = os.path.dirname(pi1_path)
+        agent_cfg_path = os.path.join(run_dir, "params", "agent.yaml")
+        if os.path.isfile(agent_cfg_path):
+            from omegaconf import OmegaConf
+            agent_dict = OmegaConf.to_container(OmegaConf.load(agent_cfg_path), resolve=True)
+        else:
+            from go1_ball_balance.agents.rsl_rl_ppo_cfg import BallJuggleHierPPORunnerCfg
+            agent_dict = BallJuggleHierPPORunnerCfg().to_dict()
+
+        runner = OnPolicyRunner(env_wrapped, agent_dict, log_dir=None, device="cuda:0")
+        runner.load(pi1_path)
+        policy = runner.get_inference_policy(device=unwrapped.device)
+        print(f"[demo] Policy loaded — using trained actions (bounce mode disabled)")
+
+    use_policy = policy is not None
+
     # Setup detector and EKF (both in world frame)
     detector = SimBallDetector.from_tiled_camera_cfg()
     ekf_cfg = BallEKFConfig(contact_aware=True, q_vel=0.40)
-    ekf = BallEKF(num_envs=1, device="cpu", cfg=ekf_cfg)
+    ekf = BallEKF(num_envs=args_cli.num_envs, device="cpu", cfg=ekf_cfg)
 
     # Output directory
     out_dir = os.path.normpath(os.path.join(
@@ -117,20 +152,23 @@ def main():
 
     ball = unwrapped.scene["ball"]
 
-    # Give ball initial upward velocity
-    try:
-        ball_vel = ball.data.root_vel_w.clone()
-        ball_vel[:, 2] = 3.0
-        ball.write_root_velocity_to_sim(ball_vel)
-        print("[demo] Applied 3 m/s upward velocity to ball.")
-    except Exception as e:
-        print(f"[demo] WARNING: could not set ball velocity: {e}")
+    # Give ball initial upward velocity (only in bounce mode, not with trained policy)
+    if not use_policy:
+        try:
+            ball_vel = ball.data.root_vel_w.clone()
+            ball_vel[:, 2] = 3.0
+            ball.write_root_velocity_to_sim(ball_vel)
+            print("[demo] Applied 3 m/s upward velocity to ball.")
+        except Exception as e:
+            print(f"[demo] WARNING: could not set ball velocity: {e}")
 
     # Initialize EKF with GT ball position in world frame
-    ball_pos_w_init = ball.data.root_pos_w[0].cpu()
-    ball_vel_w_init = ball.data.root_vel_w[0, :3].cpu()
-    ekf.reset(torch.tensor([0]), ball_pos_w_init.unsqueeze(0), ball_vel_w_init.unsqueeze(0))
-    print(f"[demo] EKF initialized at world pos: {ball_pos_w_init.numpy()}")
+    n_envs = args_cli.num_envs
+    env_ids = torch.arange(n_envs)
+    ball_pos_w_init = ball.data.root_pos_w[:, :3].cpu()
+    ball_vel_w_init = ball.data.root_vel_w[:, :3].cpu()
+    ekf.reset(env_ids, ball_pos_w_init, ball_vel_w_init)
+    print(f"[demo] EKF initialized for {n_envs} envs at world pos: {ball_pos_w_init[0].numpy()}")
 
     try:
         cam = unwrapped.scene["d435i"]
@@ -164,16 +202,42 @@ def main():
     _KICK_COOLDOWN = 15       # minimum steps between kicks (0.3s at 50Hz)
     _last_kick_step = -_KICK_COOLDOWN
 
-    print(f"[demo] Running {args_cli.steps} steps...")
-    for step in range(args_cli.steps):
-        action = torch.zeros(unwrapped.action_space.shape, device=unwrapped.device)
-        obs, _, _, _, _ = env.step(action)
+    # Get initial observations for policy
+    if use_policy:
+        policy_obs = env_wrapped.get_observations()
 
-        # GT ball position in world frame
+    print(f"[demo] Running {args_cli.steps} steps (mode={'policy' if use_policy else 'bounce'})...")
+    total_episodes = 0
+    total_timeouts = 0
+
+    for step in range(args_cli.steps):
+        if use_policy:
+            with torch.inference_mode():
+                actions = policy(policy_obs)
+                policy_obs, _, dones, infos = env_wrapped.step(actions)
+            # Track episode stats
+            if dones.any():
+                done_ids = dones.nonzero(as_tuple=False).squeeze(-1)
+                time_outs = infos.get("time_outs", torch.zeros_like(dones))
+                for idx in done_ids:
+                    total_episodes += 1
+                    if time_outs[idx].item():
+                        total_timeouts += 1
+                # Reset EKF for terminated envs
+                ekf.reset(
+                    done_ids.cpu(),
+                    ball.data.root_pos_w[done_ids, :3].cpu(),
+                    ball.data.root_vel_w[done_ids, :3].cpu(),
+                )
+        else:
+            action = torch.zeros(unwrapped.action_space.shape, device=unwrapped.device)
+            obs, _, _, _, _ = env.step(action)
+
+        # GT ball position in world frame (env 0 for trajectory tracking)
         ball_pos_w = ball.data.root_pos_w[0].cpu().numpy()
 
-        # Simulate juggling: kick ball upward when it falls near paddle
-        if (not args_cli.no_bounce
+        # Simulate juggling: kick ball upward when it falls near paddle (bounce mode only)
+        if (not use_policy and not args_cli.no_bounce
                 and ball_pos_w[2] < _PADDLE_Z_APPROX + 0.05
                 and step - _last_kick_step >= _KICK_COOLDOWN):
             try:
@@ -185,41 +249,52 @@ def main():
             except Exception:
                 pass
 
-        # Camera update + detection
+        # Camera update + detection (process all envs, track env 0 for viz)
         cam.update(dt=dt)
         depth_key = "distance_to_image_plane"
-        detection = None
+        detection = None  # env 0 detection for visualization
+
+        # Build EKF measurement tensors for all envs
+        z_meas_all = torch.zeros(n_envs, 3)
+        detected_all = torch.zeros(n_envs, dtype=torch.bool)
+
         if depth_key in cam.data.output:
-            depth = cam.data.output[depth_key][0].cpu().numpy()
-            if depth.ndim == 3:
-                depth = depth[..., 0]
-            detection = detector.detect(depth)
+            depth_batch = cam.data.output[depth_key].cpu().numpy()
+            cam_pos_w_batch = cam.data.pos_w.cpu().numpy()
+            cam_quat_w_ros_batch = cam.data.quat_w_ros.cpu().numpy()
 
-        # Get camera world pose for coordinate transform
-        cam_pos_w = cam.data.pos_w[0].cpu().numpy()
-        cam_quat_w_ros = cam.data.quat_w_ros[0].cpu().numpy()
+            for ei in range(n_envs):
+                depth_ei = depth_batch[ei]
+                if depth_ei.ndim == 3:
+                    depth_ei = depth_ei[..., 0]
+                det_ei = detector.detect(depth_ei)
 
-        # Transform detection to world frame and run EKF
+                if det_ei is not None:
+                    pos_world = cam_detection_to_world(
+                        det_ei.pos_cam, cam_pos_w_batch[ei], cam_quat_w_ros_batch[ei]
+                    )
+                    z_meas_all[ei] = torch.tensor(pos_world, dtype=torch.float32)
+                    detected_all[ei] = True
+
+                    if ei == 0:
+                        detection = det_ei
+                        det_err = np.linalg.norm(pos_world - ball_pos_w)
+                        metrics["rmse_det"].append(det_err)
+                        traj["det"].append(pos_world.copy())
+                        traj["det_steps"].append(step)
+                elif ei == 0:
+                    pass  # missed for env 0
+        else:
+            pass  # no depth output this step
+
         if detection is not None:
             metrics["detected"] += 1
-            # Camera frame → world frame (using camera's reported world pose)
-            pos_world = cam_detection_to_world(detection.pos_cam, cam_pos_w, cam_quat_w_ros)
-            z_meas = torch.tensor(pos_world, dtype=torch.float32).unsqueeze(0)
-            detected = torch.tensor([True])
-
-            # Detection RMSE vs GT (world frame)
-            det_err = np.linalg.norm(pos_world - ball_pos_w)
-            metrics["rmse_det"].append(det_err)
-            traj["det"].append(pos_world.copy())
-            traj["det_steps"].append(step)
         else:
             metrics["missed"] += 1
-            z_meas = torch.zeros(1, 3)
-            detected = torch.tensor([False])
 
-        ekf.step(z_meas, detected, dt=dt)
+        ekf.step(z_meas_all, detected_all, dt=dt)
 
-        # EKF RMSE vs GT (world frame)
+        # EKF RMSE vs GT (env 0)
         ekf_pos = ekf.pos[0].numpy()
         ekf_err = np.linalg.norm(ekf_pos - ball_pos_w)
         metrics["rmse_ekf"].append(ekf_err)
@@ -228,7 +303,7 @@ def main():
         traj["ekf"].append(ekf_pos.copy())
         traj["steps"].append(step)
 
-        # Save annotated frame periodically
+        # Save annotated frame periodically (env 0 only)
         if step % args_cli.capture_interval == 0 and "rgb" in cam.data.output:
             _save_annotated_frame(cam, detection, out_dir, step, ekf_pos, ball_pos_w)
 
@@ -236,18 +311,22 @@ def main():
             det_rate = metrics["detected"] / max(1, step + 1) * 100
             ekf_rmse_recent = np.mean(metrics["rmse_ekf"][-10:]) if metrics["rmse_ekf"] else 0
             det_rmse_recent = np.mean(metrics["rmse_det"][-10:]) if metrics["rmse_det"] else 0
+            ep_info = f" episodes={total_episodes} TO={100*total_timeouts/max(1,total_episodes):.0f}%" if use_policy else ""
             print(f"[demo] Step {step}: det_rate={det_rate:.0f}%, "
-                  f"det_rmse={det_rmse_recent:.4f}m, ekf_rmse={ekf_rmse_recent:.4f}m",
+                  f"det_rmse={det_rmse_recent:.4f}m, ekf_rmse={ekf_rmse_recent:.4f}m{ep_info}",
                   flush=True)
 
     # Summary
     total = metrics["detected"] + metrics["missed"]
-    print(f"\n[demo] SUMMARY ({total} steps):")
+    mode_str = "TRAINED POLICY" if use_policy else "BOUNCE MODE"
+    print(f"\n[demo] SUMMARY ({total} steps, {mode_str}):")
     print(f"  Detection rate: {metrics['detected']}/{total} ({metrics['detected']/max(1,total)*100:.1f}%)")
     if metrics["rmse_det"]:
         print(f"  Detection RMSE: {np.mean(metrics['rmse_det']):.4f} +/- {np.std(metrics['rmse_det']):.4f} m")
     if metrics["rmse_ekf"]:
         print(f"  EKF RMSE: {np.mean(metrics['rmse_ekf']):.4f} +/- {np.std(metrics['rmse_ekf']):.4f} m")
+    if use_policy:
+        print(f"  Episodes: {total_episodes}  |  Timeout: {100*total_timeouts/max(1,total_episodes):.1f}%")
 
     # Generate summary visualizations
     _save_summary_plots(traj, metrics, out_dir, dt)
