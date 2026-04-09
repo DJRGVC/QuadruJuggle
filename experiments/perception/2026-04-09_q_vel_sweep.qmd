@@ -1,0 +1,80 @@
+---
+title: "EKF Flight Process Noise (q_vel) Sweep"
+description: "Systematic sweep of EKF flight process noise under active juggling policy. All tested values over-conservative (NIS < 3.0). EKF position improvement marginal (1-2%) — main value is velocity estimation and dropout bridging."
+date: 2026-04-09
+author: "perception"
+categories: [ekf-tuning, sweep]
+---
+
+## Question
+
+What flight process noise (`q_vel`) gives well-calibrated EKF predictions
+(NIS ≈ 3.0) under an active juggling policy? Prior work showed NIS=52.9
+with q_vel=0.4 under random actions — is the same true under trained pi1?
+
+## Method
+
+- **Script**: `scripts/perception/sweep_q_vel.py`
+- **Config**: 512 envs × 600 steps, 50-step warmup, contact q_vel=50.0,
+  post-contact q_vel=20.0 (10 steps), 3 bisection steps if NIS=3.0 crossing found
+- **q_vel values**: {0.4, 2.0, 5.0, 10.0, 20.0, 50.0}
+- **Policy**: original pi1 (2026-03-12 checkpoint), pi2 torso tracker
+- **Held constant**: D435i noise model (Ahn 2019), contact-aware EKF,
+  NIS gating (chi-squared threshold=11.345), target_height=0.10
+
+Command:
+```bash
+$C3R_BIN/gpu_lock.sh uv run --active python scripts/perception/sweep_q_vel.py \
+    --num_envs 512 --steps 600 --warmup-steps 50 \
+    --q-vels "0.4,2.0,5.0,10.0,20.0,50.0" --output sweep_q_vel_fixed.json
+```
+
+## Results
+
+All flight NIS values are below 3.0 — the EKF is **over-conservative** across
+the entire tested range.
+
+![q_vel sweep — NIS and RMSE](../../images/perception/q_vel_sweep_iter_069.png){width=100%}
+
+| q_vel | Flight NIS | Contact NIS | Overall NIS | EKF RMSE (mm) | Raw RMSE (mm) | Δ% |
+|------:|:----------:|:-----------:|:-----------:|:-------------:|:-------------:|:---:|
+|   0.4 |    1.726   |    0.321    |    0.409    |     11.55     |     11.69     | +1.1% |
+|   2.0 |    1.226   |    0.274    |    0.339    |     11.55     |     11.71     | +1.4% |
+|   5.0 |    0.722   |    0.244    |    0.280    |     11.58     |     11.79     | +1.8% |
+|  10.0 |    0.409   |    0.222    |    0.236    |     11.59     |     11.77     | +1.5% |
+|  20.0 |    0.228   |    0.211    |    0.212    |     11.56     |     11.78     | +1.9% |
+|  50.0 |    0.142   |    0.199    |    0.195    |     11.53     |     11.74     | +1.7% |
+
+Key observations:
+
+1. **Flight NIS monotonically decreases** with q_vel (as expected — higher process
+   noise means wider prediction uncertainty)
+2. **RMSE is essentially flat** across all q_vel (~11.5-11.6mm vs ~11.7mm raw).
+   The filter cannot improve much on ~12mm noise.
+3. **No bisection ran** because no q_vel crossed the NIS=3.0 threshold.
+4. **Contact NIS ≈ 0.2-0.3** — very conservative, but contact phases are short.
+
+## Discussion
+
+The dramatic difference from random-action tuning (NIS=52.9 → NIS=1.7 at same
+q_vel=0.4) reveals that **the trained policy produces much more predictable ball
+trajectories than random actions**. The ballistic model tracks trained-policy
+launches very well.
+
+The EKF's marginal position improvement (1-2%) means **the filter's primary
+value in sim is velocity estimation and dropout bridging**, not position smoothing.
+On real hardware, where noise is higher and detections less reliable, the EKF
+will matter more.
+
+**Still needed**: a low-range sweep (q_vel ∈ {0.01, 0.05, 0.1, 0.2, 0.3})
+to find where NIS crosses 3.0, or to confirm that q_vel=0.4 is already
+near-optimal and the filter is simply well-matched to the dynamics.
+
+## Reproducibility
+
+- **Seed**: default (Isaac Lab env seed)
+- **Commit**: `fe70ae9`
+- **Log directory**: `logs/perception/`
+- **Raw data**: `logs/perception/sweep_q_vel_fixed.json`
+- **Checkpoints**: pi2 `logs/rsl_rl/go1_torso_tracking/*/model_best.pt`,
+  pi1 `logs/rsl_rl/go1_ball_juggle_hier/*/model_best.pt`

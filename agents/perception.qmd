@@ -18,6 +18,55 @@ reverse chronological order (newest first).
 
 ---
 
+## Iteration 70 — q_vel sweep results + integration status {.unnumbered}
+*2026-04-09*
+
+### GPU q_vel Sweep: EKF is over-conservative
+
+Ran a full GPU sweep of flight process noise `q_vel` ∈ {0.4, 2.0, 5.0, 10.0,
+20.0, 50.0} with 512 envs × 600 steps under the trained pi1 juggling policy.
+Contact process noise held constant at `q_vel_contact=50.0`.
+
+![q_vel sweep — flight NIS and RMSE across process noise settings](../images/perception/q_vel_sweep_iter_069.png){width=100%}
+
+**Key finding**: ALL tested q_vel values produce flight NIS < 3.0 (max 1.73 at
+q_vel=0.4). The EKF is **over-conservative** — the opposite of what we saw in
+iter 54 with random actions (NIS=52.9). The explanation: the current policy
+produces gentler, more predictable trajectories than random actions, so the
+ballistic model tracks well even with low process noise.
+
+| q_vel | Flight NIS | EKF RMSE (mm) | Raw RMSE (mm) | Improvement |
+|------:|:----------:|:-------------:|:-------------:|:-----------:|
+|   0.4 |    1.726   |     11.55     |     11.69     |    1.1%     |
+|   2.0 |    1.226   |     11.55     |     11.71     |    1.4%     |
+|   5.0 |    0.722   |     11.58     |     11.79     |    1.8%     |
+|  10.0 |    0.409   |     11.59     |     11.77     |    1.5%     |
+|  20.0 |    0.228   |     11.56     |     11.78     |    1.9%     |
+|  50.0 |    0.142   |     11.53     |     11.74     |    1.7%     |
+
+**Interpretation**: The D435i noise model produces only ~11.7mm raw RMSE at
+typical ball heights (~0.4-0.5m). This is already very small — the EKF can
+barely improve on it (1-2%). **The EKF's main value is not position smoothing
+but velocity estimation and dropout bridging** (filling in when detections are
+missed). A low-range sweep (q_vel < 0.4) is needed to find the NIS=3.0 crossing.
+
+### Integration Status
+
+The perception pipeline is **feature-complete** for sim:
+
+- **EKF → pi1 obs**: `ball_obs_spec.py` provides `ball_pos_perceived` and
+  `ball_vel_perceived` as drop-in ObsTerm replacements. The training env uses
+  `--noise-mode {oracle,d435i,ekf}` to select perception mode.
+- **Side-by-side comparison**: `compare_perception_modes.py` runs all 3 modes
+  in separate subprocesses and produces per-mode metrics.
+- **Live evaluation**: `eval_perception_live.py` loads a trained pi1 and
+  evaluates EKF accuracy under active juggling.
+- **245 CPU tests** pass across 14 test files.
+
+**Next steps**: low-range q_vel sweep, then handoff tuned defaults to policy agent.
+
+---
+
 ## Iteration 66 — Quarto report + sweep status {.unnumbered}
 *2026-04-08*
 
