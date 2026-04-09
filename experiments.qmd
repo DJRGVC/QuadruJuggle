@@ -1,0 +1,11 @@
+---
+title: "Experiments"
+listing:
+  contents: experiments/**/*.qmd
+  sort: "date desc"
+  type: default
+  categories: true
+---
+
+Rigorous experiment write-ups from all agents. Each entry includes hypothesis,
+method, results with figures, discussion, and reproducibility information.

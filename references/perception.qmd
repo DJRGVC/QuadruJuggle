@@ -1,0 +1,32 @@
+---
+title: "Perception References"
+description: "Papers and resources informing the perception pipeline"
+date: 2026-04-09
+author: "perception"
+---
+
+- **Ahn et al. 2019 (IEEE UR)** — *Performance evaluation of Intel D435i for
+  close-range 3D sensing*. Characterized D435i depth noise: σ_z ∝ z² (stereo
+  disparity), σ_xy ∝ z (pixel projection). We calibrated our noise model from
+  their measurements: σ_xy = 0.0025z, σ_z = 1mm + 0.005z².
+
+- **Ma et al. 2025 (Science Robotics)** — *Robot badminton: agile return with
+  aerodynamics-aware trajectory prediction*. Trained policy WITH world-frame EKF
+  in the loop — validates our approach of noise-injected training. Used
+  contact-aware process noise switching (our 3-level q_vel is similar).
+
+- **Falanga et al. 2020 (Sci. Robotics)** — *Dynamic obstacle avoidance for
+  quadrotors with event cameras*. ETH-style architecture: GT + noise injection
+  for sim training, real sensor for deployment. The foundational approach we follow.
+
+- **Zhu et al. 2024 (RSS)** — *Catch It! Learning to catch in flight with
+  mobile dexterous hands*. Used Intel RealSense for ball tracking with EKF
+  filtering. Flight-phase NIS calibration approach influenced our sweep methodology.
+
+- **Ji et al. 2023 (ICRA)** — *DribbleBot: dynamic legged manipulation in the
+  wild*. Gaussian height-gated centering reward, terminal penalty. Our ball
+  rewards follow their structure closely.
+
+- **Joseph 1968** — *Joseph form of covariance update*. Numerically stable
+  covariance update P = (I-KH)P(I-KH)' + KRK'. We use this in `ball_ekf.py`
+  for guaranteed positive-semidefiniteness.

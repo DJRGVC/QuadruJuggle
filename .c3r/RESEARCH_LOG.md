@@ -218,3 +218,20 @@ Result:     ALL flight NIS values BELOW 3.0 — EKF is over-conservative (opposi
 Decision:   Next iter: run low-range sweep (q_vel 0.01-0.4) to find NIS=3.0 crossing point.
             Even if NIS=3.0 isn't achievable (very low q_vel may cause filter divergence),
             we should identify the practical lower bound. Update BallEKFConfig defaults.
+
+## Iteration 70 — Quarto docs + sweep figure + experiment write-up  (2026-04-09T01:30:00Z)
+Hypothesis: N/A — documentation iteration per Daniel's morning goals (stop signal).
+Change:     Updated agents/perception.qmd with q_vel sweep results table + figure + integration
+            status. Created experiments/perception/2026-04-09_q_vel_sweep.qmd (full experiment
+            write-up). Created experiments.qmd and references.qmd listing pages (missing from
+            Quarto site). Created references/perception.qmd with key citations. Generated
+            matplotlib figure (images/perception/q_vel_sweep_iter_069.png) showing NIS and RMSE
+            across q_vel values. Processed 3 INBOX messages (Daniel plan Q + stop signal + re-read).
+            No GPU processes running (confirmed via nvidia-smi).
+Command:    No GPU commands. matplotlib for figure generation.
+Result:     Quarto page now documents: (1) sweep results showing all NIS < 3.0, (2) integration
+            status (pipeline feature-complete, 3 modes working), (3) experiment with figures.
+            Missing Quarto scaffolding (experiments.qmd, references.qmd) now created.
+Decision:   Next iter: run low-range q_vel sweep (0.01-0.4) when GPU is available. Then update
+            BallEKFConfig defaults and communicate handoff to policy. Daniel's (a) EKF→pi1 is
+            already wired; (b) oracle-vs-EKF demo needs GPU; (c) docs done this iter.

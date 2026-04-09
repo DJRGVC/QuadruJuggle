@@ -1,0 +1,9 @@
+---
+title: "References"
+listing:
+  contents: references/*.qmd
+  sort: "date desc"
+  type: default
+---
+
+Bibliography of papers, blog posts, codebases, and datasets that influenced this project.
