@@ -20,6 +20,33 @@ See [full Stage G bottleneck analysis](../experiments/perception/2026-04-09_stag
 
 ---
 
+## Iteration 121 — Stage G training plateau diagnosis {.unnumbered}
+*2026-04-09*
+
+Analyzed the policy agent's active Stage G d435i training run (iter 032, ~680
+iterations so far). Created `plot_training_curves.py` to parse RSL-RL logs and
+produce multi-panel training curve figures.
+
+**Key finding: timeout plateaus at 53.5% ± 0.3% — well below the 80% threshold**
+needed for curriculum advancement. The entropy-fix run (iter 032) improved over
+the aborted run (46% → 53%) but has clearly hit a ceiling. The d435i observation
+noise makes Stage G substantially harder than oracle mode.
+
+![Stage G training: entropy-fix run vs aborted run](../images/perception/stage_g_training_comparison_iter121.png){width=100%}
+
+| Run | Iters | Timeout (last 20) | Apex reward | Noise std |
+|:----|:-----:|:------------------:|:-----------:|:---------:|
+| Stage G (aborted) | 172 | 45.8% ± 0.1% | 2.93 ± 0.14 | 0.390 |
+| Stage G (entropy fix) | 682 | 53.5% ± 0.3% | 3.54 ± 0.12 | 0.220 |
+
+**Implication**: the d435i noise curriculum may need relaxing at Stage G (wider
+sigma, easier target distribution) or the perception pipeline needs to provide
+cleaner observations. The flight-window analysis (iter 120) showed the EKF is
+accurate *when there are flight windows* — the question is whether the policy
+can learn to create them under noisy observations.
+
+---
+
 ## Iteration 120 — Flight-window EKF accuracy analysis {.unnumbered}
 *2026-04-09*
 

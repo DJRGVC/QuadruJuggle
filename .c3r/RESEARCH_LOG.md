@@ -260,3 +260,27 @@ Result:     D435i flight-window EKF RMSE: 9.6-17.3cm across targets (excellent).
 Decision:   Next iter: check if policy training completed. If new checkpoint, run
             oracle vs d435i comparison. If GPU still blocked, consider preparing
             real-hardware integration specs or per-window trajectory analysis.
+
+## Iteration 121 — Stage G training plateau diagnosis  (2026-04-09T20:00:00Z)
+Hypothesis: Analyzing the policy agent's active Stage G d435i training will reveal
+            whether the run is converging toward 80% timeout or plateauing.
+Change:     Created plot_training_curves.py — parses RSL-RL training logs, extracts
+            per-iteration metrics (timeout%, ep_length, apex_reward, noise_std),
+            produces multi-panel comparison figures. 7 tests. Also generated
+            training curve comparison figure (aborted iter 031 vs entropy-fix iter 032).
+Command:    python plot_training_curves.py --log .../iter_032/train.log --out ... (CPU only)
+            pytest scripts/perception/ -x -q → 478/478 passed (10.81s)
+Result:     TRAINING PLATEAU CONFIRMED.
+            - iter 032 (entropy fix): 682 iters, timeout 53.5% ± 0.3% (last 20)
+            - iter 031 (aborted): 172 iters, timeout 45.8% ± 0.1%
+            - ZERO iterations ever reached 80% threshold in either run
+            - Entropy fix helped (noise 0.39→0.22, timeout 46→53%) but hit ceiling
+            - ~76 min ETA remaining; 2000 iter budget; unlikely to reach 80%
+            - Apex reward stable at 3.54 (reasonable but not improving)
+            GPU still blocked by policy Stage G training (PID 1348279)
+Decision:   Next iter: check if GPU freed. If so, run oracle vs d435i comparison
+            using existing checkpoints (model_best from d435i Stage G even if
+            training hasn't finished — 53% timeout is still better than the
+            pre-Stage-G model). The plateau finding suggests we may need to
+            communicate to policy agent about relaxing Stage G curriculum for
+            d435i mode (lower threshold, or easier target distribution).
