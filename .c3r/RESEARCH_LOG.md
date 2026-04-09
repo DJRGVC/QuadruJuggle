@@ -73,3 +73,31 @@ Decision:   Next iter: policy plans longer Stage G retrain with fixed ES metric.
             While waiting, consider: (a) EKF observability analysis — when does
             the estimate diverge most? (b) real-hardware D435i wrapper skeleton,
             (c) investigate whether EKF R tuning could reduce the gap at 0.40-0.50m.
+
+## Iteration 138 — EKF error decomposition: position vs velocity  (2026-04-09T23:30:00Z)
+Hypothesis: Decomposing EKF error into position vs velocity, per-axis, and
+            per-flight-phase will reveal whether R tuning (measurement) or Q
+            tuning (process/velocity) is the better lever for reducing the
+            perception gap at high target heights.
+Change:     Created analyze_ekf_error_decomposition.py — simulates 50 noise
+            trials per target height (0.10-1.00m), runs full EKF with D435i
+            noise model, computes RMSE by component/axis/phase. Updated Quarto.
+Command:    python scripts/perception/analyze_ekf_error_decomposition.py \
+              --out images/perception/ekf_error_decomposition_iter138.png
+            pytest scripts/perception/ -x -q → 560/560 passed (12.14s)
+Result:     VELOCITY ERROR DOMINATES at all heights:
+            - V/P ratio (100ms window): 2.6x at 0.10m, 1.3x at 1.00m
+            - Z-axis dominates both pos and vel error; XY is negligible (~1mm, ~0.05 m/s)
+            - Ascending phase worst: vz RMSE 0.61 m/s (0.10m) → 1.04 m/s (1.00m)
+            - Descending phase clean: vz RMSE ~0.09 m/s at all heights
+            - Position RMSE: 9.7mm (0.10m) → 31.3mm (1.00m), driven by Z noise
+            IMPLICATION: R tuning won't help much. The gap is in velocity prediction
+            during ascending flight (dropout + ballistic model). Future work should
+            target drag coefficient uncertainty and ascending-phase Q schedule.
+            Policy still at iter 32, waiting for Stage G retrain.
+            Figure: images/perception/ekf_error_decomposition_iter138.png
+Decision:   Next iter: investigate whether drag coefficient mismatch explains the
+            ascending vz error. The EKF uses drag_coeff=0.112 (theoretical); if the
+            sim uses a different effective drag, the ballistic prediction drifts during
+            dropout. Alternatively, consider adaptive drag estimation in the EKF (online
+            parameter learning). Or wait for policy and update fix_plan.

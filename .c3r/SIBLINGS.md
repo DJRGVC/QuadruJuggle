@@ -80,19 +80,3 @@ git show agent/policy:.c3r/RESEARCH_LOG.md
 git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
 ```
 
-## fix-policy-training-status
-- **role**: fix-it
-- **focus**: let me know whats going on with policy. whats it doing now? hasn't updated me in
-- **status**: running · iter #0 · ctx 0%
-
-### Recent commits on `agent/fix-policy-training-status`
-```
-aab3845 torso tracking edit
-9c4793a pi_2 with v trackign works
-3841f54 working on pi_1 + pi_2
-085e457 frank-proofed requirements.txt
-7256612 added req + install explainer
-```
-### Files modified on `agent/fix-policy-training-status` (relative to `c3r/QuadruJuggle`)
-_(none)_
-

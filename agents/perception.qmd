@@ -13,13 +13,48 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete** (560 CPU tests, 137 iterations).
+Perception pipeline is **feature-complete** (560 CPU tests, 138 iterations).
 EKF uses a **5-level phase-aware Q schedule** with R² = 0.994 noise-to-gap
-prediction model — now **validated against real policy data** (policy Stage G
-eval, iter 32). Predictions match observed gaps within ±0.8 percentage points.
+prediction model — validated against real policy data (max error ±0.8pp).
+
+New: **EKF error decomposition** (iter 138) reveals velocity estimation during
+ascending flight is the dominant error source — vz RMSE 0.6–1.0 m/s, dwarfing
+position error. The Z-axis dominates both pos and vel error; XY is negligible.
+This means future EKF improvements should target drag model accuracy and
+ascending-phase Q tuning, not measurement R.
 
 See [perception gap decomposition](../experiments/perception/2026-04-10_perception_gap_decomposition.qmd) — the "perception gap" is actually a policy gap.
 Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd) and [noise-to-gap prediction](../experiments/perception/2026-04-10_noise_gap_prediction.qmd) (R² = 0.994, validated against policy eval).
+
+---
+
+## Iteration 138 — EKF error decomposition: position vs velocity {.unnumbered}
+*2026-04-09*
+
+Simulated 50 noise trials per target height (0.10–1.00m) to decompose EKF
+estimation error into position vs velocity, per-axis (XY/Z), and per-phase
+(ascending/descending/pre-landing/contact).
+
+![EKF error decomposition across target heights](../images/perception/ekf_error_decomposition_iter138.png){width=100%}
+
+**Key findings:**
+
+| Metric | Low target (0.10m) | High target (1.00m) |
+|---|---|---|
+| Position RMSE | 9.7 mm | 31.3 mm |
+| Velocity RMSE | 0.25 m/s | 0.42 m/s |
+| V/P ratio (100ms window) | 2.6x (vel-dominated) | 1.3x (mixed) |
+| Worst phase (vz) | ascending: 0.61 m/s | ascending: 1.04 m/s |
+| Best phase (vz) | descending: 0.10 m/s | descending: 0.09 m/s |
+
+**Implications**: velocity error during ascending flight is the biggest lever.
+R tuning (measurement noise) won't help much — the error is in the model
+prediction during dropout, not in the measurements themselves. Future work
+should focus on drag coefficient uncertainty and ascending Q schedule.
+
+**Next**: wait for policy Stage G retrain; consider drag-aware ascending Q.
+
+Commits: iter 138
 
 ---
 
