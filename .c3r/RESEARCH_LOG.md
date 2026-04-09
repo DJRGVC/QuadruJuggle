@@ -135,3 +135,25 @@ Decision:   EKF comparison needs trained policy (real contacts) to be meaningful
             BLOCKED on same cross-branch issue as iter 89. Bounce mode validates that raw
             detection accuracy is ~190mm (constant with height) — acceptable for pi1 input.
             Next: update Quarto with sweep figure + finding, or pick up next fix_plan item.
+
+## Iteration 91 — Sync env config with policy branch for cross-branch eval  (2026-04-09T16:30:00Z)
+Hypothesis: The cross-branch policy incompatibility (iter 89) is caused by env config
+            mismatches: restitution (0.85 vs 0.99), obs functions (oracle vs perceived),
+            and missing reward terms. Syncing these should allow policy-trained checkpoints
+            to run on our branch for camera pipeline validation.
+Change:     1. Updated ball_juggle_hier_env_cfg.py: restitution 0.85→0.99 (match policy).
+            2. Switched obs from mdp.ball_pos_in_paddle_frame → ball_pos_perceived (from
+               perception.ball_obs_spec) with BallObsNoiseCfg(mode="oracle") default.
+            3. Added ball_low_penalty() and ball_release_velocity_reward() to
+               tasks/ball_juggle/mdp/rewards.py (ported from policy branch).
+            4. Added ball_low (w=-1.0) and ball_release_vel (w=8.0) to RewardsCfg.
+Command:    python -m pytest scripts/perception/ -x -q → 318/318 passed (6.58s).
+            AST parse check: both modified files syntactically valid.
+Result:     Env config now matches policy branch on all 4 axes: physics (restitution),
+            observations (perceived), rewards (ball_low + release_vel), and scene.
+            Policy agent's Stage F checkpoints should now be loadable on our branch.
+            No GPU run this iter — config-only change, validation is next.
+Decision:   Next iter: GPU validation — load policy agent's d435i-trained checkpoint
+            (logs/.../2026-04-08_22-51-56/model_best.pt via git show) through our camera
+            pipeline. If episodes survive >50 steps, the sync worked and we can run
+            proper EKF vs raw comparison under trained policy.

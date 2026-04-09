@@ -27,6 +27,11 @@ from isaaclab.utils import configclass
 
 from . import mdp
 from go1_ball_balance.tasks.torso_tracking.action_term import TorsoCommandActionCfg
+from go1_ball_balance.perception.ball_obs_spec import (
+    ball_pos_perceived,
+    ball_vel_perceived,
+    BallObsNoiseCfg,
+)
 
 from isaaclab_assets.robots.unitree import UNITREE_GO1_CFG  # isort: skip
 
@@ -78,7 +83,7 @@ class BallJuggleHierSceneCfg(InteractiveSceneCfg):
             mass_props=sim_utils.MassPropertiesCfg(mass=0.0027),
             collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
             physics_material=sim_utils.RigidBodyMaterialCfg(
-                restitution=0.85,
+                restitution=0.99,  # match policy branch for checkpoint compatibility
                 restitution_combine_mode="max",
                 static_friction=0.3,
                 dynamic_friction=0.3,
@@ -169,18 +174,20 @@ class ObservationsCfg:
     @configclass
     class PolicyCfg(ObsGroup):
         ball_pos = ObsTerm(
-            func=mdp.ball_pos_in_paddle_frame,
+            func=ball_pos_perceived,
             params={
                 "ball_cfg": SceneEntityCfg("ball"),
                 "robot_cfg": SceneEntityCfg("robot"),
                 "paddle_offset_b": _PADDLE_OFFSET_B,
+                "noise_cfg": BallObsNoiseCfg(mode="oracle"),
             },
         )
         ball_vel = ObsTerm(
-            func=mdp.ball_vel_in_paddle_frame,
+            func=ball_vel_perceived,
             params={
                 "ball_cfg": SceneEntityCfg("ball"),
                 "robot_cfg": SceneEntityCfg("robot"),
+                "noise_cfg": BallObsNoiseCfg(mode="oracle"),
             },
         )
         base_lin_vel      = ObsTerm(func=mdp.base_lin_vel)
@@ -409,6 +416,32 @@ class RewardsCfg:
         func=mdp.feet_off_ground_penalty,
         weight=-0.5,
         params={"foot_contact_cfg": SceneEntityCfg("foot_contact_forces")},
+    )
+
+    ball_low = RewTerm(
+        func=mdp.ball_low_penalty,
+        weight=-1.0,
+        params={
+            "low_threshold": 0.03,
+            "ball_cfg": SceneEntityCfg("ball"),
+            "robot_cfg": SceneEntityCfg("robot"),
+            "paddle_offset_b": _PADDLE_OFFSET_B,
+            "ball_radius": _BALL_RADIUS,
+            "min_height": 0.20,
+        },
+    )
+
+    ball_release_vel = RewTerm(
+        func=mdp.ball_release_velocity_reward,
+        weight=8.0,
+        params={
+            "max_vel": 3.0,
+            "ball_cfg": SceneEntityCfg("ball"),
+            "robot_cfg": SceneEntityCfg("robot"),
+            "paddle_offset_b": _PADDLE_OFFSET_B,
+            "ball_radius": _BALL_RADIUS,
+            "min_height": 0.20,
+        },
     )
 
 

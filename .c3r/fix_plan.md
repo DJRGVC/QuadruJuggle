@@ -19,9 +19,8 @@
   - [x] Multi-env EKF + per-env camera detection loop
   - [x] Episode tracking (timeouts, resets) with EKF re-init on done
   - [x] GPU smoke test with trained pi1 — pipeline works, but policy incompatible (iter 89)
-  - [ ] BLOCKED: need pi1 trained on perception branch env config (or branch merge)
-    Policy branch has restitution=0.99 + perceived obs; our branch has 0.85 + oracle obs.
-    Bounce mode demo (iter 87) validates camera pipeline independently.
+  - [x] UNBLOCKED: synced env config (restitution=0.99, perceived obs, ball_low/release_vel rewards)
+    Policy branch checkpoints should now be compatible. GPU validation needed.
 
 # EKF tuning (lower priority, mostly done)
 - [x] GPU sweep at higher target heights (0.3-0.5m) — bounce mode sweep done (iter 90)
