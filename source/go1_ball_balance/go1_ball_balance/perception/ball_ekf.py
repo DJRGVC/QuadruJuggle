@@ -1,7 +1,7 @@
 """Batched Extended Kalman Filter for ball tracking.
 
 State: [x, y, z, vx, vy, vz] (6D) or [x, y, z, vx, vy, vz, wx, wy, wz] (9D).
-Dynamics: ballistic with optional quadratic drag and Magnus effect (spin).
+Dynamics: ballistic with configurable drag (quadratic or linear) and Magnus effect (spin).
 Measurement: noisy [x, y, z] from D435i noise model.
 
 The filter runs on GPU, batched across all environments. Identical code
@@ -97,12 +97,22 @@ class BallEKFConfig:
     r_z_per_metre: float = 0.005  # additional Z noise std per metre (matched to D435i quadratic)
     adaptive_r: bool = True  # if True, R_xy and R_z vary with estimated ball height
 
-    # Drag coefficient: F_drag = -drag_coeff * |v| * v
-    # For a 40mm ping-pong ball at low speeds: Cd ≈ 0.4, A = pi*0.02^2,
-    # rho = 1.2 kg/m^3 → drag_coeff = 0.5 * Cd * rho * A / m
-    # = 0.5 * 0.4 * 1.2 * 1.257e-3 / 0.0027 ≈ 0.112
-    # At v=4.4 m/s (Stage G): F_drag ≈ 0.49 * 4.4 ≈ 2.2 m/s^2 (non-negligible)
-    drag_coeff: float = 0.112  # quadratic drag: a_drag = -drag * |v| * v_hat
+    # Drag model: "quadratic" (real-world aerodynamic) or "linear" (PhysX sim).
+    #
+    # Quadratic (default for real hardware):
+    #   a_drag = -drag_coeff * |v| * v
+    #   For 40mm ping-pong ball: Cd≈0.4, A=π·0.02², ρ=1.2 kg/m³, m=0.0027 kg
+    #   drag_coeff = 0.5 * Cd * ρ * A / m ≈ 0.112
+    #
+    # Linear (matches PhysX RigidBodyPropertiesCfg.linear_damping):
+    #   a_drag = -linear_damping * v
+    #   Isaac Lab ball uses linear_damping=0.1
+    #
+    # At v=4.4 m/s (1m juggle): quadratic → 2.2 m/s², linear → 0.44 m/s² (5x mismatch).
+    # Use "linear" in sim to match PhysX; "quadratic" on real hardware.
+    drag_mode: str = "quadratic"  # "quadratic" or "linear"
+    drag_coeff: float = 0.112  # quadratic mode: a_drag = -drag_coeff * |v| * v
+    linear_damping: float = 0.1  # linear mode: a_drag = -linear_damping * v (PhysX default)
 
     gravity_z: float = -9.81  # gravity in paddle frame Z (downward when paddle level)
 
@@ -410,7 +420,10 @@ class BallEKF:
         else:
             g = self._gravity_default.unsqueeze(0)
         speed = vel.norm(dim=-1, keepdim=True).clamp(min=1e-8)
-        a_drag = -self.cfg.drag_coeff * speed * vel
+        if self.cfg.drag_mode == "quadratic":
+            a_drag = -self.cfg.drag_coeff * speed * vel
+        else:  # linear (PhysX)
+            a_drag = -self.cfg.linear_damping * vel
         a = g + a_drag
 
         # Magnus force: a_magnus = magnus_coeff * (spin × vel)
@@ -434,10 +447,13 @@ class BallEKF:
         F[:, :3, 3:6] = torch.eye(3, device=self.device) * dt  # d(pos)/d(vel) = I*dt
 
         # Drag Jacobian: d(a_drag)/d(vel)
-        c = self.cfg.drag_coeff
-        v_hat = vel / speed
         I3 = torch.eye(3, device=self.device).unsqueeze(0)
-        da_dv_drag = -c * (speed.unsqueeze(-1) * I3 + torch.bmm(vel.unsqueeze(-1), v_hat.unsqueeze(-2)))
+        if self.cfg.drag_mode == "quadratic":
+            c = self.cfg.drag_coeff
+            v_hat = vel / speed
+            da_dv_drag = -c * (speed.unsqueeze(-1) * I3 + torch.bmm(vel.unsqueeze(-1), v_hat.unsqueeze(-2)))
+        else:  # linear (PhysX): a_drag = -λ·v → da/dv = -λ·I
+            da_dv_drag = -self.cfg.linear_damping * I3.expand(self.num_envs, -1, -1)
         F[:, 3:6, 3:6] += da_dv_drag * dt
 
         # Magnus Jacobians (9D mode only)

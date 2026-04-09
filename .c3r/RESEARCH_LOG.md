@@ -101,3 +101,32 @@ Decision:   Next iter: investigate whether drag coefficient mismatch explains th
             sim uses a different effective drag, the ballistic prediction drifts during
             dropout. Alternatively, consider adaptive drag estimation in the EKF (online
             parameter learning). Or wait for policy and update fix_plan.
+
+## Iteration 139 — Drag model mismatch: PhysX linear vs EKF quadratic  (2026-04-10T01:00:00Z)
+Hypothesis: The EKF's quadratic drag model (a=-0.112·|v|·v) does not match
+            PhysX's linear_damping=0.1 (a=-0.1·v). At high speeds, the EKF
+            over-predicts drag, causing ascending vz error to grow with height.
+Change:     (1) Created analyze_drag_mismatch.py — quantifies error from pure
+            drag model mismatch (no noise). (2) Added drag_mode config to
+            BallEKFConfig: "quadratic" (real hardware) or "linear" (PhysX sim).
+            (3) Updated BallObsNoiseCfg default to use drag_mode="linear".
+            (4) Added 5 tests for linear drag mode. (5) Updated Quarto page.
+Command:    python scripts/perception/analyze_drag_mismatch.py
+            pytest scripts/perception/ -x -q → 565/565 passed (12.15s)
+Result:     CONFIRMED: drag mismatch is massive at high speeds.
+            Crossover speed: 0.89 m/s. Above this, EKF over-predicts drag.
+            At v=4.4 m/s (1m juggle): PhysX=0.44 m/s², EKF=2.20 m/s² (5x).
+            Pure-mismatch errors (no noise):
+              0.50m: vz RMSE 76mm/s, apex error -24mm
+              1.00m: vz RMSE 230mm/s, apex error -102mm
+            This explains the ascending vz dominance found in iter 138:
+            the "ground truth" in that analysis used quadratic drag too,
+            so it only measured noise error. The drag mismatch is additional.
+            Fix: EKF now configurable. Sim defaults to linear (matching PhysX).
+            Real hardware should use quadratic (true aerodynamic drag).
+            Policy agent still at iter 32 (81% context).
+            Figure: images/perception/drag_mismatch_iter139.png
+Decision:   Next iter: re-run EKF error decomposition and gap prediction
+            with the corrected linear drag model. This should show a large
+            reduction in ascending-phase vz error. Then re-validate against
+            policy Stage G eval data to see if the corrected model fits better.

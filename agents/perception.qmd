@@ -13,18 +13,56 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete** (560 CPU tests, 138 iterations).
+Perception pipeline is **feature-complete** (565 CPU tests, 139 iterations).
 EKF uses a **5-level phase-aware Q schedule** with R² = 0.994 noise-to-gap
 prediction model — validated against real policy data (max error ±0.8pp).
 
-New: **EKF error decomposition** (iter 138) reveals velocity estimation during
-ascending flight is the dominant error source — vz RMSE 0.6–1.0 m/s, dwarfing
-position error. The Z-axis dominates both pos and vel error; XY is negligible.
-This means future EKF improvements should target drag model accuracy and
-ascending-phase Q tuning, not measurement R.
+New: **Drag model mismatch discovered and fixed** (iter 139). The EKF used
+quadratic aerodynamic drag (a = −0.112·|v|·v) but PhysX sim uses linear damping
+(a = −0.1·v). At launch velocity for 1m juggle (4.4 m/s), the EKF predicted
+5× more drag than the sim applies — causing 230 mm/s vz RMSE and 102mm apex
+position error from drag mismatch alone. Fixed by adding configurable drag mode
+to EKF; sim pipeline now defaults to "linear" to match PhysX.
 
 See [perception gap decomposition](../experiments/perception/2026-04-10_perception_gap_decomposition.qmd) — the "perception gap" is actually a policy gap.
 Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd) and [noise-to-gap prediction](../experiments/perception/2026-04-10_noise_gap_prediction.qmd) (R² = 0.994, validated against policy eval).
+
+---
+
+## Iteration 139 — Drag model mismatch: PhysX linear vs EKF quadratic {.unnumbered}
+*2026-04-09*
+
+Discovered a fundamental physics model mismatch between the EKF and the Isaac Lab
+simulator. The EKF assumed quadratic aerodynamic drag (a = −0.112·|v|·v, correct for
+a real ping-pong ball), while PhysX uses `linear_damping=0.1` (a = −0.1·v).
+
+![Drag model mismatch analysis](../images/perception/drag_mismatch_iter139.png){width=100%}
+
+**Impact scales superlinearly with target height:**
+
+| Target | vz RMSE (asc) | Max |Δvz| | Max |Δz| | Apex error |
+|---|---|---|---|---|
+| 0.20m | 14 mm/s | 17 mm/s | 5.9 mm | −3 mm |
+| 0.50m | 76 mm/s | 90 mm/s | 48 mm | −24 mm |
+| 1.00m | 230 mm/s | 272 mm/s | 198 mm | −102 mm |
+
+At v = 4.4 m/s (1m juggle launch): EKF predicts 2.2 m/s² drag, PhysX applies 0.44 m/s²
+— a 5× mismatch. The crossover speed where both models agree is only 0.89 m/s.
+
+**Fix:** Added `drag_mode` config to `BallEKFConfig` supporting "quadratic" (real hardware)
+and "linear" (PhysX sim). The sim pipeline default (`BallObsNoiseCfg.ekf_cfg`) now uses
+`drag_mode="linear"`. All 565 tests pass.
+
+**Implication:** Previous EKF error decomposition (iter 138) used quadratic drag for both
+ground truth and EKF, so it only measured *noise* error. The drag mismatch was an *additional*
+error source that inflated velocity prediction error during ascending flight — exactly where
+iter 138 found the largest errors. With the fix, EKF predictions should be much more accurate
+during dropout/prediction phases.
+
+**Next:** Re-run the gap prediction model with the corrected EKF to see how much the
+drag fix reduces the predicted perception gap at high heights.
+
+Commits: iter 139
 
 ---
 

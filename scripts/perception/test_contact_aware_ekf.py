@@ -90,6 +90,7 @@ class TestContactAwareEKF(unittest.TestCase):
             q_vel_contact=50.0,
             contact_aware=True,
             contact_z_threshold=0.025,
+            drag_mode="quadratic",
         )
         ekf = BallEKF(num_envs=4, device="cpu", cfg=cfg)
 
@@ -458,6 +459,119 @@ class TestContactAwareEKF(unittest.TestCase):
         self.assertTrue(torch.allclose(ekf.pos, new_pos),
                         "Reset did not update position correctly")
         self.assertTrue(torch.isfinite(ekf._P).all(), "P has NaN/Inf after reset")
+
+
+class TestLinearDragMode(unittest.TestCase):
+    """Tests for linear drag mode (matching PhysX linear_damping)."""
+
+    def test_linear_drag_velocity_decay(self):
+        """Linear drag: a = -λ·v should produce exponential-like velocity decay."""
+        cfg = BallEKFConfig(
+            drag_mode="linear", linear_damping=0.1,
+            contact_aware=False, gravity_z=0.0,
+        )
+        ekf = BallEKF(num_envs=1, device="cpu", cfg=cfg)
+        # Launch with vz=3.0, no gravity
+        init_pos = torch.tensor([[0.0, 0.0, 0.5]])
+        init_vel = torch.tensor([[0.0, 0.0, 3.0]])
+        ekf.reset(torch.tensor([0]), init_pos, init_vel)
+
+        dt = 0.02
+        for _ in range(10):
+            ekf.predict(dt=dt)
+
+        # After 10 steps (0.2s) with λ=0.1: v ≈ 3.0 * exp(-0.1*0.2) ≈ 2.94
+        # (Euler approx slightly different, but close)
+        vz = ekf.vel[0, 2].item()
+        self.assertGreater(vz, 2.8, "Velocity decayed too much for linear drag")
+        self.assertLess(vz, 3.0, "Velocity should have decreased")
+
+    def test_quadratic_drag_stronger_at_high_speed(self):
+        """At v=4 m/s, quadratic drag >> linear drag → lower velocity after prediction."""
+        dt = 0.02
+        init_pos = torch.tensor([[0.0, 0.0, 0.5]])
+        init_vel = torch.tensor([[0.0, 0.0, 4.0]])
+
+        cfg_lin = BallEKFConfig(
+            drag_mode="linear", linear_damping=0.1,
+            contact_aware=False, gravity_z=0.0,
+        )
+        cfg_quad = BallEKFConfig(
+            drag_mode="quadratic", drag_coeff=0.112,
+            contact_aware=False, gravity_z=0.0,
+        )
+
+        ekf_lin = BallEKF(num_envs=1, device="cpu", cfg=cfg_lin)
+        ekf_quad = BallEKF(num_envs=1, device="cpu", cfg=cfg_quad)
+        ekf_lin.reset(torch.tensor([0]), init_pos, init_vel)
+        ekf_quad.reset(torch.tensor([0]), init_pos, init_vel)
+
+        for _ in range(5):
+            ekf_lin.predict(dt=dt)
+            ekf_quad.predict(dt=dt)
+
+        # Quadratic drag stronger at v=4 → velocity should be lower
+        vz_lin = ekf_lin.vel[0, 2].item()
+        vz_quad = ekf_quad.vel[0, 2].item()
+        self.assertGreater(vz_lin, vz_quad,
+                           f"Linear vz={vz_lin:.4f} should > quadratic vz={vz_quad:.4f} at high speed")
+
+    def test_linear_drag_weaker_below_crossover(self):
+        """At v=0.5 m/s (below crossover 0.89), linear drag > quadratic."""
+        dt = 0.02
+        init_pos = torch.tensor([[0.0, 0.0, 0.5]])
+        init_vel = torch.tensor([[0.0, 0.0, 0.5]])
+
+        cfg_lin = BallEKFConfig(
+            drag_mode="linear", linear_damping=0.1,
+            contact_aware=False, gravity_z=0.0,
+        )
+        cfg_quad = BallEKFConfig(
+            drag_mode="quadratic", drag_coeff=0.112,
+            contact_aware=False, gravity_z=0.0,
+        )
+
+        ekf_lin = BallEKF(num_envs=1, device="cpu", cfg=cfg_lin)
+        ekf_quad = BallEKF(num_envs=1, device="cpu", cfg=cfg_quad)
+        ekf_lin.reset(torch.tensor([0]), init_pos, init_vel)
+        ekf_quad.reset(torch.tensor([0]), init_pos, init_vel)
+
+        for _ in range(5):
+            ekf_lin.predict(dt=dt)
+            ekf_quad.predict(dt=dt)
+
+        # Below crossover, linear is stronger → lower velocity
+        vz_lin = ekf_lin.vel[0, 2].item()
+        vz_quad = ekf_quad.vel[0, 2].item()
+        self.assertLess(vz_lin, vz_quad,
+                        f"Linear vz={vz_lin:.4f} should < quadratic vz={vz_quad:.4f} below crossover")
+
+    def test_linear_drag_jacobian_constant(self):
+        """Linear drag Jacobian should be -λ·I regardless of velocity."""
+        cfg = BallEKFConfig(
+            drag_mode="linear", linear_damping=0.1,
+            contact_aware=False,
+        )
+        ekf = BallEKF(num_envs=2, device="cpu", cfg=cfg)
+
+        # Two envs with very different velocities
+        init_pos = torch.tensor([[0.0, 0.0, 0.5], [0.0, 0.0, 0.5]])
+        init_vel = torch.tensor([[0.1, 0.0, 0.0], [5.0, 0.0, 0.0]])
+        ekf.reset(torch.arange(2), init_pos, init_vel)
+
+        P_before = ekf._P.clone()
+        ekf.predict(dt=0.02)
+
+        # Both envs should have identical P growth (since Jacobian is constant)
+        # (different velocities don't affect the linear drag Jacobian)
+        dP0 = ekf._P[0] - P_before[0]
+        dP1 = ekf._P[1] - P_before[1]
+        torch.testing.assert_close(dP0, dP1, atol=1e-5, rtol=1e-4)
+
+    def test_default_drag_mode_is_quadratic(self):
+        """Default drag_mode should be 'quadratic' for backward compatibility."""
+        cfg = BallEKFConfig()
+        self.assertEqual(cfg.drag_mode, "quadratic")
 
 
 if __name__ == "__main__":

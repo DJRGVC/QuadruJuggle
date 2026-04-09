@@ -96,8 +96,12 @@ class BallObsNoiseCfg:
     noise_model_cfg: D435iNoiseModelCfg = field(default_factory=D435iNoiseModelCfg)
     """Stateful noise model config (used when mode="ekf")."""
 
-    ekf_cfg: BallEKFConfig = field(default_factory=BallEKFConfig)
-    """EKF config (used when mode="ekf")."""
+    ekf_cfg: BallEKFConfig = field(default_factory=lambda: BallEKFConfig(drag_mode="linear"))
+    """EKF config (used when mode="ekf").
+
+    Default uses drag_mode="linear" to match PhysX linear_damping=0.1 in sim.
+    For real hardware, set drag_mode="quadratic" (true aerodynamic drag).
+    """
 
     policy_dt: float = 0.02
     """Policy step period in seconds (50Hz default). Used by EKF predict step."""

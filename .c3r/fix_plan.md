@@ -1,10 +1,16 @@
 # fix_plan.md — experiment queue for perception
 
-# Status: ETH noise+EKF pipeline FEATURE-COMPLETE (560/560 CPU tests, 137 iterations).
+# Status: ETH noise+EKF pipeline FEATURE-COMPLETE (565/565 CPU tests, 139 iterations).
 # EKF tuned: 5-level phase-aware Q schedule, adaptive R_xy. q_vel_asc=0.25, q_vel_desc=0.40, q_vel_pre_landing=2.0.
+# DRAG FIX: EKF now supports linear drag mode (matching PhysX). Sim pipeline defaults to linear.
 # GPU DEMO VALIDATED: camera sees ball, SimBallDetector works, 100% det rate.
 # Camera pipeline integrated into eval (demo_camera_ekf.py), paddle anchor, phase tracker, camera scheduling all working.
 # Noise-to-gap prediction model: R²=0.994, VALIDATED against real policy Stage G data (max error 0.8pp).
+
+## RE-VALIDATE — Gap prediction with corrected drag model
+- [ ] Re-run predict_perception_gap.py with linear drag ground truth
+- [ ] Compare: how much does the drag fix reduce predicted gap at 0.50-1.00m?
+- [ ] Re-run EKF error decomposition with linear drag ground truth
 
 ## VALIDATED — Gap prediction matches policy Stage G eval
 - [x] Policy agent retrained Stage G with fixed ES metric (iter 32)
