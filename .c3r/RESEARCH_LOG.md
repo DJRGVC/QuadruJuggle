@@ -259,3 +259,22 @@ Result:     Feature implemented and tested. On real hardware, contact phase is 7
 Decision:   Next iter: run anchor ablation on GPU if available (blocked since iter 106).
             Alternatively, add the scheduling data to analysis plots, or update Quarto
             page with recent progress (iters 106-109).
+
+## Iteration 110 — Phase timeline visualization + Quarto update  (2026-04-11T01:00:00Z)
+Hypothesis: A phase-annotated 4-panel timeline plot will provide clear visual evidence
+            of EKF+anchor+scheduling behavior once GPU ablation data arrives.
+Change:     Created plot_phase_timeline.py — 4-panel publication figure:
+            (a) ball height with phase-colored background + bounce markers
+            (b) EKF error with anchor fire + detection event markers
+            (c) camera scheduling (detect vs skip stacked area)
+            (d) cumulative RMSE
+            Wired into run_anchor_ablation.sh (generates ON + OFF timelines).
+            Updated Quarto page (agents/perception.qmd) with iters 107-109 summary.
+            21 new tests (test_plot_phase_timeline.py).
+Command:    pytest scripts/perception/ → 434/434 passed (9.88s). No GPU needed.
+Result:     Full analysis pipeline ready: anchor ablation script now produces 4 outputs:
+            (1) height-binned comparison, (2) phase RMSE detail, (3) anchor-ON timeline,
+            (4) anchor-OFF timeline. GPU still occupied by policy agent.
+Decision:   Next iter: run anchor ablation on GPU if available. If still blocked,
+            consider building a synthetic trajectory generator for offline pipeline
+            testing, or check if policy agent needs support.

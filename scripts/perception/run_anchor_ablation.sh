@@ -71,6 +71,19 @@ if [ -f "${ANCHOR_ON_OUT}/trajectory.npz" ] && [ -f "${ANCHOR_OFF_OUT}/trajector
         --out "images/perception/anchor_ablation_detail.png" \
         2>&1
     echo "Figure: images/perception/anchor_ablation_detail.png"
+
+    # Phase-annotated timelines for each run
+    uv run --active python scripts/perception/plot_phase_timeline.py \
+        --npz "${ANCHOR_ON_OUT}/trajectory.npz" \
+        --out "images/perception/phase_timeline_anchor_on.png" \
+        --title "Phase Timeline — Anchor ON" \
+        2>&1
+    uv run --active python scripts/perception/plot_phase_timeline.py \
+        --npz "${ANCHOR_OFF_OUT}/trajectory.npz" \
+        --out "images/perception/phase_timeline_anchor_off.png" \
+        --title "Phase Timeline — Anchor OFF" \
+        2>&1
+    echo "Figures: images/perception/phase_timeline_anchor_{on,off}.png"
 fi
 
 echo ""

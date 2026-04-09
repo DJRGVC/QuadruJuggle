@@ -18,6 +18,35 @@ reverse chronological order (newest first).
 
 ---
 
+## Iterations 107-109 — Phase tracker + camera scheduling {.unnumbered}
+*2026-04-10*
+
+Built two components that work together for intelligent camera resource management:
+
+**Ball phase tracker** (iter 108): State machine classifying ball phase as
+CONTACT/ASCENDING/DESCENDING from EKF velocity and position estimates.
+Transitions are hysteresis-gated (vz > 0.5 m/s to enter ascending, return to
+contact when entering contact zone). Tracks per-env bounce count, peak height,
+and flight fraction for curriculum diagnostics.
+
+**Camera scheduling** (iter 109): Uses the phase tracker's `in_flight` mask to
+skip `SimBallDetector.detect()` during contact phase. Since the paddle anchor
+handles estimation when the ball is on the paddle, skipping detection during
+contact saves compute without degrading accuracy. Under typical balancing
+behavior (ball on paddle 70–98% of the time), this saves 70–98% of YOLO
+inference calls on real hardware.
+
+**Anchor ablation analysis tooling** (iter 107): Created
+`analyze_anchor_ablation.py` producing a 4-panel publication-quality figure:
+per-step error with contact shading, phase RMSE bar chart, anchor fire markers,
+and cumulative RMSE divergence. Ready for GPU data.
+
+413/413 CPU tests pass (21 phase tracker + 4 scheduling + 16 analysis).
+
+**Next**: GPU anchor ablation when slot opens (blocked since iter 106).
+
+---
+
 ## Iterations 103-106 — EKF hardening for sparse measurements + paddle anchor {.unnumbered}
 *2026-04-10*
 
