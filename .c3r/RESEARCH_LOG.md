@@ -2,6 +2,23 @@
 
 _(older entries auto-archived to RESEARCH_LOG_ARCHIVE.md at 2026-04-09 06:29 UTC)_
 
+## Iteration 94 — Parse script + Quarto update while GPU blocked  (2026-04-09T22:00:00Z)
+Hypothesis: While oracle eval is queued behind policy GPU training, create a log parser
+            and update Quarto with cross-eval findings from iters 91-93.
+Change:     1. Created parse_oracle_eval.py — extracts detection rate, RMSE, episode stats,
+               per-step ball height, camera config from demo_camera_ekf.py output.
+            2. Created test_parse_oracle_eval.py — 9 tests covering all fields + empty log.
+            3. Updated Quarto page (agents/perception.qmd) with iters 91-93 cross-branch
+               eval findings: d435i policy 1% det rate (balances), oracle TBD (queued).
+Command:    pytest scripts/perception/ → 327/327 passed (318 existing + 9 new).
+            Oracle eval still queued (PID 1204960, policy training holds GPU lock).
+Result:     Parser ready for oracle_eval.log. Quarto updated with cross-eval table.
+            GPU still locked — oracle eval hasn't started yet.
+Decision:   Next iter: check oracle_eval_DONE sentinel. If found, run
+            parse_oracle_eval.py on logs/perception/oracle_eval.log and report results.
+            If GPU still blocked, could work on trajectory npz analysis script or
+            investigate why d435i policy doesn't juggle in our env (iter 92 mystery).
+
 ## Iteration 93 — Oracle checkpoint eval: camera pipeline with stable juggler  (2026-04-09T21:15:00Z)
 Hypothesis: Oracle-trained pi1 (100% TO in cross-eval, stable juggling at target≥0.30m) will keep
             the ball frequently in-flight, enabling high detection rate and meaningful camera

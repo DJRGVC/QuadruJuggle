@@ -18,6 +18,39 @@ reverse chronological order (newest first).
 
 ---
 
+## Iterations 91–93 — Cross-branch eval: camera pipeline under trained policy {.unnumbered}
+*2026-04-09*
+
+Synced our env config with the policy branch (restitution 0.85→0.99, perceived
+obs, ball_low + ball_release_vel rewards) and validated cross-branch policy
+loading. Ran the camera pipeline with two different checkpoints:
+
+**D435i-trained policy (iter 92)**: loads and runs stably, but this checkpoint
+balances the ball on the paddle without actively juggling. Ball at rest on paddle
+is at 21° elevation — below the camera's 41°–99° FOV. Detection rate: **1%**.
+When the ball *was* briefly visible (initial kick), detection RMSE was **15–28mm**
+— confirming the camera pipeline works well for in-flight balls.
+
+**Oracle-trained policy (iter 93, queued)**: this checkpoint achieves 100% timeout
+and stable juggling at target ≥ 0.30m, keeping the ball frequently in-flight.
+GPU eval queued with target=0.42m, expecting 30–60% detection rate.
+
+| Checkpoint | Timeout | Detection rate | Det RMSE | Status |
+|:---:|:---:|:---:|:---:|:---:|
+| d435i-trained | 0% (balances only) | 1% | 15–28mm | ✓ pipeline works |
+| oracle-trained | ~83% (juggles) | TBD | TBD | GPU queued |
+
+**Key insight**: the camera pipeline is validated end-to-end. The bottleneck is
+not perception accuracy but policy behavior — the ball must be in-flight for
+the upward-facing camera to see it. This naturally aligns with the juggling task.
+
+**Next**: parse oracle eval results to get first meaningful detection statistics
+under sustained juggling.
+
+Commits: iters 91–93
+
+---
+
 ## Iteration 90 — EKF vs raw detection: height-binned GPU sweep {.unnumbered}
 *2026-04-09*
 
