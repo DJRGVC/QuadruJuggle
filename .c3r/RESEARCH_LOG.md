@@ -189,3 +189,24 @@ Decision:   Next iter: check if policy Stage G training completed. If new checkp
             available, run oracle comparison. If GPU still blocked, consider:
             (1) running oracle-trained Stage F checkpoint through d435i pipeline, or
             (2) preparing real-hardware integration plan items (D435i wrapper, YOLO training data).
+
+## Iteration 118 — Multi-target eval comparison tool  (2026-04-09T16:30:00Z)
+Hypothesis: A multi-target comparison tool that processes eval directories will
+            streamline oracle vs d435i analysis once GPU frees up.
+Change:     Created compare_multi_target.py — takes two eval directories (each with
+            target_X_XX/trajectory.npz subdirs), computes per-target metrics via
+            existing analyze_eval_trajectory.py, and produces a 4-panel dashboard
+            figure (det rate, EKF RMSE, flight fraction, peak height). Also supports
+            single-directory mode for quick summaries. Added 8 tests.
+Command:    pytest scripts/perception/test_compare_multi_target.py -x -q → 8/8 passed.
+            pytest scripts/perception/ -x -q → 457/457 passed (9.95s). No GPU needed.
+            Tested against existing Stage G data: eval_stage_g_d435i vs eval_stage_g_starve10.
+Result:     Tool works. Dashboard figure clearly shows per-target comparison.
+            Data confirms iter 116 finding: detection rates uniformly low (1-2%),
+            policy balances rather than juggles at all targets. Peak height identical
+            across targets (0.716m) — policy ignores target height command.
+            GPU still blocked by policy Stage G training (PID 1348279, ~20 min in).
+Decision:   Next iter: check if policy training completed. If new checkpoint available,
+            run full oracle vs d435i comparison using the new tool. If GPU still blocked,
+            consider updating Quarto with latest status or preparing the oracle eval
+            command so it can launch immediately when GPU frees.
