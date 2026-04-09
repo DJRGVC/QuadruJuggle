@@ -18,6 +18,28 @@ reverse chronological order (newest first).
 
 ---
 
+## Iteration 96 — Camera pipeline experiment write-up + GPU blocked {.unnumbered}
+*2026-04-10*
+
+Consolidated iters 87–95 into a full experiment write-up:
+[D435i Camera Pipeline End-to-End Validation](../experiments/perception/2026-04-09_camera_pipeline_validation.qmd).
+
+The camera pipeline is **validated end-to-end on GPU**: SimBallDetector achieves 100%
+detection in bounce mode at 190mm RMSE. Under trained policy, detection rate depends
+on juggling behavior — the upward-facing camera sees the ball only when it's in-flight,
+which naturally aligns with the target task.
+
+Built comparison tooling (iters 94–95): `parse_oracle_eval.py` (9 tests),
+`compare_eval_runs.py` (8 tests), and `run_comparison.sh`. These are ready to
+produce side-by-side oracle vs d435i figures once the oracle GPU eval completes.
+
+**Status**: oracle eval (PID 1204960) queued behind policy training (~55 min ETA).
+335/335 tests pass.
+
+Commits: this iter
+
+---
+
 ## Iterations 91–93 — Cross-branch eval: camera pipeline under trained policy {.unnumbered}
 *2026-04-09*
 

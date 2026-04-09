@@ -246,3 +246,24 @@ Decision:   Next iter: GPU validation — load policy agent's d435i-trained chec
             (logs/.../2026-04-08_22-51-56/model_best.pt via git show) through our camera
             pipeline. If episodes survive >50 steps, the sync worked and we can run
             proper EKF vs raw comparison under trained policy.
+
+## Iteration 96 — Camera pipeline experiment write-up while GPU blocked  (2026-04-10T03:30:00Z)
+Hypothesis: Consolidating iters 87-95 into a publishable experiment write-up will make
+            the camera pipeline validation results accessible to collaborators.
+Change:     1. Created experiments/perception/2026-04-09_camera_pipeline_validation.qmd —
+               full write-up covering bounce-mode demo, trained policy eval, and height-binned
+               EKF comparison with figures, tables, and discussion.
+            2. Updated agents/perception.qmd with iter 96 entry referencing the experiment.
+            3. Verified oracle eval PID 1204960 still queued (policy training ETA ~55 min).
+Command:    pytest scripts/perception/ → 335/335 passed.
+            Checked GPU: policy agent training at iter ~900/1500, 23 min elapsed, 55 min ETA.
+Result:     Experiment write-up complete. Oracle eval still GPU-blocked.
+            Key findings consolidated:
+            - SimBallDetector: 100% detection rate in bounce mode, 190mm RMSE (constant with height)
+            - Trained policy: 1% detection (ball at rest, out of FOV) — camera designed for in-flight
+            - EKF beats raw at 0-200mm; diverges above (bounce mode lacks real contacts)
+            - Contact-aware EKF expected to fix divergence under trained policy (NIS=3.3 in CPU tests)
+Decision:   Next iter: check oracle_eval_DONE sentinel. If oracle eval ran, parse results
+            with parse_oracle_eval.py and run_comparison.sh to generate comparison figure.
+            If still blocked, could investigate adding a secondary log parser for the
+            iter 89/92 trained-policy demo logs to extract more detailed per-step statistics.
