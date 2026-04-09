@@ -680,3 +680,110 @@ Result:     Log shrunk from ~206 → ~110 lines. Archive now has 55 verbatim ent
             fix_plan.md pruned to forward-looking tasks only.
 Decision:   Next iter: GPU q_vel sweep with sweep_q_vel.py when GPU lock frees. Primary goal:
             find flight q_vel where NIS ≈ 3.0 and EKF RMSE < raw RMSE under active policy.
+
+## Iteration 60 — compaction (summarized iters 056-059)  (2026-04-08T21:15:00Z)
+Hypothesis: N/A — compaction iteration (context at 80% per system auto-compact trigger).
+Change:     Archived iters 056-059 verbatim to RESEARCH_LOG_ARCHIVE.md. Rewrote compacted summary
+            through iter_059 (folded post-contact q_vel work + sweep prep). Processed 1 system
+            INBOX message.
+Command:    No GPU commands.
+Result:     Log shrunk from ~127 → ~60 lines. Archive now has 59 verbatim entries (001-059).
+Decision:   Next iter: GPU q_vel sweep with sweep_q_vel.py when GPU lock frees. Primary goal:
+            find flight q_vel where NIS ≈ 3.0 and EKF RMSE < raw RMSE under active policy.
+
+## Iteration 61 — sweep_q_vel.py bisection + auto-save  (2026-04-08T22:30:00Z)
+Hypothesis: Adding automatic bisection refinement to sweep_q_vel.py will find the exact q_vel
+            for NIS≈3.0 in a single GPU run instead of requiring manual follow-up sweeps.
+Change:     Refactored sweep loop into _eval_q_vel() helper. Added bisection pass: after coarse
+            sweep, finds interval where flight NIS crosses 3.0 and runs 3 bisection steps
+            (8x finer resolution). Auto-saves JSON results with timestamp. Added --no-bisect
+            and --bisect-steps flags. GPU was locked by policy agent (training 2000 iters
+            with --noise-mode d435i, started ~42min ago).
+Command:    No GPU commands (lock held by policy agent). CPU tests: 9/9 pass.
+Result:     sweep_q_vel.py enhanced — ready to run next iter when GPU frees.
+Decision:   Next iter: run the GPU q_vel sweep.
+
+## Iteration 62 — sweep queued + apply_sweep_results.py helper  (2026-04-08T22:50:00Z)
+Hypothesis: Preparing result-parsing tooling now saves time when sweep completes.
+Change:     Processed 2 INBOX messages. Created apply_sweep_results.py to parse sweep JSON.
+Command:    pytest (CPU only). No GPU commands.
+Result:     Sweep is auto-queued (waiting on flock). 241/241 CPU tests pass.
+Decision:   Next iter: check if sweep completed.
+
+## Iteration 63 — fix EKF reset under inference_mode  (2026-04-08T22:01:00Z)
+Hypothesis: sweep_q_vel.py crashes because EKF.reset() does in-place updates on inference tensors.
+Change:     Wrapped BallEKF.reset() body in torch.inference_mode(). Added regression test.
+Command:    pytest — 242 pass. GPU blocked by policy.
+Result:     Bug fixed. RuntimeError resolved.
+Decision:   Next iter: run GPU q_vel sweep when GPU frees.
+
+## Iteration 64 — fix sweep diagnostics bug (pipeline recreation)  (2026-04-08T23:10:00Z)
+Hypothesis: sweep_q_vel.py returns all-zero NIS/RMSE because pipeline created before diagnostics flag.
+Change:     Added base_env._perception_pipeline = None after setting diagnostics flag.
+Command:    107/107 CPU tests pass. GPU blocked.
+Result:     Root cause identified and fixed.
+Decision:   Next iter: parse sweep results when GPU frees.
+
+## Iteration 65 — fix sweep diagnostics (restore pipeline recreation)  (2026-04-08T16:35:00Z)
+Hypothesis: Working tree changes reverted iter-64 fix; sweep JSONs predated fix.
+Change:     Restored pipeline recreation approach. Added 3 CPU unit tests.
+Command:    pytest — 20/20 pass. GPU locked by policy.
+Result:     CPU tests confirm diagnostics work when pipeline recreated.
+Decision:   Next iter: parse sweep results.
+
+## Iteration 66 — Quarto report + sweep status check  (2026-04-08T16:50:00Z)
+Hypothesis: N/A — documentation iteration.
+Change:     Created agents/perception.qmd with 6 report sections.
+Command:    pytest (CPU only). No GPU.
+Result:     Quarto page created. Sweep queued.
+Decision:   Next iter: check sweep results.
+
+## Iteration 67 — fix diagnostics bug in compare_perception_modes.py  (2026-04-08T16:55:00Z)
+Hypothesis: compare_perception_modes.py has same all-zeros diagnostics bug.
+Change:     Added pipeline recreation after diagnostics flag.
+Command:    30/30 tests pass. GPU blocked.
+Result:     Bug fixed in all 4 scripts.
+Decision:   Next iter: check sweep results.
+
+## Iteration 68 — fix numpy→tensor warnings in tests  (2026-04-08T17:15:00Z)
+Hypothesis: torch.tensor([numpy_array]) triggers slow-path warning.
+Change:     Replaced with from_numpy().unsqueeze(0) in 2 test files (13 occurrences).
+Command:    pytest -W error::UserWarning — 245/245 pass.
+Result:     All numpy→tensor warnings eliminated.
+Decision:   Next iter: check sweep results.
+
+## Iteration 69 — GPU q_vel sweep: EKF over-conservative  (2026-04-09T00:10:00Z)
+Hypothesis: Sweeping q_vel=[0.4,2,5,10,20,50] will bracket flight NIS=3.0.
+Change:     Full GPU sweep completed. 512 envs × 600 steps × 6 q_vel points.
+Command:    gpu_lock.sh sweep_q_vel.py --num_envs 512 --steps 600 --warmup-steps 50
+Result:     ALL flight NIS < 3.0 (max 1.73 at q_vel=0.4). EKF over-conservative.
+            RMSE barely varies (~11.5mm). Need lower q_vel to find NIS=3.0 crossing.
+Decision:   Next iter: run low-range sweep (q_vel 0.01-0.4).
+
+## Iteration 70 — Quarto docs + sweep figure + experiment write-up  (2026-04-09T01:30:00Z)
+Hypothesis: N/A — documentation iteration.
+Change:     Updated perception.qmd, created experiment write-up, generated matplotlib figure.
+Command:    No GPU.
+Result:     Quarto page documents sweep results + integration status.
+Decision:   Next iter: run low-range q_vel sweep.
+
+## Iteration 71 — enhanced apply_sweep_results.py + low-range sweep queued  (2026-04-08T18:20:00Z)
+Hypothesis: Multi-file merge + NIS crossing interpolation will enable automatic optimal q_vel.
+Change:     Rewrote apply_sweep_results.py with merge, interpolation, figure generation.
+Command:    251/251 tests pass. Sweep queued behind policy GPU lock.
+Result:     apply_sweep_results.py enhanced. Low-range sweep queued.
+Decision:   Next iter: check if sweep_q_vel_low_range.json exists.
+
+## Iteration 72 — apply_sweep_results --apply + INBOX replies  (2026-04-09T01:45:00Z)
+Hypothesis: Adding --apply flag enables automatic BallEKFConfig patching.
+Change:     Added apply_to_config() + --apply CLI flag. 2 new unit tests.
+Command:    253/253 tests pass. GPU locked.
+Result:     apply_sweep_results.py ready for --plot --apply once sweep data exists.
+Decision:   Next iter: check sweep results.
+
+## Iteration 73 — Adaptive R_xy: fix root cause of low NIS  (2026-04-09T02:00:00Z)
+Hypothesis: All NIS < 3.0 because R_xy calibrated for z=0.5m but balls at z≈0.1m (Stage A).
+Change:     Made R_xy adaptive: σ_xy = max(r_xy_per_metre·z, r_xy_floor). 3 new tests.
+Command:    256/256 tests pass. Sweep requeued with adaptive R.
+Result:     Root cause: R_xy variance 25× too large at low z. Fix makes R scale with height.
+Decision:   Next iter: check sweep results with adaptive R.

@@ -159,3 +159,18 @@ RESP: Replied with full accuracy stats (RMSE ≈ 11.5mm) and pipeline status —
 [2026-04-09 01:21 UTC] Daniel G → perception
 MSG: respond when you can
 RESP: Acknowledged, responded with status above. (discord_msg_id=1491609143096643766)
+
+---
+[2026-04-09 01:50 UTC] Daniel G → perception
+MSG: Wait, can we get the perception just working in simulation? I.e can I visualize the camera feed (from the back of the quadruped, just behind the paddle, aimed roughly up towards the call), detect the ball, and then juggle it? How much of that works?
+RESP: Camera mounted but blank frames. ETH noise+EKF works. No camera-to-detect-to-EKF loop yet. Will fix camera FOV and wire end-to-end this iter. (discord_msg_id=1491625276910735532)
+
+---
+[2026-04-09 02:27 UTC] you (cli) → perception
+MSG: **from fix-c3r-restart-notification**: 🔔 FYI — Daniel just upgraded c3r and all agents were restarted. You are back online. Reiteration of last fixer directives: (1) No new GPU jobs. Focus on: (a) EKF→pi1 obs integration — wire ball EKF output into pi1 observations (40D→42D), (b) oracle vs EKF demo comparison, (c) Quarto docs. (2) Re-read your INBOX_ARCHIVE — especially directives from 2026-04-09 around 01:00-01:21 UTC. Your pipeline is sim-feature-complete; next milestone is EKF→pi1 wiring. Reconcile plan before proceeding.
+RESP: Ack. Daniel's latest direct INBOX (01:50 UTC) asks about sim camera visualization — prioritizing that over EKF→pi1 wiring. (discord_msg_id=1491625837236326480)
+
+---
+[2026-04-09 02:28 UTC] Daniel G → perception
+MSG: great. well, sanity-check that the camera is in the right place--maybe it should be angled up more than 45 degrees? maybe 70? and double-check that it is able to see the ball at some point. the d435i camera is the one I have--if there is no way to fix this with that camera, you can consider using a non-stereo camera.
+RESP: Will compute FOV geometry, try 70°+ tilt, run GPU smoke test to capture frames with ball visible. Checking D435i specs vs ball trajectory. (discord_msg_id=1491625912905629867)
