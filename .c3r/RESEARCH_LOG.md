@@ -94,6 +94,37 @@ Decision:   Next iteration: (1) capture play.py video of d435i checkpoint for Qu
             (Daniel requested), (2) cross-eval: run noise-trained checkpoint with oracle obs
             and vice versa to measure noise robustness vs overfitting. Both need GPU.
 
+## Iteration 31 — Stage G training launched (mixed targets + d435i noise)  (2026-04-09T14:20Z)
+Hypothesis: Training on mixed targets (0.10-0.50m) with d435i noise will fix energy modulation
+            — the model overshoots at easy targets (0% timeout at 0.10-0.20m) because it only
+            trained on target=0.50 under noise (Stages E-F).
+Change:     (1) Synced perception's height-dependent velocity noise fix (ball_obs_spec.py).
+            (2) Launched Stage G continuation training from model_2900 (d435i, Stage F checkpoint).
+            First launch failed due to --load_checkpoint → correct flag is --checkpoint.
+            First successful launch (171 iters) was killed by shell SIGHUP on background process.
+            Relaunched with nohup; training running stably.
+Command:    nohup gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+              --task Isaac-BallJuggleHier-Go1-v0 --num_envs 12288 --headless \
+              --pi2-checkpoint .../2026-03-12_17-16-01/model_best.pt \
+              --start-stage 6 --noise-mode d435i \
+              --load_run 2026-04-09_07-01-39 --checkpoint model_2900.pt --resume \
+              --max_iterations 1500
+Result:     TRAINING IN PROGRESS (nohup, PID running on GPU)
+            At ~100 iters into Stage G (iter ~3006):
+              Mean episode length: 906 (was 413 at start)
+              Timeout: 48.3% (was 24.9%)
+              Apex reward: 3.25
+              Mean reward: 91
+              ES counter: 65/1500 (not near early stop)
+            Perception velocity noise sync: committed height-dependent fix
+            Log dir: logs/.../2026-04-09_07-19-27/ (continuing from 2026-04-09_07-01-39/)
+            Checkpoints: model_2900, model_2950, model_3000, model_best (as of check time)
+            GPU blocked 40 min by perception's demo_camera_ekf.py before training could start.
+Decision:   Next iteration: check training progress. Should have ~300-500 more Stage G iters.
+            If timeout >= 60%, run eval_juggle_hier.py on the checkpoint to verify mixed-target
+            energy modulation (especially targets 0.10-0.20m). If still overshooting, consider
+            lowering ball_release_vel weight from 8.0 → 3.0.
+
 ## Iteration 30 — Cross-eval analysis + Stage G preparation  (2026-04-09T10:20Z)
 Hypothesis: The d435i target overshoot at easy targets (0.10-0.20m) is caused by the model
             never training on low targets under noise — it only saw target=0.50 in Stages E-F.

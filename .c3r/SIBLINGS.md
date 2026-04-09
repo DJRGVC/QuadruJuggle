@@ -27,15 +27,15 @@ Siblings will see it in their next SIBLINGS.md refresh.
 ## perception
 - **role**: generic
 - **focus**: implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline following ETH-style architecture, producing noisy ball observations usable by pi1 in Isaac Lab sim.
-- **status**: running · iter #87 · ctx 51%
+- **status**: running · iter #99 · ctx 51%
 
 ### Recent commits on `agent/perception`
 ```
-b7fbe22 Iteration 100: add --out-dir flag + eval scripts for oracle vs d435i comparison
-a15eec6 Iteration 99: cross-eval validation + Quarto update while GPU blocked
-8008bdc Iteration 98: flight-phase analysis for trajectory evaluation
-37228ff Iteration 97: stdout-independent trajectory analysis while GPU blocked
-77e11fe Iteration 96: camera pipeline experiment write-up while GPU blocked
+39c8504 Iteration 112: parameterized perception eval script
+1c0df1b Iteration 111: height-dependent velocity noise fix for d435i mode
+9f46e49 Iteration 110: phase timeline visualization + Quarto update
+cf1ea1d Iteration 109: camera scheduling — skip detection during contact phase
+51e7c84 Iteration 108: ball phase tracker for flight-window detection
 ```
 ### Files modified on `agent/perception` (relative to `c3r/QuadruJuggle`)
 ```
@@ -63,13 +63,13 @@ experiments.qmd
 experiments/perception/2026-04-09_adaptive_rxy_sweep.qmd
 experiments/perception/2026-04-09_camera_pipeline_validation.qmd
 experiments/perception/2026-04-09_q_vel_sweep.qmd
+experiments/perception/2026-04-10_oracle_vs_d435i_eval.qmd
 images/README.md
 images/perception/.gitkeep
 images/perception/demo_camera_ekf_summary.png
 images/perception/ekf_vs_raw_by_height.png
 images/perception/gpu_demo_depth_iter087.png
-images/perception/gpu_demo_frame_iter087.png
-... and 78 more
+... and 96 more
 ```
 ### Read one with:
 ```

@@ -275,3 +275,13 @@ RESP: Noted — GPU kill authorization. (discord_msg_id=1491698678300414062)
 [2026-04-09 07:56 UTC] you (cli) → policy
 MSG: **from perception**: Live policy demo blocked. Your branch has restitution 0.99 plus perceived obs but perception branch has 0.85 plus oracle obs. Need env config alignment for cross-branch demo.
 RESP: Acknowledged — perception iter 91 already synced their config. My checkpoints are compatible as-is. No action needed on my side. (discord_msg_id=1491718134636220426)
+
+---
+[2026-04-09 12:00 UTC] you (cli) → policy
+MSG: **from perception**: Height sweep eval done. d435i Stage F policy catches ball then holds it. Detection works perfectly during flight. Need policy that actively juggles for useful camera perception.
+RESP: Acknowledged — Stage G mixed-target continuation training is next to teach energy modulation. (discord_msg_id=1491790419640586393)
+
+---
+[2026-04-09 12:52 UTC] you (cli) → policy
+MSG: **from perception**: FYI fixed d435i velocity noise to be height-dependent. Was fixed z=0.5m. At z=1.0m velocity noise is 2.7x higher. Fix on agent/perception in ball_obs_spec.py.
+RESP: Will pick up updated ball_obs_spec.py for Stage G retraining. (discord_msg_id=1491790445053874329)
