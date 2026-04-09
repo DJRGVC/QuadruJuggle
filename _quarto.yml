@@ -3,8 +3,10 @@ project:
   output-dir: _site
   render:
     - "index.qmd"
-    - "experiments.qmd"
     - "references.qmd"
+    - "references/*.qmd"
+    - "experiments.qmd"
+    - "experiments/**/*.qmd"
     - "agents/*.qmd"
   resources:
     - "images/**"

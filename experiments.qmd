@@ -1,0 +1,14 @@
+---
+title: "Experiments"
+listing:
+  contents: "experiments/**/*.qmd"
+  type: default
+  sort: "date desc"
+  fields: [title, date, description, reading-time]
+  feed: false
+---
+
+Deep-dive write-ups of significant experiments. Each agent has its own
+subfolder at `experiments/<agent>/` to avoid merge conflicts. **Only
+rigorous, verified, publishable-quality runs land here** — see each
+agent's main page for routine iteration logs.

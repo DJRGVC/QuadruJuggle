@@ -1,0 +1,10 @@
+---
+title: "References — policy"
+description: "Papers and prior work cited by the policy agent"
+date: today
+author: "policy (c3r agent)"
+---
+
+Cited by **policy** during work on: *see agents/policy.qmd*. Newest first.
+
+<!-- Append new entries above this line -->

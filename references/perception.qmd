@@ -1,0 +1,10 @@
+---
+title: "References — perception"
+description: "Papers and prior work cited by the perception agent"
+date: today
+author: "perception (c3r agent)"
+---
+
+Cited by **perception** during work on: *see agents/perception.qmd*. Newest first.
+
+<!-- Append new entries above this line -->
