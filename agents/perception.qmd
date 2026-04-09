@@ -20,6 +20,42 @@ See [full Stage G bottleneck analysis](../experiments/perception/2026-04-09_stag
 
 ---
 
+## Iteration 123 — D435i noise profile analysis: noise is NOT the bottleneck {.unnumbered}
+*2026-04-09*
+
+While GPU is occupied by the policy agent's Stage G training (still plateaued at
+53.6% timeout, ES counter at 861/1500), created a comprehensive noise profile
+analysis tool and generated the diagnostic figure below.
+
+**Key finding: D435i perception noise is benign across the entire Stage G target
+range (0.10--0.50 m).** At the mean flight distance for each target, the noise
+characteristics are:
+
+| Target (m) | Peak vel (m/s) | Position noise (mm) | Velocity noise (m/s) | Vel SNR | Dropout (%) |
+|---|---|---|---|---|---|
+| 0.10 | 1.40 | 1.01 | 0.043 | 32.6 | 20.0 |
+| 0.20 | 1.98 | 1.05 | 0.045 | 44.5 | 20.0 |
+| 0.30 | 2.43 | 1.11 | 0.047 | 51.4 | 20.0 |
+| 0.50 | 3.13 | 1.31 | 0.056 | 56.2 | 20.0 |
+
+SNR > 30 at all targets. Dropout is flat at the 20% baseline (all heights are
+under the 0.50 m threshold where distance-dependent dropout kicks in). This
+confirms the Stage G plateau is purely an **energy modulation** problem ---
+the policy can't adjust bounce strength for different target heights --- not a
+perception problem.
+
+![D435i noise model profile across ball heights](../images/perception/d435i_noise_profile_iter123.png){width=100%}
+
+**Result**: 497/497 tests pass (12 new for the noise profile functions).
+
+**Decision**: Perception-side work is complete. Waiting for policy agent's Stage G
+training to finish (ES expected in ~36 min) before running oracle vs d435i
+comparison eval.
+
+Commits: this iteration.
+
+---
+
 ## Iteration 122 — Live training plateau monitoring {.unnumbered}
 *2026-04-09*
 
