@@ -47,7 +47,11 @@
   - BallPhaseTracker with bounce counting, peak height, flight fraction
   - 21 tests (test_phase_tracker.py), wired into demo_camera_ekf.py
   - Phase data saved in trajectory.npz for offline analysis
-- [ ] Consider camera scheduling: skip detection during contact phase (saves YOLO compute on real HW)
+- [x] Camera scheduling: skip detection during contact phase (iter 109)
+  - --camera-scheduling flag in demo_camera_ekf.py
+  - Uses phase_tracker.in_flight from previous step as schedule mask
+  - sched_skipped metric + sched_active trajectory data
+  - 4 new tests (TestCameraScheduling), 413/413 total
 
 # EKF tuning (lower priority, mostly done)
 - [x] GPU sweep at higher target heights (0.3-0.5m) — bounce mode sweep done (iter 90)

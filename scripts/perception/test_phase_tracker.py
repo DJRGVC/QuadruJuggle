@@ -329,3 +329,68 @@ class TestCustomConfig:
         assert tracker.phase[0] == BallPhase.CONTACT
         # 0.56 > 0.55 → above flight threshold
         assert tracker.phase[1] == BallPhase.ASCENDING
+
+
+class TestCameraScheduling:
+    """Tests for using phase tracker as camera detection scheduler."""
+
+    def test_contact_phase_skips_detection(self, tracker):
+        """During contact, in_flight=False → schedule_mask=False → skip detection."""
+        # Initial state is CONTACT
+        assert not tracker.in_flight[0].item()
+        schedule_mask = tracker.in_flight
+        assert not schedule_mask[0].item()  # should skip
+
+    def test_flight_phase_enables_detection(self, tracker):
+        """During flight, in_flight=True → schedule_mask=True → run detection."""
+        # Launch ball into ascending phase
+        pos = torch.tensor([[0, 0, 0.55]] * 4)
+        vel = torch.tensor([[0, 0, 2.0]] * 4)
+        tracker.update(pos, vel, contact_z_threshold=0.50)
+
+        assert tracker.in_flight[0].item()
+        schedule_mask = tracker.in_flight
+        assert schedule_mask[0].item()  # should detect
+
+    def test_mixed_envs_scheduling(self, tracker):
+        """Different envs can have different schedule states simultaneously."""
+        # Env 0,1: launch into flight. Env 2,3: stay in contact.
+        pos = torch.tensor([
+            [0, 0, 0.55],  # above threshold + margin
+            [0, 0, 0.55],
+            [0, 0, 0.48],  # below threshold
+            [0, 0, 0.48],
+        ])
+        vel = torch.tensor([
+            [0, 0, 2.0],  # upward → ascending
+            [0, 0, 2.0],
+            [0, 0, 0.1],  # low vel → stays contact
+            [0, 0, 0.1],
+        ])
+        tracker.update(pos, vel, contact_z_threshold=0.50)
+
+        schedule_mask = tracker.in_flight
+        assert schedule_mask[0].item()  # flight → detect
+        assert schedule_mask[1].item()  # flight → detect
+        assert not schedule_mask[2].item()  # contact → skip
+        assert not schedule_mask[3].item()  # contact → skip
+
+    def test_schedule_transitions_on_landing(self, tracker):
+        """Schedule mask changes from True→False when ball lands."""
+        # Step 1: launch
+        pos = torch.tensor([[0, 0, 0.55]] * 4)
+        vel = torch.tensor([[0, 0, 2.0]] * 4)
+        tracker.update(pos, vel, contact_z_threshold=0.50)
+        assert tracker.in_flight[0].item()
+
+        # Step 2: apex (ascending → descending)
+        pos2 = torch.tensor([[0, 0, 0.80]] * 4)
+        vel2 = torch.tensor([[0, 0, -0.5]] * 4)
+        tracker.update(pos2, vel2, contact_z_threshold=0.50)
+        assert tracker.in_flight[0].item()  # still in flight (descending)
+
+        # Step 3: landing (descending → contact)
+        pos3 = torch.tensor([[0, 0, 0.49]] * 4)
+        vel3 = torch.tensor([[0, 0, -1.0]] * 4)
+        tracker.update(pos3, vel3, contact_z_threshold=0.50)
+        assert not tracker.in_flight[0].item()  # landed → no detection needed

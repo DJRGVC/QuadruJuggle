@@ -46,6 +46,9 @@ parser.add_argument("--no-camera-render", action="store_true", dest="no_camera_r
                     help="Disable camera rendering (for policy-only evaluation without perception).")
 parser.add_argument("--no-anchor", action="store_true", dest="no_anchor",
                     help="Disable paddle-anchor virtual measurement during contact phases.")
+parser.add_argument("--camera-scheduling", action="store_true", dest="camera_scheduling",
+                    help="Skip camera detection during contact phase (uses phase tracker from previous step). "
+                         "Saves compute when ball is on paddle and anchor handles estimation.")
 
 # Strip --pi2-checkpoint
 _pi2_checkpoint_path = None
@@ -253,10 +256,10 @@ def main():
 
     dt = 0.02  # 50 Hz policy rate
 
-    metrics = {"detected": 0, "missed": 0, "rmse_det": [], "rmse_ekf": [], "anchored": 0}
+    metrics = {"detected": 0, "missed": 0, "rmse_det": [], "rmse_ekf": [], "anchored": 0, "sched_skipped": 0}
     # Trajectory tracking for summary visualizations
     traj = {"gt": [], "ekf": [], "det": [], "det_steps": [], "steps": [],
-            "ball_h": [], "anchored_step": [], "phase": []}
+            "ball_h": [], "anchored_step": [], "phase": [], "sched_active": []}
 
     # Periodic impulse parameters for simulating juggling without a trained policy.
     # When the ball falls near the paddle, give it an upward kick.
@@ -330,6 +333,14 @@ def main():
         z_meas_all = torch.zeros(n_envs, 3)
         detected_all = torch.zeros(n_envs, dtype=torch.bool)
 
+        # Camera scheduling: use phase tracker state from previous step to decide
+        # which envs need detection. During contact, paddle anchor handles estimation.
+        use_scheduling = getattr(args_cli, "camera_scheduling", False)
+        if use_scheduling:
+            schedule_mask = phase_tracker.in_flight  # (N,) bool — True = need detection
+        else:
+            schedule_mask = torch.ones(n_envs, dtype=torch.bool)  # detect all
+
         if cam is not None:
             cam.update(dt=dt)
 
@@ -339,6 +350,11 @@ def main():
             cam_quat_w_ros_batch = cam.data.quat_w_ros.cpu().numpy()
 
             for ei in range(n_envs):
+                # Skip detection for envs in contact phase (anchor handles it)
+                if not schedule_mask[ei]:
+                    metrics["sched_skipped"] += 1
+                    continue
+
                 depth_ei = depth_batch[ei]
                 if depth_ei.ndim == 3:
                     depth_ei = depth_ei[..., 0]
@@ -390,6 +406,7 @@ def main():
         traj["ball_h"].append(ball_pos_w[2] - _PADDLE_Z_APPROX)
         traj["anchored_step"].append(1 if n_anchored > 0 else 0)
         traj["phase"].append(phase_tracker.phase[0].item())
+        traj["sched_active"].append(1 if schedule_mask[0] else 0)
 
         # Save annotated frame periodically (env 0 only)
         if cam is not None and step % args_cli.capture_interval == 0 and "rgb" in cam.data.output:
@@ -404,9 +421,13 @@ def main():
             det_rmse_recent = np.mean(metrics["rmse_det"][-10:]) if metrics["rmse_det"] else 0
             anchor_rate = metrics["anchored"] / max(1, (step + 1) * n_envs) * 100
             ep_info = f" episodes={total_episodes} TO={100*total_timeouts/max(1,total_episodes):.0f}%" if use_policy else ""
+            sched_info = ""
+            if metrics["sched_skipped"] > 0:
+                total_opps = (step + 1) * n_envs
+                sched_info = f" sched_skip={metrics['sched_skipped']}/{total_opps} ({metrics['sched_skipped']/max(1,total_opps)*100:.0f}%)"
             print(f"[demo] Step {step}: det_rate={det_rate:.0f}%, anchor_rate={anchor_rate:.0f}%, "
                   f"ball_h={ball_h_above_paddle:.3f}m, "
-                  f"det_rmse={det_rmse_recent:.4f}m, ekf_rmse={ekf_rmse_recent:.4f}m{ep_info}",
+                  f"det_rmse={det_rmse_recent:.4f}m, ekf_rmse={ekf_rmse_recent:.4f}m{sched_info}{ep_info}",
                   flush=True)
 
     # Summary
@@ -438,6 +459,13 @@ def main():
           f"flight={phase_stats['mean_flight_fraction']*100:.1f}%, "
           f"peak={phase_stats['mean_peak_height']:.3f}m")
 
+    # Camera scheduling summary
+    if metrics["sched_skipped"] > 0:
+        total_det_opportunities = (metrics["detected"] + metrics["missed"]) * n_envs + metrics["sched_skipped"]
+        skip_pct = metrics["sched_skipped"] / max(1, total_det_opportunities) * 100
+        print(f"  Camera scheduling: skipped {metrics['sched_skipped']}/{total_det_opportunities} "
+              f"detections ({skip_pct:.1f}% saved)")
+
     # Save raw trajectory data for offline analysis (EKF vs raw sweep etc.)
     _save_trajectory_npz(traj, metrics, out_dir, dt)
 
@@ -465,6 +493,7 @@ def _save_trajectory_npz(traj, metrics, out_dir, dt):
         ball_h = np.array(traj.get("ball_h", []))
         anchored_step = np.array(traj.get("anchored_step", []))
         phase = np.array(traj.get("phase", []))
+        sched_active = np.array(traj.get("sched_active", []))
 
         path = os.path.join(out_dir, "trajectory.npz")
         np.savez_compressed(
@@ -473,7 +502,7 @@ def _save_trajectory_npz(traj, metrics, out_dir, dt):
             det=det, det_steps=det_steps,
             rmse_ekf=rmse_ekf, rmse_det=rmse_det,
             ball_h=ball_h, anchored_step=anchored_step,
-            phase=phase,
+            phase=phase, sched_active=sched_active,
         )
         print(f"[demo] Trajectory data saved: {path} ({gt.shape[0]} steps, {det.shape[0]} detections)")
     except Exception as e:

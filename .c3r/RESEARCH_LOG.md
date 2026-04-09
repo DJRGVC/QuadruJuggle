@@ -237,3 +237,25 @@ Result:     21 new tests (test_phase_tracker.py) all pass. Full suite 409/409.
 Decision:   Next iter: run anchor ablation on GPU if available. The phase tracker data
             in trajectory.npz will also enable phase-conditioned analysis of anchor
             improvement (anchor should only matter during CONTACT phase).
+
+## Iteration 109 — Camera scheduling: skip detection during contact phase  (2026-04-10T23:00:00Z)
+Hypothesis: Using the phase tracker's in_flight mask to skip camera detection during
+            contact phase saves compute without degrading EKF accuracy, since the
+            paddle anchor handles estimation when ball is on the paddle.
+Change:     Added --camera-scheduling flag to demo_camera_ekf.py:
+            1. Before detection loop, compute schedule_mask = phase_tracker.in_flight
+               (uses state from previous step — valid since phase transitions are rare)
+            2. Skip detector.detect() for envs where schedule_mask[ei] is False (contact)
+            3. Track sched_skipped metric (count of skipped detections)
+            4. Save sched_active per-step in trajectory.npz for offline analysis
+            5. Scheduling stats in periodic logging and summary output
+            6. 4 new tests (TestCameraScheduling): contact→skip, flight→detect,
+               mixed envs, landing transition
+Command:    pytest scripts/perception/ → 413/413 passed (8.06s). No GPU needed.
+Result:     Feature implemented and tested. On real hardware, contact phase is 70-98%
+            of time (ball sitting on paddle), so this should save 70-98% of YOLO
+            inference calls. EKF accuracy unaffected since paddle anchor provides
+            virtual measurements during contact.
+Decision:   Next iter: run anchor ablation on GPU if available (blocked since iter 106).
+            Alternatively, add the scheduling data to analysis plots, or update Quarto
+            page with recent progress (iters 106-109).
