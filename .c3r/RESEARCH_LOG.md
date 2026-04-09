@@ -79,3 +79,20 @@ Result:     Log shrunk from 310 → ~80 lines. Archive now has 73 verbatim entri
 Decision:   Next iter: compute FOV geometry for D435i at 70° tilt. Update camera mount in
             BallJuggleHierSceneCfg_DEBUG. Run GPU smoke test to capture frames with ball visible.
             D435i specs: 86° HFOV, 58° VFOV, min depth 0.1m.
+
+## Iteration 76 — Camera FOV fix: 45° → 75° tilt  (2026-04-08T19:35:00Z)
+Hypothesis: Blank camera frames caused by ball being below camera FOV at 45° tilt;
+            75° tilt + adjusted position will bring airborne ball into view.
+Change:     Updated BallJuggleHierSceneCfg_DEBUG camera mount:
+            - Tilt: 45° → 75° (quaternion (0.9239,-0.3827,0,0) → (0.7934,-0.6088,0,0))
+            - Position: (-0.05, 0, 0.08) → (-0.08, 0, 0.06) for better geometry
+            - FOV now covers 46°-104° above horizontal (was 16°-74°)
+            Updated debug_d435i_capture.py: applies 2 m/s upward ball velocity before
+            capture so ball is airborne (at ~0.2m elevation ≈ 60°, centred in new FOV).
+Command:    Syntax checks pass. 104/104 CPU tests pass. GPU smoke test blocked by
+            policy agent training (ETA ~60 min from 19:19 UTC).
+Result:     Code changes committed. GPU validation deferred — policy holds gpu_lock.
+            FOV geometry: ball at rest (11° elev) → OUT of FOV (expected for juggling);
+            ball at 0.2m apex (60°) → IN; ball at 0.5m (80°) → IN; ball at 1.0m (85°) → IN.
+Decision:   Next iter: run GPU debug capture when lock frees. If ball visible in frame,
+            proceed to Hough circle detector integration (camera→detect→EKF pipeline).

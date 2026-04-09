@@ -5,8 +5,9 @@
 # GAP: Sim camera visualization NOT working. No camera→detect→EKF loop.
 
 # PRIORITY: Sim camera visualization (Daniel's direct request 2026-04-09)
-- [ ] Fix D435i camera mount — 45° tilt too shallow, try 70°+. Verify ball in FOV.
-- [ ] GPU smoke test: capture RGB+depth frames with ball visible
+- [x] Fix D435i camera mount — 45° → 75° tilt, moved pos from (-0.05,0,0.08) to (-0.08,0,0.06)
+- [ ] GPU smoke test: capture RGB+depth frames with ball visible (blocked by policy training)
+      Debug script updated: applies 2m/s upward ball velocity before capture.
 - [ ] Simple sim ball detector (from camera depth/RGB) — Hough circle or threshold
 - [ ] Wire camera→detect→EKF pipeline for visual demo
 - [ ] Demo script Daniel can run: camera feed + ball detection + EKF overlay

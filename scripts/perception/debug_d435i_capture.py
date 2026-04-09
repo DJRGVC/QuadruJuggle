@@ -103,11 +103,14 @@ def main():
     print("[debug_capture] Env reset complete.", flush=True)
     sys.stdout.flush()
 
-    # Step the environment to let the ball drop onto the paddle
+    # Step the environment to let the ball drop, then give it upward velocity
+    # so it's in the air (visible to the 75° tilted camera) during capture.
     print(f"[debug_capture] Stepping {args_cli.steps} steps to let ball settle...", flush=True)
     unwrapped = env.unwrapped
     print(f"[debug_capture] Action space: {unwrapped.action_space.shape}, device: {unwrapped.device}", flush=True)
-    for i in range(args_cli.steps):
+
+    settle_steps = min(args_cli.steps, 50)
+    for i in range(settle_steps):
         try:
             action = torch.zeros(unwrapped.action_space.shape, device=unwrapped.device)
             obs, _, _, _, _ = env.step(action)
@@ -117,6 +120,30 @@ def main():
             print(f"[debug_capture] ERROR at step {i}: {e}", flush=True)
             import traceback; traceback.print_exc()
             break
+
+    # Give ball upward velocity so it's airborne during capture
+    try:
+        ball = unwrapped.scene["ball"]
+        ball_vel = ball.data.root_vel_w.clone()  # (N, 6): [vx, vy, vz, wx, wy, wz]
+        ball_vel[:, 2] = 2.0  # 2 m/s upward — reaches ~0.2 m apex in ~0.1 s
+        ball.write_root_velocity_to_sim(ball_vel)
+        print("[debug_capture] Applied 2 m/s upward velocity to ball.", flush=True)
+    except Exception as e:
+        print(f"[debug_capture] WARNING: could not set ball velocity: {e}", flush=True)
+
+    # Step a few more times to let ball rise into camera FOV
+    capture_delay = max(args_cli.steps - settle_steps, 10)
+    for i in range(capture_delay):
+        action = torch.zeros(unwrapped.action_space.shape, device=unwrapped.device)
+        obs, _, _, _, _ = env.step(action)
+
+    # Report ball position for debugging
+    try:
+        ball = unwrapped.scene["ball"]
+        ball_pos_w = ball.data.root_pos_w[0].cpu().numpy()
+        print(f"[debug_capture] Ball world pos at capture: ({ball_pos_w[0]:.3f}, {ball_pos_w[1]:.3f}, {ball_pos_w[2]:.3f})", flush=True)
+    except Exception:
+        pass
 
     # Access the TiledCamera sensor
     print("[debug_capture] Accessing camera sensor...", flush=True)

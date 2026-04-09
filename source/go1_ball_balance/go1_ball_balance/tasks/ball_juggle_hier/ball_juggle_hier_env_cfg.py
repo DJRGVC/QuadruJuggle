@@ -121,8 +121,16 @@ class BallJuggleHierSceneCfg(InteractiveSceneCfg):
 class BallJuggleHierSceneCfg_DEBUG(BallJuggleHierSceneCfg):
     """Scene with a simulated D435i camera for debug rendering (≤16 envs only).
 
-    Camera is mounted behind the paddle, tilted 45° upward to cover
-    0 m to >1 m ball apex range.  86° HFOV matches D435i depth module.
+    Camera is mounted behind the paddle, tilted 75° upward to track the ball
+    during flight (0.2 m to >1 m above paddle).  86° HFOV matches D435i depth
+    module.  At 75° tilt the VFOV (58°) covers 46°–104° above horizontal;
+    the ball must be airborne (~0.15 m+) to appear in frame.
+
+    Geometry (camera at -8 cm X, +6 cm Z from trunk root):
+      Ball at 0.2 m above paddle → elevation ≈ 60° → centred in FOV
+      Ball at 0.5 m above paddle → elevation ≈ 80° → in FOV
+      Ball at 1.0 m above paddle → elevation ≈ 85° → in FOV
+      Ball at rest on paddle     → elevation ≈ 17° → below FOV (expected)
     """
 
     d435i = TiledCameraCfg(
@@ -137,10 +145,11 @@ class BallJuggleHierSceneCfg_DEBUG(BallJuggleHierSceneCfg):
         width=640,
         height=480,
         offset=TiledCameraCfg.OffsetCfg(
-            # body-frame: 5 cm behind paddle centre, 8 cm above trunk root
-            pos=(-0.05, 0.0, 0.08),
-            # 45° pitch upward in ROS convention (+Z fwd, -Y up)
-            rot=(0.9239, -0.3827, 0.0, 0.0),
+            # body-frame: 8 cm behind paddle centre, 6 cm above trunk root
+            pos=(-0.08, 0.0, 0.06),
+            # 75° pitch upward in ROS convention (+Z fwd, -Y up)
+            # q = (cos(-75°/2), sin(-75°/2), 0, 0) = (0.7934, -0.6088, 0, 0)
+            rot=(0.7934, -0.6088, 0.0, 0.0),
             convention="ros",
         ),
     )
