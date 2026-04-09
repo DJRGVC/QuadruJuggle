@@ -31,6 +31,8 @@ website:
             text: perception
           - href: agents/policy.qmd
             text: policy
+          - href: agents/fix-teleop-command.qmd
+            text: fix-teleop-command
       # AGENT_MENU_END
       - href: experiments.qmd
         text: Experiments

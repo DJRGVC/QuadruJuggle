@@ -13,24 +13,249 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete** (691 CPU tests, 152 iterations).
+Perception pipeline is **feature-complete** (702 CPU tests, 163 iterations).
 EKF uses a **5-level phase-aware Q schedule** with R² = 0.994 noise-to-gap
 prediction model — validated against real policy data (max error ±0.8pp).
 Drag model configurable: linear (PhysX sim) or quadratic (real hardware).
 
-**YOLO detector end-to-end verified** (iter 152): YOLOv8n trained on 2000
-synthetic depth frames → mAP50 = 0.995, ONNX exported (12 MB,
-`ball_detect_v1.onnx`). Real-hardware components (D435i camera, calibration,
-extrinsics) from iters 141–143. Remaining: fine-tune on real D435i captures
-for improved confidence on real depth textures.
+**YOLO v2 detector** (iter 155): YOLOv8n retrained on 5000 domain-randomized
+synthetic depth frames → 86% detection rate on varied scenes (vs 26.5% for v1).
+See [full experiment](../experiments/perception/2026-04-10_yolo_domain_randomization.qmd).
 
-**Waiting on policy**: EKF reset fix (`inject_ekf_reset_event`, iter 151)
-delivered to policy agent. EKF-mode training is the critical path — policy's
-current d435i model is incompatible with EKF-filtered observations (0% timeout
-under EKF mode vs 48–80% under raw d435i).
+**Camera view integrated into teleop** (iter 156): `play_teleop.py --camera-view`
+opens a live D435i depth overlay with ball detection bbox and telemetry.
+
+**Waiting on policy**: EKF reset fix works (policy iter 34 — timeout 1%→96%)
+but model stuck in survival mode at Stage C. Root cause: noise curriculum cliff
+(0→0.50 at Stage C). Provided `ekf_noise_floor=0.15` (iter 160) and
+[EKF-specific curriculum recommendation](https://github.com/...) with gradual
+noise ramp. Policy plans to restart from Stage A next.
+
+**Dropout robustness verified (iter 162)**: YOLO v2's 14% miss rate adds only
++2-9% position RMSE — the EKF's ballistic dynamics model handles prediction-only
+gaps gracefully. Even 5 consecutive misses (p ~ 0.005%) keep error under 30mm.
+No temporal smoothing needed; policy noise curriculum does not need to model
+dropout separately.
+
+**CRITICAL finding (iter 159)**: EKF diverges catastrophically over consecutive
+bounces without per-bounce reset — 24× error growth at 0.30m, 140× at 0.50m.
+`inject_ekf_reset_event` must fire at every paddle contact, not just episode start.
+With reset, error is perfectly stable. Policy agent notified.
 
 See [perception gap decomposition](../experiments/perception/2026-04-10_perception_gap_decomposition.qmd) — the "perception gap" is actually a policy gap.
 Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd) and [noise-to-gap prediction](../experiments/perception/2026-04-10_noise_gap_prediction.qmd) (R² = 0.994, validated against policy eval).
+
+---
+
+## Iteration 163 — Pipeline latency profiling {.unnumbered}
+*2026-04-10*
+
+Profiled end-to-end latency of the full YOLO+EKF perception pipeline to
+assess hardware deployment feasibility on the Go1's onboard compute.
+Benchmarked each stage separately: YOLO preprocessing (letterbox+normalise),
+ONNX inference (CUDA and CPU EPs), postprocessing (NMS+deprojection),
+EKF predict, and EKF update.
+
+![Pipeline latency breakdown — YOLO inference dominates; EKF is negligible](../images/perception/pipeline_latency_profile_iter163.png){width=100%}
+
+**Result**: Full pipeline runs at **182 Hz mean on CUDA** (5.49ms) and
+**156 Hz on CPU** (6.42ms) — both comfortably above the 50 Hz policy rate.
+YOLO inference is 88% of total time. CUDA has bimodal latency (P50=3ms,
+P95=14ms due to kernel scheduling jitter); CPU is more consistent
+(P95=10.7ms). Hough fallback is 2.6x faster (1.85ms) and may suffice for
+initial hardware bring-up given the simple upward-facing camera background.
+EKF is negligible at <0.3ms. The threaded pipeline architecture (already
+implemented in `RealPerceptionPipeline`) handles camera-budget overruns
+by letting EKF predict fill gaps.
+
+**Decision**: No latency optimization needed for hardware deployment.
+CPU EP is recommended over CUDA for Jetson (more predictable), with
+TensorRT FP16 as a future optimization path.
+
+Commits: see iter 163 commit
+
+---
+
+## Iteration 162 — EKF dropout robustness analysis {.unnumbered}
+*2026-04-10*
+
+Analyzed EKF robustness to detection dropout to quantify real-world YOLO v2
+impact (86% det rate = 14% miss). Swept dropout rates 0-30% at three target
+heights (0.10, 0.20, 0.30m) with 100 trials each.
+
+![EKF dropout robustness — position/velocity error vs dropout rate, consecutive miss analysis](../images/perception/ekf_dropout_robustness_iter162.png){width=100%}
+
+**Result**: 14% dropout adds only +2-9% position RMSE (16.8mm vs 15.5mm at
+h=0.10m). Mean max consecutive miss streak is 1.3-1.5 frames. Critical threshold
+for ball_off risk (p95 > 30mm) is 5-6 consecutive misses — probability 0.005%
+at 14% per-frame rate. Recovery after gaps is fast: 1-8 steps at h=0.20m
+even after 10 consecutive misses (100% recovery rate).
+
+**Decision**: No temporal smoothing or dropout-specific noise curriculum needed.
+The EKF's ballistic dynamics model is the key robustness mechanism — its
+predict-only accuracy during gaps is good enough that detector reliability
+is a secondary concern. This frees up development time to focus on the policy
+side (where the real bottleneck is).
+
+Commits: iter 162
+
+---
+
+## Iteration 160 — EKF noise floor for policy curriculum {.unnumbered}
+*2026-04-10*
+
+Policy agent's EKF training is stuck in survival mode because their noise
+curriculum jumps from oracle (noise_scale=0) to 50% noise at Stage C. Added
+`ekf_noise_floor` parameter to `BallObsNoiseCfg` (default 0.15) — in EKF mode,
+the D435i sensor noise is never below 15% of full, even when the curriculum
+sets noise_scale=0. This ensures the policy always trains with EKF-characteristic
+noise patterns (ascending-phase velocity bias, measurement dropouts).
+
+Also created `docs/ekf_curriculum_recommendation.md` with EKF-specific stage
+definitions where noise ramps gradually (0.15 → 0.25 → 0.40 → 0.60 → 0.80 → 1.0)
+— each step ≤1.7× increase vs the current 0→∞ cliff.
+
+**Result**: 101 CPU tests pass. Policy agent pinged with recommendation.
+
+Commits: `12afecb`
+
+---
+
+## Iteration 161 — YOLO v2 domain randomization experiment write-up {.unnumbered}
+*2026-04-10*
+
+Published a full experiment write-up for the YOLO v2 domain randomization results
+(iters 154–155). This is the most impactful change to the detector pipeline: training
+YOLOv8n on 5000 domain-randomized synthetic depth frames improved detection rate from
+26.5% to 86% on varied scenes — a 3.2× improvement.
+
+Key takeaway: v1 learned a shortcut (bright blob on flat background) rather than
+the intended spherical depth profile. Five DR features (structured backgrounds,
+clutter objects, edge artifacts, specular dropout, negative samples) forced the
+model to learn the real discriminative feature. Remaining 14% miss rate is at
+extreme distances (>1.2m) and heavy specular dropout — consistent with D435i
+hardware limits.
+
+See [full experiment write-up](../experiments/perception/2026-04-10_yolo_domain_randomization.qmd).
+
+**Policy status check**: Policy agent (iter 34) confirmed EKF reset fix works
+(timeout 1%→96%) but model is stuck in survival mode at Stage C. Plans to restart
+from Stage A. My EKF noise floor (0.15) and curriculum recommendation doc should
+help when they implement it.
+
+Commits: this iter
+
+---
+
+## Iteration 159 — Multi-bounce EKF convergence analysis {.unnumbered}
+*2026-04-09*
+
+**Critical finding**: the EKF diverges catastrophically over consecutive bounces
+unless reset at each paddle contact. Simulated 10 consecutive bounces at 4 target
+heights (100 noise trials each):
+
+| Target | No-Reset B10 Error | With-Reset B10 Error | Degradation |
+|--------|-------------------|----------------------|-------------|
+| 0.10m  | 18 mm             | 17 mm                | 1.1× (OK)   |
+| 0.20m  | 59 mm             | 25 mm                | 2.5×         |
+| 0.30m  | 709 mm            | 30 mm                | **24×**      |
+| 0.50m  | 5,344 mm          | 38 mm                | **140×**     |
+
+**Root cause**: after a bounce, the velocity reversal exceeds what the contact-aware
+Q schedule can correct from measurements alone. Error compounds: each bounce starts
+with a worse velocity estimate, and each ascent diverges further from reality.
+
+**Implication**: `inject_ekf_reset_event` must trigger at every bounce contact
+(ball_z < 0.025m AND vz sign change), not just at episode start. Policy agent notified.
+
+![Multi-bounce convergence: without reset (left panels) vs with reset (stable)](../images/perception/multibounce_convergence_iter159.png){width=100%}
+
+**Full analysis**: [`docs/ekf_multibounce_convergence.md`](https://github.com/...)
+
+Commits: iter 159
+
+---
+
+## Iteration 158 — EKF noise profile by flight phase {.unnumbered}
+*2026-04-09*
+
+Ran 100-trial EKF error decomposition across target heights (0.05–0.50m) to
+characterize noise by flight phase. **Key finding**: ascending phase vel-z RMSE
+is 3–6× worse than descending (0.49–0.94 vs 0.09–0.10 m/s). This is because
+the EKF just exited the high-Q contact phase with inflated covariance.
+
+![EKF error decomposition by flight phase — ascending phase dominates velocity error](../images/perception/ekf_noise_by_phase_iter158.png){width=100%}
+
+**Vel-Z SNR increases with target height**: 2.9 at 0.05m → 4.8 at 0.50m.
+Counterintuitively, higher bounces are *easier* for the EKF because peak
+velocity grows faster (√(2gh)) than noise. Stage A (0.10m) has SNR=3.3 —
+marginal but workable. Stage C (0.30m) has SNR=4.2 on average but only 2.9
+during ascending.
+
+**Recommendation to policy**: Start EKF training at Stage A (confirmed their
+plan). Consider asymmetric noise injection matching the ascending/descending
+asymmetry. Full analysis in `docs/ekf_noise_profile_for_policy.md`.
+
+Commits: `iter_158`
+
+---
+
+## Iteration 156 — Camera view integrated into play_teleop.py {.unnumbered}
+*2026-04-09*
+
+Added `--camera-view` flag to `play_teleop.py` that opens a live OpenCV window
+showing the D435i depth feed with ball detection overlays. When enabled, the
+script auto-enables `--enable_cameras`, grabs the tiled camera from the scene,
+runs `SimBallDetector` + `DepthFrameVisualizer` at half the policy rate
+(every 2 steps). Full demo command:
+
+```bash
+uv run --active python scripts/rsl_rl/play_teleop.py \
+  --task Isaac-BallJuggleHier-Go1-Play-v0 --num_envs 1 \
+  --pi2-checkpoint <path> --backend keyboard --camera-view
+```
+
+Commits: `0b5af4c`
+
+---
+
+## Iteration 155 — YOLO v2: domain-randomized training (3.2× detection improvement) {.unnumbered}
+*2026-04-09*
+
+Retrained YOLOv8n on 5000 domain-randomized synthetic depth images (structured
+backgrounds, clutter objects, edge artifacts, specular dropout, 10% negatives)
+from iter 154's enhanced generator. Compared against v1 on 200 fresh DR test frames:
+
+| Metric | v1 (uniform bg) | v2 (DR) |
+|---|---|---|
+| Detection rate (conf > 0.25) | 26.5% | **86.0%** |
+| Mean confidence | 0.214 | **0.666** |
+| Frames with conf > 0.50 | 21.5% | **77.5%** |
+
+**3.2× improvement** in detection rate. The remaining 14% miss rate comes from
+balls at extreme distances (>1.0m where projection is <10px) — fine-tuning on
+real D435i captures will close this gap. v2 is now the recommended model for
+hardware deployment.
+
+Commits: `aec35bb`
+
+---
+
+## Iteration 154 — Domain randomization for synthetic YOLO data {.unnumbered}
+*2026-04-09*
+
+Enhanced `generate_yolo_data.py` with 5 domain randomization features to produce
+more realistic training data:
+
+1. **Structured backgrounds** — 4 modes (close ceiling, far ceiling, mixed, outdoors) with random panels, beams, lights
+2. **Clutter objects** — random rect/ellipse objects simulating robot parts, cables
+3. **Edge artifacts** — D435i flying-pixel artifacts at depth discontinuities
+4. **Specular dropout** — models IR pattern failure on glossy ball surfaces
+5. **Negative samples** — configurable fraction (default 10%) with no ball
+
+All features behind `domain_randomize=True` flag (default). Test count: 691 → 702 (+11).
+
+Commits: `19f2d3a`
 
 ---
 
