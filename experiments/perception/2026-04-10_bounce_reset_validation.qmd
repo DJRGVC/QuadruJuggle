@@ -1,0 +1,147 @@
+---
+title: "Per-bounce EKF auto-reset: eliminating multi-bounce divergence"
+description: "Without per-bounce reset, the EKF diverges 24–140× over 10 bounces at heights ≥0.30m. A simple arm-and-trigger bounce detector using only EKF state (no ground truth) reduces error by 95–99%, enabling stable observation for policy training at all curriculum stages."
+date: 2026-04-10
+author: "perception"
+categories: [ekf, robustness, ablation]
+---
+
+## Question
+
+The perception pipeline's Extended Kalman Filter tracks ball state between
+YOLO detections. Each paddle bounce reverses ball velocity in ~20ms — can
+the EKF maintain accurate state estimates across many consecutive bounces,
+or does the velocity discontinuity cause compounding drift?
+
+If drift is significant, can a simple per-bounce reset (detectable from
+EKF state alone, without ground truth) eliminate it?
+
+## Method
+
+### Multi-bounce divergence analysis (iter 159)
+
+Simulated juggling trajectories at 4 target heights (0.10, 0.20, 0.30,
+0.50m) with 10 consecutive bounces per trial, 100 trials per height.
+Each trial applies the full EKF pipeline with:
+
+- 5-level phase-aware Q schedule (ascent/descent/apex/pre-landing/contact)
+- Adaptive R_xy based on estimated height
+- Sensor noise: position std = 5mm + 25mm/m × height, velocity std = 50mm/s + 100mm/s × height
+- Detection rate 100% (isolating the bounce effect from dropout)
+
+Measured position RMSE at each bounce, comparing bounce 1 (fresh EKF) to
+bounce 10.
+
+```bash
+uv run --active python scripts/perception/analyze_multibounce_convergence.py \
+    --targets "0.10,0.20,0.30,0.50" --n-bounces 10 --n-trials 100 \
+    --out images/perception/multibounce_convergence_iter159.png
+```
+
+### Per-bounce auto-reset implementation (iter 164)
+
+Added `enable_bounce_reset` to `BallObsNoiseCfg` and a two-phase
+detection algorithm in `PerceptionPipeline.step()`:
+
+1. **Arm**: ball z-position (EKF estimate, no GT) drops below threshold
+   (default 0.025m above paddle) → bounce is armed
+2. **Trigger**: z-velocity transitions from negative (descending) to
+   positive (ascending) while armed → bounce detected
+
+On trigger: position kept, velocity zeroed, covariance reset to initial
+values. The EKF re-converges from measurements within 2–3 steps because
+the ball is close to the camera (low z = low noise).
+
+Key design choice: the detector uses **only EKF state** — no ground truth
+contact forces or ball position. This means the same code runs identically
+in simulation and on real hardware.
+
+### Comparison validation (iter 165)
+
+Re-ran the multi-bounce analysis with `--compare-reset` flag, generating
+side-by-side figures for with/without reset under identical conditions.
+
+```bash
+uv run --active python scripts/perception/analyze_multibounce_convergence.py \
+    --targets "0.10,0.20,0.30,0.50" --n-bounces 10 --n-trials 100 \
+    --compare-reset --out images/perception/bounce_reset_comparison_iter165.png
+```
+
+### Held constant
+
+- EKF parameters: all Q/R values identical between conditions
+- Sensor noise model: same per-height noise profile
+- Trajectory physics: same restitution (0.85), gravity, no drag
+- 100 random seeds per configuration
+
+## Results
+
+**Without per-bounce reset**, the EKF diverges catastrophically at heights
+≥0.30m:
+
+| Target | Bounce 1 RMSE | Bounce 10 RMSE | Degradation |
+|--------|:---:|:---:|:---:|
+| 0.10m  | 16 mm | 18 mm   | 1.1× (stable) |
+| 0.20m  | 24 mm | 59 mm   | 2.5× |
+| 0.30m  | 29 mm | 709 mm  | **24×** |
+| 0.50m  | 37 mm | 5,344 mm | **140×** |
+
+**With per-bounce reset**, all heights reach steady state:
+
+| Target | Bounce 1 RMSE | Bounce 10 RMSE | Degradation | Error reduction |
+|--------|:---:|:---:|:---:|:---:|
+| 0.10m  | 16 mm | 17 mm | 1.1× | 4.5% |
+| 0.20m  | 23 mm | 25 mm | 1.1× | 58.1% |
+| 0.30m  | 29 mm | 30 mm | 1.0× | **95.8%** |
+| 0.50m  | 38 mm | 38 mm | 1.0× | **99.3%** |
+
+![Multi-bounce convergence without reset — EKF diverges at heights ≥0.30m](../images/perception/multibounce_convergence_iter159.png){width=100%}
+
+![Per-bounce reset comparison — 95-99% error reduction at 0.30-0.50m](../images/perception/bounce_reset_comparison_iter165.png){width=100%}
+
+**Test suite**: 6 dedicated bounce-reset unit tests added (713/713 total pass),
+covering detection accuracy, false-positive rejection, multi-env independence,
+episode-reset clearing, velocity zeroing, and bounded error over 1000 steps.
+
+## Discussion
+
+**Root cause of divergence**: After each bounce, the ball's velocity reverses
+in ~20ms. The EKF's contact-aware Q schedule (`q_vel_contact=50.0`) widens
+covariance during contact, but the post-bounce velocity estimate remains
+biased. During the next ascent, the EKF predicts the wrong trajectory. The
+error compounds: each bounce inherits a worse velocity prior than the last.
+
+At low heights (0.10m), the velocity reversal is small (~1.4 m/s) and the
+contact Q absorbs it. At 0.30m+ the reversal (~2.4 m/s) overwhelms the
+filter's correction capacity before the next contact.
+
+**Why reset works**: Zeroing velocity at detected bounce and widening
+covariance lets the filter treat each bounce as a fresh tracking problem.
+Since the ball is near the paddle (low z = low measurement noise), the EKF
+reconverges in 2–3 steps — well within the ~20-step ascent phase.
+
+**False-positive risk**: The arm-and-trigger design prevents false resets.
+A stationary ball at z=0.02m does not trigger (no negative-to-positive vz
+transition). In testing, zero false positives across 100,000+ steps.
+
+**Policy implication**: This is the key enabler for EKF-aware policy training
+at curriculum stages C+ (target ≥0.30m). Without reset, the 709mm position
+error at 0.30m exceeds the `ball_off` termination radius (500mm), making
+successful episodes impossible under EKF noise. With reset, 30mm error is
+well within policy tolerance.
+
+**Limitation**: The bounce detector assumes vertical bounces with a clear
+velocity sign change. Grazing contacts or multiple rapid bounces may not
+trigger correctly. This is unlikely in the paddle juggling task but would
+need validation for more complex contact scenarios.
+
+## Reproducibility
+
+- **Commits**: `8606390` (iter 164, implementation), `aa09354` (iter 165, validation)
+- **Branch**: `agent/perception`
+- **Scripts**: `scripts/perception/analyze_multibounce_convergence.py`
+- **Implementation**: `source/go1_ball_balance/go1_ball_balance/perception/ball_obs_spec.py` (`_detect_and_reset_bounces`)
+- **Figures**: `images/perception/multibounce_convergence_iter159.png`, `images/perception/bounce_reset_comparison_iter165.png`
+- **Docs**: `docs/ekf_multibounce_convergence.md`
+- **Tests**: 713/713 pass (`uv run --active python -m pytest scripts/perception/ -v`)
+- **No GPU required** — all analysis runs on CPU in ~30s
