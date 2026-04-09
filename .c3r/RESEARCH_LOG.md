@@ -55,3 +55,25 @@ Result:     NOISE IS NOT THE BOTTLENECK:
 Decision:   Next iter: GPU should be free (ES triggers ~step 4264). Launch oracle
             vs d435i comparison eval. No perception-side changes needed — the noise
             model is well-calibrated for the 0.10–0.50m range.
+
+## Iteration 124 — D435i vs oracle training history dashboard  (2026-04-09T22:00:00Z)
+Hypothesis: A multi-run training history visualization will reveal the full d435i
+            training trajectory and help identify where improvement opportunities lie.
+Change:     Created plot_training_history.py — reads TensorBoard events from 4 key runs
+            (Oracle A→F, D435i E, D435i F, D435i G) and produces 4-panel dashboard
+            (timeout%, episode length, apex reward, policy noise std).
+Command:    python plot_training_history.py --out images/perception/training_history_iter124.png
+            (CPU only; GPU blocked by policy Stage G training, PID 1348279)
+Result:     TRAINING HISTORY CAPTURED:
+            - Oracle (A→F): 1500 iters, step 2572, timeout 62.9% ± 0.3%
+            - D435i Stage E: 1500 iters, step 1499, timeout 71.9% ± 0.5%
+            - D435i Stage F: 1500 iters, step 3049, timeout 54.6% ± 0.3%
+            - D435i Stage G: 1026 iters, step 3789, timeout 53.4% ± 0.2%
+            Stage G ES counter at 955/1500 (63.7%) — ~30 min to early stop.
+            D435i noise std stable at 0.21, oracle at 0.18.
+            Key pattern: D435i achieves high apex reward but can't modulate energy
+            for mixed targets. Timeout degrades at each harder stage (72→55→53%).
+            Updated Quarto page with dashboard figure and summary table.
+            All 497 tests still pass.
+Decision:   Next iter: GPU should be free (ES ~step 4330). Launch oracle vs d435i
+            comparison eval via run_oracle_vs_d435i.sh. Ready to execute immediately.

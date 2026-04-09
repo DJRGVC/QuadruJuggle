@@ -20,6 +20,35 @@ See [full Stage G bottleneck analysis](../experiments/perception/2026-04-09_stag
 
 ---
 
+## Iteration 124 — D435i vs oracle training history dashboard {.unnumbered}
+*2026-04-09*
+
+Created a training history visualization covering the full d435i training
+progression (Stages E→F→G) compared against the oracle baseline (Stages A→F).
+This is the definitive picture of where d435i training stands.
+
+![D435i vs Oracle training progression across curriculum stages](../images/perception/training_history_iter124.png){width=100%}
+
+**Key observations from the dashboard:**
+
+| Run | Steps | Final Timeout % | Apex Reward | Noise Std |
+|---|---|---|---|---|
+| Oracle (A→F) | 2572 | 62.9 ± 0.3% | ~2.5 | 0.18 |
+| D435i Stage E | 1499 | 71.9 ± 0.5% | ~2.0 | 0.21 |
+| D435i Stage F | 3049 | 54.6 ± 0.3% | ~3.0 | 0.22 |
+| D435i Stage G | 3789 | 53.4 ± 0.2% | ~3.5 | 0.21 |
+
+Stage G training is plateaued at 53.4% timeout (never reached 80% advance
+threshold) and the ES counter is at 64% — will early-stop within ~30 min.
+The d435i policy learns to throw high (good apex reward) but drops the ball
+when it needs to modulate energy for mixed targets (0.10–0.50 m).
+
+**Next**: When GPU frees after ES, run oracle vs d435i comparison eval.
+
+Commits: (this iteration)
+
+---
+
 ## Iteration 123 — D435i noise profile analysis: noise is NOT the bottleneck {.unnumbered}
 *2026-04-09*
 
