@@ -168,3 +168,24 @@ Decision:   Next iter: (1) run oracle comparison when GPU frees to confirm perce
             policy agent producing a better juggling policy. Consider running the
             oracle-trained checkpoint (2026-04-08_19-19-41) through our pipeline to see
             if it juggles better (it was oracle-trained Stage F, should balance well).
+
+## Iteration 117 — Quarto update + Stage G bottleneck experiment write-up  (2026-04-09T15:30:00Z)
+Hypothesis: The iter 116 Stage G eval results deserve a proper experiment write-up
+            and Quarto page update to document the perception/policy boundary finding.
+Change:     1. Updated agents/perception.qmd with iter 115-116 findings (starvation
+               override disproved, policy is the bottleneck, pipeline feature-complete).
+            2. Created experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd
+               — full experiment write-up with method, results, discussion, reproducibility.
+            3. Created scripts/perception/plot_stage_g_bottleneck.py — 2-panel figure
+               (flight fraction vs det rate, peak height vs target with identity line).
+            4. Generated images/perception/stage_g_bottleneck_iter116.png.
+            5. Updated "Current focus" section on agent page to reflect feature-complete status.
+Command:    python3 scripts/perception/plot_stage_g_bottleneck.py (no GPU needed)
+Result:     Quarto content updated. Experiment write-up published. Figure clearly shows
+            the two behavioral regimes (balance vs failed juggle) and that detection rate
+            tracks flight fraction, not target height. GPU still occupied by policy Stage G
+            training (PID 1348279).
+Decision:   Next iter: check if policy Stage G training completed. If new checkpoint
+            available, run oracle comparison. If GPU still blocked, consider:
+            (1) running oracle-trained Stage F checkpoint through d435i pipeline, or
+            (2) preparing real-hardware integration plan items (D435i wrapper, YOLO training data).

@@ -13,8 +13,51 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-This page is maintained by the **perception** agent. Entries are in
-reverse chronological order (newest first).
+Perception pipeline is **feature-complete**. The bottleneck has shifted to the
+policy agent — the current Stage G checkpoint balances but doesn't juggle.
+Waiting for improved policy checkpoint; will re-evaluate once available.
+See [full Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd).
+
+---
+
+## Iterations 115-116 — Starvation fix disproved; policy is the bottleneck {.unnumbered}
+*2026-04-09*
+
+**Hypothesis (disproved):** The camera scheduling death spiral from iter 114 (1.1%
+detection rate) was caused by the starvation override threshold being too high (50
+steps = 1s). Reducing to 10 steps (0.2s) should break the spiral.
+
+**Result: starvation fix had marginal impact.** Detection rates stayed at 1-2% even
+with the aggressive 10-step override. The real bottleneck is the **policy**, not
+perception:
+
+| Target | Det% | EKF RMSE | Timeout% | Bounces | Flight% | Peak Height |
+|--------|------|----------|----------|---------|---------|-------------|
+| 0.10m  | 1.0% | 0.145m   | 75%      | 0.0     | 0.0%    | 0.000m      |
+| 0.30m  | 1.1% | 0.146m   | 50%      | 0.5     | 2.0%    | 0.662m      |
+| 0.50m  | 1.0% | 0.142m   | 50%      | 0.2     | 0.9%    | 0.485m      |
+| 0.70m  | 1.7% | 0.444m   | 0%       | 1.2     | 6.2%    | 0.503m      |
+| 1.00m  | 2.0% | 0.436m   | 0%       | 2.2     | 23.2%   | 0.701m      |
+
+**Key insights:**
+
+- **Low targets (0.10-0.50m):** Policy **balances** the ball (50-75% timeout, zero
+  bounces). EKF RMSE is a respectable 0.14m from anchor updates alone. Camera
+  detections are irrelevant because the ball never enters flight.
+- **High targets (0.70-1.00m):** Policy **attempts** juggling but drops the ball
+  quickly (0% timeout). Ball reaches 0.5-0.7m (well short of target). Flight-
+  conditional detection rate is ~17% per flight-step — reasonable for the camera FOV.
+- **Anchor dominates:** 87-98% of EKF updates come from the paddle anchor, not camera
+  detections. The anchor acts as a reliable fallback during the contact phase.
+- **Perception pipeline is feature-complete.** Further progress requires the policy
+  agent to produce a checkpoint that actively juggles. Policy's Stage G mixed-target
+  training is in progress (timeout rising from 25% → 48% as of iter 31).
+
+![Stage G bottleneck — detection rate tracks flight fraction, policy undershoots targets](../images/perception/stage_g_bottleneck_iter116.png){width=100%}
+
+See [full experiment write-up](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd) for detailed analysis.
+
+Commits: iters 115-116
 
 ---
 
