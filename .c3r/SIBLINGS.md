@@ -80,37 +80,3 @@ git show agent/policy:.c3r/RESEARCH_LOG.md
 git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
 ```
 
-## fix-quarto-testing-interface
-- **role**: fix-it
-- **focus**: please give me a run-down of what was done overnight.
-- **status**: running · iter #0 · ctx 0%
-
-### Recent commits on `agent/fix-quarto-testing-interface`
-```
-977ac4a Iteration 1: overnight run-down summary
-aab3845 torso tracking edit
-9c4793a pi_2 with v trackign works
-3841f54 working on pi_1 + pi_2
-085e457 frank-proofed requirements.txt
-```
-### Files modified on `agent/fix-quarto-testing-interface` (relative to `c3r/QuadruJuggle`)
-```
-.c3r/INBOX.md
-.c3r/INBOX_ARCHIVE.md
-.c3r/PROMPT.md
-.c3r/RESEARCH_LOG.md
-.c3r/SIBLINGS.md
-.c3r/agent.conf
-.c3r/env.sh
-.c3r/fix_plan.md
-.claude/settings.json
-```
-### Read one with:
-```
-git show agent/fix-quarto-testing-interface:.c3r/INBOX.md
-git show agent/fix-quarto-testing-interface:.c3r/INBOX_ARCHIVE.md
-git show agent/fix-quarto-testing-interface:.c3r/PROMPT.md
-git show agent/fix-quarto-testing-interface:.c3r/RESEARCH_LOG.md
-git show agent/fix-quarto-testing-interface:.c3r/SIBLINGS.md
-```
-

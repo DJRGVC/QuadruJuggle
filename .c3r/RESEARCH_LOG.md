@@ -198,3 +198,23 @@ Result:     Quarto page updated with full pipeline status. Key points:
 Decision:   Next iter: check policy agent progress on Stage G retrain.
             If GPU is free, run cross-eval (oracle checkpoint through d435i pipeline).
             Otherwise continue analysis tooling or experiment write-ups.
+
+## Iteration 130 — Perception gap decomposition experiment write-up  (2026-04-10T03:00:00Z)
+Hypothesis: The iters 125-128 analysis data (gap decomposition, high-height readiness,
+            oracle vs d435i comparison) is significant enough for a rigorous Quarto
+            experiment write-up.
+Change:     Created experiments/perception/2026-04-10_perception_gap_decomposition.qmd —
+            full experiment with question, method, 5 findings, discussion, reproducibility.
+            Updated agents/perception.qmd with link and iter 130 entry.
+Command:    Write + Edit (no GPU — occupied by policy Stage G retrain)
+Result:     Published experiment covering:
+            1. Neither model juggles — max height 246mm at ALL targets (both modes)
+            2. Oracle EKF RMSE (5.6m) is misleading — predict-only divergence, not perception
+            3. D435i phase-by-phase: contact 120-530mm, flight 156-185mm position RMSE
+            4. Staleness: D435i 0.01 steps (anchor), Oracle 705+ steps (no anchor)
+            5. High-height readiness: <5mm apex error at 0.50-1.00m simulated arcs
+            Key conclusion: "perception gap" is a policy gap. Pipeline ready.
+            GPU occupied by policy agent PID 1400066 (Stage G retrain with ES fix).
+Decision:   Next iter: check if policy Stage G retrain has completed. If checkpoint
+            available, run cross-eval (oracle checkpoint through d435i pipeline).
+            If GPU still busy, may clean up fix_plan or write references page.

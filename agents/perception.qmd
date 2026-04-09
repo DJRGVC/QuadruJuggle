@@ -13,10 +13,20 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete** (534 CPU tests, 128 iterations).
+Perception pipeline is **feature-complete** (534 CPU tests, 130 iterations).
 Waiting on policy agent to unlock true juggling behaviour (energy modulation).
 
-See [full Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd).
+See [perception gap decomposition](../experiments/perception/2026-04-10_perception_gap_decomposition.qmd) — the "perception gap" is actually a policy gap.
+Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd).
+
+---
+
+## Iteration 130 — Perception gap decomposition experiment write-up {.unnumbered}
+*2026-04-10*
+
+Published rigorous experiment write-up: [Perception Gap Decomposition](../experiments/perception/2026-04-10_perception_gap_decomposition.qmd). Key finding: the 18% timeout gap between oracle and D435i policies is a **policy limitation** (ball never exceeds 246mm regardless of target), not a perception quality issue. The EKF + paddle anchor pipeline delivers <5mm apex error at simulated juggling heights (0.5–1.0m), confirming readiness.
+
+GPU occupied by policy Stage G retraining (ES metric fix). Pipeline waiting.
 
 ---
 
