@@ -21,9 +21,11 @@
   - [x] GPU smoke test with trained pi1 — pipeline works, but policy incompatible (iter 89)
   - [x] UNBLOCKED: synced env config (restitution=0.99, perceived obs, ball_low/release_vel rewards)
   - [x] GPU validation: policy loads + runs (iter 92). Env sync confirmed working.
-  - [ ] FIX: d435i policy balances but doesn't juggle → 1% detection rate. Camera needs
-    ball in-flight (≥0.2m above paddle). Try oracle checkpoint (100% TO, stable juggling)
-    or switch to d435i noise mode to match training conditions.
+  - [~] FIX: d435i policy balances but doesn't juggle → 1% detection rate. Camera needs
+    ball in-flight (≥0.2m above paddle). Trying oracle checkpoint (100% TO, stable juggling).
+    Added --noise-mode and --target-height flags to demo_camera_ekf.py.
+    GPU queued (PID 1204960, behind policy training lock). Target=0.42m.
+    Next: check oracle_eval_DONE sentinel, parse logs/perception/oracle_eval.log
 
 # EKF tuning (lower priority, mostly done)
 - [x] GPU sweep at higher target heights (0.3-0.5m) — bounce mode sweep done (iter 90)

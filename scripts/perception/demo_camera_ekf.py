@@ -36,6 +36,10 @@ parser.add_argument("--capture_interval", type=int, default=10, help="Save annot
 parser.add_argument("--no_bounce", action="store_true", help="Disable periodic ball impulses (use with trained policy).")
 parser.add_argument("--pi1-checkpoint", type=str, default=None,
                     help="Path to trained pi1 checkpoint. When set, uses policy actions instead of zeros and disables bounce mode.")
+parser.add_argument("--noise-mode", type=str, default="oracle", choices=["oracle", "d435i"],
+                    help="Ball observation noise mode: 'oracle' (ground truth) or 'd435i' (structured camera noise).")
+parser.add_argument("--target-height", type=float, default=None,
+                    help="Fixed target apex height (m). If set, overrides PLAY config's random target range.")
 
 # Strip --pi2-checkpoint
 _pi2_checkpoint_path = None
@@ -104,6 +108,23 @@ def main():
                 print(f"[demo] Auto-detected pi2: {pi2_path}")
         if pi2_path is not None:
             env_cfg.actions.torso_cmd.pi2_checkpoint = os.path.abspath(pi2_path)
+
+    # Inject ball observation noise mode
+    if args_cli.noise_mode != "oracle":
+        from go1_ball_balance.perception.ball_obs_spec import BallObsNoiseCfg
+        noise_cfg = BallObsNoiseCfg(mode=args_cli.noise_mode)
+        env_cfg.observations.policy.ball_pos.params["noise_cfg"] = noise_cfg
+        env_cfg.observations.policy.ball_vel.params["noise_cfg"] = noise_cfg
+        print(f"[demo] Ball obs noise mode: {args_cli.noise_mode}")
+    else:
+        print("[demo] Ball obs noise mode: oracle (ground truth)")
+
+    # Override target apex height if specified
+    if args_cli.target_height is not None:
+        th = args_cli.target_height
+        env_cfg.events.randomize_target.params["target_min"] = th
+        env_cfg.events.randomize_target.params["target_max"] = th
+        print(f"[demo] Fixed target apex height: {th:.2f}m")
 
     # Force DEBUG scene for camera
     from go1_ball_balance.tasks.ball_juggle_hier.ball_juggle_hier_env_cfg import BallJuggleHierSceneCfg_DEBUG
@@ -313,12 +334,16 @@ def main():
         if step % args_cli.capture_interval == 0 and "rgb" in cam.data.output:
             _save_annotated_frame(cam, detection, out_dir, step, ekf_pos, ball_pos_w)
 
+        # Ball height above paddle (approximate)
+        ball_h_above_paddle = ball_pos_w[2] - _PADDLE_Z_APPROX
+
         if step % 50 == 0 or step < 5:
             det_rate = metrics["detected"] / max(1, step + 1) * 100
             ekf_rmse_recent = np.mean(metrics["rmse_ekf"][-10:]) if metrics["rmse_ekf"] else 0
             det_rmse_recent = np.mean(metrics["rmse_det"][-10:]) if metrics["rmse_det"] else 0
             ep_info = f" episodes={total_episodes} TO={100*total_timeouts/max(1,total_episodes):.0f}%" if use_policy else ""
             print(f"[demo] Step {step}: det_rate={det_rate:.0f}%, "
+                  f"ball_h={ball_h_above_paddle:.3f}m, "
                   f"det_rmse={det_rmse_recent:.4f}m, ekf_rmse={ekf_rmse_recent:.4f}m{ep_info}",
                   flush=True)
 

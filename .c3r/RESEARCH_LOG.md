@@ -2,6 +2,28 @@
 
 _(older entries auto-archived to RESEARCH_LOG_ARCHIVE.md at 2026-04-09 06:29 UTC)_
 
+## Iteration 93 — Oracle checkpoint eval: camera pipeline with stable juggler  (2026-04-09T21:15:00Z)
+Hypothesis: Oracle-trained pi1 (100% TO in cross-eval, stable juggling at target≥0.30m) will keep
+            the ball frequently in-flight, enabling high detection rate and meaningful camera
+            pipeline validation. The d435i-trained model barely juggled (1% det rate, iter 92).
+Change:     1. Added --noise-mode flag to demo_camera_ekf.py (oracle/d435i, injects BallObsNoiseCfg).
+            2. Added --target-height flag (overrides PLAY config's random target range).
+            3. Added ball height above paddle to per-step status output for diagnostics.
+            4. Created run_oracle_eval.sh: oracle pi1, 4 envs, 1500 steps, target=0.42m.
+            5. Queued GPU run behind gpu_lock (PID 1204960, policy training in progress).
+            6. 318/318 CPU tests pass.
+Command:    pytest scripts/perception/ → 318/318 passed.
+            nohup $C3R_BIN/gpu_lock.sh bash scripts/perception/run_oracle_eval.sh > logs/perception/oracle_eval.log 2>&1 &
+Result:     GPU busy (policy agent training d435i Stage 6). Run queued, will execute when
+            lock releases. Sentinel: logs/perception/oracle_eval_DONE.
+            Oracle checkpoint: QuadruJuggle-policy/.../2026-04-08_19-19-41/model_best.pt
+            Pi2 checkpoint: QuadruJuggle/.../2026-03-12_17-16-01/model_best.pt
+Decision:   Next iter: check for oracle_eval_DONE sentinel. If found, parse
+            logs/perception/oracle_eval.log for detection rate, RMSE, episode stats.
+            Expected: detection rate 30-60% (ball in-flight ~40% of time at 0.42m target),
+            detection RMSE ~15-30mm (same as iter 92's brief detections).
+            If GPU still locked, do Quarto update or work on analysis tooling.
+
 ## Iteration 92 — Cross-branch eval: camera pipeline with d435i-trained policy  (2026-04-09T20:35:00Z)
 Hypothesis: With env config synced (iter 91: restitution=0.99, perceived obs, ball_low/release_vel
             rewards), the policy agent's d435i-trained checkpoint should load and run, allowing
