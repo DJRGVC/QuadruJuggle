@@ -29,6 +29,7 @@ parser.add_argument("--task", type=str, default="Isaac-BallJuggleHier-Go1-Play-v
 parser.add_argument("--num_envs", type=int, default=1)
 parser.add_argument("--steps", type=int, default=200, help="Total sim steps to run.")
 parser.add_argument("--capture_interval", type=int, default=10, help="Save annotated frame every N steps.")
+parser.add_argument("--no_bounce", action="store_true", help="Disable periodic ball impulses (use with trained policy).")
 
 # Strip --pi2-checkpoint
 _pi2_checkpoint_path = None
@@ -155,6 +156,13 @@ def main():
     # Trajectory tracking for summary visualizations
     traj = {"gt": [], "ekf": [], "det": [], "det_steps": [], "steps": []}
 
+    # Periodic impulse parameters for simulating juggling without a trained policy.
+    # When the ball falls near the paddle, give it an upward kick.
+    _PADDLE_Z_APPROX = 0.47  # approximate paddle height (trunk ~0.40 + offset 0.07)
+    _KICK_VEL = 3.5           # m/s upward impulse
+    _KICK_COOLDOWN = 15       # minimum steps between kicks (0.3s at 50Hz)
+    _last_kick_step = -_KICK_COOLDOWN
+
     print(f"[demo] Running {args_cli.steps} steps...")
     for step in range(args_cli.steps):
         action = torch.zeros(unwrapped.action_space.shape, device=unwrapped.device)
@@ -162,6 +170,19 @@ def main():
 
         # GT ball position in world frame
         ball_pos_w = ball.data.root_pos_w[0].cpu().numpy()
+
+        # Simulate juggling: kick ball upward when it falls near paddle
+        if (not args_cli.no_bounce
+                and ball_pos_w[2] < _PADDLE_Z_APPROX + 0.05
+                and step - _last_kick_step >= _KICK_COOLDOWN):
+            try:
+                ball_vel = ball.data.root_vel_w.clone()
+                ball_vel[:, 2] = _KICK_VEL
+                ball_vel[:, :2] *= 0.3  # dampen lateral drift
+                ball.write_root_velocity_to_sim(ball_vel)
+                _last_kick_step = step
+            except Exception:
+                pass
 
         # Camera update + detection
         cam.update(dt=dt)

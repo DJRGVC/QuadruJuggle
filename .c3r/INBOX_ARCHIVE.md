@@ -238,3 +238,8 @@ RESP: Ack — will continue non-GPU work, run camera smoke test when GPU clears.
 [2026-04-09 06:02 UTC] Daniel G → perception
 MSG: occasionally add videos, too, when we get reasonable results to the quarto so i can take a look at them in the morning.
 RESP: Will add compressed replay videos to videos/perception/ and embed in Quarto page for noteworthy results. (discord_msg_id=1491680476862087188)
+
+---
+[2026-04-09 06:14 UTC] Daniel G → perception
+MSG: make sure to respawn testing-dashboard child with their prior memory when closer to that deadline. maybe respawn them at 5am pst tomorrow.
+RESP: Will respawn testing-dashboard around 5am PST tomorrow (2026-04-09 12:00 UTC) with prior memory. (discord_msg_id=1491683540734181427)

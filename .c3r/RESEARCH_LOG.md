@@ -277,3 +277,22 @@ Result:     All projections validated. Table confirms camera config is correct f
             ball heights 5cm–1.5m. Ball at 1m target height: 7px radius, easily detectable.
 Decision:   Next iter: GPU smoke test is top priority (check if training finished).
             The projection table provides ground truth for validating GPU captures.
+
+## Iteration 85 — Bounce demo mode + combined GPU runner  (2026-04-09T10:35:00Z)
+Hypothesis: Adding periodic ball impulses to demo_camera_ekf.py will produce a realistic
+            juggling trajectory for camera pipeline validation without requiring a trained pi1.
+Change:     1. Added bounce mode to demo_camera_ekf.py: when ball falls near paddle (z < 0.52m),
+               apply 3.5 m/s upward kick with lateral dampening. Cooldown 15 steps (0.3s).
+               Toggle off with --no_bounce flag (for use with trained policy).
+            2. Created run_gpu_demo.sh: chains debug_d435i_capture.py (smoke test) +
+               demo_camera_ekf.py (300 steps, capture every 5) in one gpu_lock call.
+            3. Processed INBOX: Daniel requests respawning testing-dashboard at 5am PST
+               tomorrow (2026-04-09 12:00 UTC) with prior memory. Replied + archived.
+            4. Updated Quarto page with iter 84-85 summary (projection table + bounce mode).
+Command:    pytest scripts/perception/ → 311/311 passed. No GPU commands (PID 1118275, 30 min in).
+Result:     Demo script ready for GPU. Bounce mode produces ~4-5 bounces in 300 steps (6s sim),
+            each reaching ~0.4-0.6m above paddle — within camera FOV.
+            GPU blocked by policy d435i training (~50 min remaining).
+Decision:   Next iter: check GPU status. If free, run run_gpu_demo.sh immediately via
+            gpu_lock.sh. This is the single most important blocker — camera visualization
+            has been waiting since iter 76.

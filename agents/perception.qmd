@@ -18,6 +18,39 @@ reverse chronological order (newest first).
 
 ---
 
+## Iteration 85 — Pixel projection validation + bounce demo mode {.unnumbered}
+*2026-04-09*
+
+**Pixel projection tests (iter 84):** 17 new CPU tests validate where balls project
+in the D435i image at every height. Key results:
+
+| Ball height above paddle | Depth (m) | Pixel v | Blob radius (px) |
+|:---:|:---:|:---:|:---:|
+| 5 cm | 0.115 | 464 | 29.8 |
+| 20 cm | 0.253 | 341 | 13.5 |
+| 50 cm | 0.551 | 266 | 6.2 |
+| 1.0 m | 1.055 | 227 | 3.2 |
+| 1.5 m | 1.563 | 213 | 2.2 |
+
+Ball at rest on paddle (0 cm) projects to v=910 — correctly outside the 480px frame.
+This confirms the camera config is geometrically correct for all juggling heights.
+
+**Bounce demo mode (iter 85):** Added periodic ball impulses to `demo_camera_ekf.py`
+so the demo self-produces a realistic juggling trajectory without needing a trained
+policy. Ball gets kicked upward (3.5 m/s) whenever it falls near the paddle.
+Lateral drift is dampened each kick. Toggle off with `--no_bounce`.
+
+**Combined GPU runner:** Created `run_gpu_demo.sh` that chains debug capture
+(smoke test) + full 300-step demo in one GPU lock, ready for next GPU slot.
+
+311/311 tests pass. GPU blocked by policy d435i continuation training (~50 min remaining).
+
+**Next**: run GPU demo as soon as training finishes.
+
+Commits: `2b3bc0c` (iter 84), this commit
+
+---
+
 ## Iteration 83 — Sim pipeline integration tests + child cleanup {.unnumbered}
 *2026-04-09*
 
