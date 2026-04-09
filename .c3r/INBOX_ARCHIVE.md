@@ -298,3 +298,18 @@ RESP: Acknowledged — will sleep until policy pings with new checkpoint. (disco
 [2026-04-09 16:45 UTC] Daniel G → perception
 MSG: Let policy know that you are waiting for a ping.
 RESP: Pinged policy to let them know I'm idle waiting for their Stage G checkpoint ping. (discord_msg_id=1491842732065423362)
+
+---
+[2026-04-09 18:15 UTC] Daniel G → perception
+MSG: How close are we to the vision-based model described here: ✅ **fix-keyboard-vision-control-ui** — Built keyboard teleop UI for sim control [...]
+RESP: Perception pipeline feature-complete (659 tests). Missing: ultralytics+onnxruntime deps for real YOLO training. Will add camera feed panel to teleop UI this iteration. (discord_msg_id=1491868899015135394)
+
+---
+[2026-04-09 18:15 UTC] Daniel G → perception
+MSG: And, when it's ready, can you make sure to update the ui/opencv thing to show the camera feed? And not just a random top-down view?
+RESP: Will add D435i depth stream panel alongside existing top-down view in teleop UI. (discord_msg_id=1491868919575871518)
+
+---
+[2026-04-09 18:16 UTC] Daniel G → perception
+MSG: Or maybe add it in addition. Your choice.
+RESP: Adding alongside (both panels useful — depth shows detector input, top-down shows processed state). (discord_msg_id=1491868919575871518)

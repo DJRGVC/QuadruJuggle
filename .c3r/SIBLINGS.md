@@ -27,15 +27,15 @@ Siblings will see it in their next SIBLINGS.md refresh.
 ## policy
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
-- **status**: running · iter #21 · ctx 81%
+- **status**: running · iter #22 · ctx 81%
 
 ### Recent commits on `agent/policy`
 ```
+b6b0a1f Iteration 33: Stage G retrain eval + perception gap analysis (oracle/d435i/EKF)
 e8af8a4 Iteration 32: fix ES metric bug — switch to per-step reward for multi-target stages
 e92a1df Iteration 31: Stage G training launched — mixed targets + height-dependent noise sync
 67aef9d Iteration 30: cross-eval analysis + Stage G preparation
 3b94cfd Iteration 29: fix eval partial-episode bug + corrected cross-eval
-c1236f9 Iteration 28: cross-eval — d435i vs oracle under swapped obs modes
 ```
 ### Files modified on `agent/policy` (relative to `c3r/QuadruJuggle`)
 ```
@@ -62,14 +62,14 @@ images/policy/.gitkeep
 images/policy/cross_eval_iter029.png
 images/policy/d435i_vs_oracle_stage_f.png
 images/policy/iter_023_training_curves.png
+images/policy/stage_g_energy_modulation.png
 images/shared/.gitkeep
 index.qmd
 references/policy.qmd
 scripts/parse_cross_eval.py
 scripts/plot_cross_eval.py
 scripts/rsl_rl/compare_pi1.py
-scripts/rsl_rl/cross_eval.sh
-... and 16 more
+... and 17 more
 ```
 ### Read one with:
 ```

@@ -117,3 +117,31 @@ Decision:   Next: ask Daniel about installing ultralytics + onnxruntime
             deps, the YOLO pipeline is code-complete but untestable end-to-end.
             Alternatively, focus on EKF tuning with noise-trained checkpoint
             when policy provides one.
+
+## Iteration 150 — DepthFrameVisualizer for teleop UI camera feed  (2026-04-09T18:30:00Z)
+Hypothesis: A reusable depth-frame visualization module will enable Daniel's
+            teleop UI to show the D435i camera feed (or sim equivalent) with
+            detection overlay, alongside the existing top-down ball view.
+Change:     Added perception/debug/depth_viz.py with DepthFrameVisualizer class:
+            (1) render(): uint16 depth (mm) → colorized BGR panel with detection
+            bbox, centre marker, confidence label, title bar, telemetry overlay.
+            (2) render_f32(): float32 depth (m) path for Isaac Lab TiledCamera.
+            (3) _SimDetAsDetection adapter wraps SimDetection for unified rendering.
+            (4) VizConfig dataclass for panel size, colormap, colors, text options.
+            (5) 20 tests: output shape (3), colorization (3), detection overlay (3),
+            SimDetection adapter (2), float32 conversion (3), telemetry (2),
+            edge cases (4). All use importlib.util to bypass Isaac Lab chain.
+            Updated debug/__init__.py to export DepthFrameVisualizer + VizConfig.
+Command:    pytest scripts/perception/test_depth_viz.py -x -q → 20/20
+            pytest scripts/perception/ -x -q → 679/679 passed, 2 skipped (17.94s)
+Result:     Test count: 659 → 679 (+20). All pass.
+            Module ready for import by play_teleop_ui.py. Usage:
+            `viz = DepthFrameVisualizer(VizConfig(width=320, height=240))`
+            `panel = viz.render_f32(depth_frame, sim_detection=det, telemetry={...})`
+            Daniel's INBOX processed: 3 messages about teleop UI camera feed.
+            Replied: will add camera feed alongside existing top-down view.
+Decision:   Next: the DepthFrameVisualizer is ready for integration. Daniel's
+            teleop UI (on fix branch) can import it. Consider adding a
+            convenience function that extracts depth + runs detector + renders
+            in one call for the teleop loop. Also check if policy agent has
+            new results for gap re-validation.
