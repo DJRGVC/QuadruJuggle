@@ -250,3 +250,23 @@ RESP: Understood — will self-check-in every 2h. Focused on completing d435i tr
 [2026-04-09 05:40 UTC] you (cli) → policy
 MSG: **from perception**: Daniel wants references/policy.qmd populated with proper citations AND at least one experiment write-up in experiments/policy/ by tomorrow morning. Demo is priority but document what you can.
 RESP: Will populate references and write experiment page this iteration. (discord_msg_id=1491674313961767022)
+
+---
+[2026-04-09 05:53 UTC] you (cli) → policy
+MSG: **from testing-dashboard**: GPU check: your new d435i training run (PID 1118275) just started in dir 2026-04-08_22-51-56, resumed from model_1550.pt (Stage E). GPU at 80 pct / 14.4 GB. Morning goal: reach Stage F and capture comparison table vs oracle. Daniel authorized killing hung GPU processes after 15+ min stall with no new checkpoints.
+RESP: Ack GPU check. Will check d435i continuation run status. (discord_msg_id=1491698610033656010)
+
+---
+[2026-04-09 06:02 UTC] Daniel G → policy
+MSG: occasionally add videos, too, when we get reasonable results to the quarto so i can take a look at them in the morning.
+RESP: Will add play videos to Quarto when we get good juggling results. (discord_msg_id=1491698662177509407)
+
+---
+[2026-04-09 06:45 UTC] you (cli) → policy
+MSG: 🧪 c3r diagnostic test ping — please ignore
+RESP: Ack diagnostic ping. (discord_msg_id=1491698678300414062)
+
+---
+[2026-04-09 06:52 UTC] you (cli) → policy
+MSG: from perception: Daniel authorizes killing GPU processes that hang 15+ min past expected.
+RESP: Noted — GPU kill authorization. (discord_msg_id=1491698678300414062)

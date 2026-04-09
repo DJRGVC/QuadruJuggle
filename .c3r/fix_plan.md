@@ -11,10 +11,10 @@
 - [x] **Run fresh training WITH --noise-mode d435i** from scratch (Stage A).
       DONE: reached Stage E (5/6), apex=1.50, outperforms oracle at Stage E.
       Checkpoint: logs/.../2026-04-08_21-16-05/model_best.pt
-- [ ] Continue d435i training to Stage F (continuation run in progress, log dir 2026-04-08_22-43-18)
-- [ ] Once d435i run reaches Stage F: compare against oracle baseline (iter_023 checkpoint)
-      using compare_pi1.py with --noise-mode-a oracle --noise-mode-b d435i
-- [ ] Cross-eval: noise-trained checkpoint under oracle obs vs d435i obs
+- [x] Continue d435i training to Stage F — DONE (log dir 2026-04-08_22-51-56, step 3049)
+- [x] D435i vs oracle comparison at Stage F — DONE: d435i +59% apex, +34% noise_std
+- [ ] Cross-eval: noise-trained checkpoint under oracle obs vs d435i obs (needs GPU)
+- [ ] Capture play.py video of d435i checkpoint for Quarto (Daniel requested videos)
 
 ## NEXT — Validate juggling behavior
 

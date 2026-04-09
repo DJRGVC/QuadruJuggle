@@ -135,7 +135,7 @@ _BJ_STAGES = [
     (0.50,     0.50,    2.5,     0.100,  0.18,       1.00),  # F  — robustness: wider XY + vel
 ]
 _BJ_THRESHOLD      = 0.30   # lowered from 0.75: active juggling has ~63% timeout
-_BJ_APEX_THRESHOLD = 1.5     # ball-at-rest earns ~0.99/step; need 1.5 to require actual bouncing
+_BJ_APEX_THRESHOLD = 1.3     # ball-at-rest earns ~0.99/step; 1.3 requires bouncing but isn't at performance ceiling (was 1.5, caused Stage E plateau)
 _BJ_SUSTAIN    = 20
 _BJ_TRANSITION = 15
 

@@ -293,3 +293,25 @@ Result:     D435i (1500 iters from scratch) reached Stage E (5/6):
 Decision:   Next iteration: check continuation run progress. If Stage F reached, run
             formal eval with eval_juggle_hier.py for publication-quality comparison table.
             Also need to update fix_plan.md to mark d435i training as done.
+
+## Iteration 27 — D435i reaches Stage F: full comparison  (2026-04-09T07:15Z)
+Hypothesis: The d435i continuation run (from model_1499.pt, start-stage 4) will reach
+            Stage F and provide a controlled comparison against oracle at matched difficulty.
+Change:     Analysis iteration — no code changes. Updated Quarto page + experiment write-up
+            with Stage F results. Created comparison figure. Processed 4 INBOX messages.
+Command:    TensorBoard analysis of continuation run (2026-04-08_22-51-56, 3049 steps total).
+Result:     **D435i reached Stage F (final stage, 6/6).** Completed 1500 continuation iters.
+            Stage F comparison (avg last 50 iters):
+              Oracle: reward=40.3, apex=0.88, timeout=62.9%, ball_below=37.0%, release_vel=0.54
+              D435i:  reward=38.7, apex=1.40, timeout=54.6%, ball_below=45.4%, release_vel=0.43
+            D435i OUTPERFORMS oracle on apex height: +59% at Stage F.
+            Trade-off: more drops (45% vs 37%) but better target accuracy when juggling.
+            ball_low=-0.011 in both = active juggling confirmed.
+            Checkpoints:
+            - D435i (Stage F): logs/.../2026-04-08_22-51-56/model_best.pt
+            - Oracle (Stage F): logs/.../2026-04-08_19-19-41/model_best.pt
+            Figure: images/policy/d435i_vs_oracle_stage_f.png
+            GPU occupied by perception demo (PID 1154762); video capture deferred.
+Decision:   Next iteration: (1) capture play.py video of d435i checkpoint for Quarto
+            (Daniel requested), (2) cross-eval: run noise-trained checkpoint with oracle obs
+            and vice versa to measure noise robustness vs overfitting. Both need GPU.
