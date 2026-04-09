@@ -39,7 +39,10 @@
   - anchor_enabled=True, anchor_r_pos=5mm, min_starve=5 steps
   - Zeros velocity for anchored envs; reduces P during contact
   - 9 new tests (test_paddle_anchor.py), 371/371 total
-- [ ] Wire paddle_anchor_update() into demo_camera_ekf.py eval loop
+- [x] Wire paddle_anchor_update() into demo_camera_ekf.py eval loop (iter 105)
+  - Dynamic world-frame contact_z_threshold from robot root Z + offset + ball_radius + 10mm
+  - Paddle position computed from robot.data.root_pos_w each step
+  - Also fixed contact-aware Q threshold (was 0.025 paddle-relative, now world-frame)
 - [ ] Consider "flight window" detection mode — only run detection during known flight arcs
 
 # EKF tuning (lower priority, mostly done)

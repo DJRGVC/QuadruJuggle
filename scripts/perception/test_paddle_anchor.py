@@ -223,5 +223,33 @@ class TestPaddleAnchor(unittest.TestCase):
         self.assertAlmostEqual(ekf.vel[3].norm().item(), 0.0, places=5)
 
 
+    def test_anchor_world_frame_threshold(self):
+        """Anchor fires with world-frame Z coordinates and matching contact_z_threshold."""
+        # Simulate world-frame setup: paddle at Z=0.47, ball centre at Z=0.49
+        paddle_z_world = 0.47 + 0.020  # paddle surface + ball radius
+        contact_z_world = paddle_z_world + 0.010  # 10mm margin → 0.50
+        ekf = self._make_ekf(contact_z_threshold=contact_z_world)
+
+        # Ball resting on paddle in world frame
+        init_pos = torch.tensor([[0.01, -0.01, paddle_z_world]] * 4)
+        ekf.reset(torch.arange(4), init_pos)
+
+        # Starve all envs
+        for _ in range(6):
+            ekf.predict(0.005)
+            ekf._steps_since_measurement += 1
+        # Force ball Z back to paddle (gravity would pull it down during predict)
+        ekf._x[:, 2] = paddle_z_world
+
+        paddle_pos = torch.tensor([[0.0, 0.0, paddle_z_world]] * 4)
+        n = ekf.paddle_anchor_update(paddle_pos)
+        self.assertEqual(n, 4, "All 4 envs should anchor in world frame")
+
+        # Ball in flight at Z=0.65 (above contact_z=0.50) should NOT anchor
+        ekf._x[:, 2] = 0.65
+        n = ekf.paddle_anchor_update(paddle_pos)
+        self.assertEqual(n, 0, "Flight envs should not anchor")
+
+
 if __name__ == "__main__":
     unittest.main()

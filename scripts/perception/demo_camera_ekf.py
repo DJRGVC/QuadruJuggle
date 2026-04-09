@@ -173,7 +173,18 @@ def main():
 
     # Setup detector and EKF (both in world frame)
     detector = SimBallDetector.from_tiled_camera_cfg()
-    ekf_cfg = BallEKFConfig(contact_aware=True, q_vel=0.40)
+    # Compute world-frame contact threshold from initial robot height
+    robot_z_init = robot.data.root_pos_w[0, 2].item()
+    paddle_z_init = robot_z_init + _PADDLE_OFFSET_Z
+    contact_z_world = paddle_z_init + _BALL_RADIUS + 0.010  # 10mm margin
+    print(f"[demo] Robot Z={robot_z_init:.3f}, paddle Z={paddle_z_init:.3f}, "
+          f"contact_z_threshold={contact_z_world:.3f} (world frame)")
+
+    ekf_cfg = BallEKFConfig(
+        contact_aware=True, q_vel=0.40,
+        contact_z_threshold=contact_z_world,
+        anchor_enabled=True,
+    )
     ekf = BallEKF(num_envs=args_cli.num_envs, device="cpu", cfg=ekf_cfg)
 
     # Output directory
@@ -187,6 +198,11 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
 
     ball = unwrapped.scene["ball"]
+    robot = unwrapped.scene["robot"]
+
+    # Paddle offset in body frame + ball radius for anchor position
+    _PADDLE_OFFSET_Z = 0.070  # paddle surface above robot root
+    _BALL_RADIUS = 0.020      # ball centre above paddle when resting
 
     # Give ball initial upward velocity to get it into the camera FOV.
     # Camera FOV covers 41°-99° elevation → ball must be ≥0.2m above paddle.
@@ -233,7 +249,7 @@ def main():
 
     dt = 0.02  # 50 Hz policy rate
 
-    metrics = {"detected": 0, "missed": 0, "rmse_det": [], "rmse_ekf": []}
+    metrics = {"detected": 0, "missed": 0, "rmse_det": [], "rmse_ekf": [], "anchored": 0}
     # Trajectory tracking for summary visualizations
     traj = {"gt": [], "ekf": [], "det": [], "det_steps": [], "steps": []}
 
@@ -347,6 +363,13 @@ def main():
 
         ekf.step(z_meas_all, detected_all, dt=dt)
 
+        # Paddle anchor: inject virtual measurement for ball-on-paddle envs
+        robot_root_pos = robot.data.root_pos_w[:, :3].cpu()  # (N, 3)
+        paddle_pos_w = robot_root_pos.clone()
+        paddle_pos_w[:, 2] += _PADDLE_OFFSET_Z + _BALL_RADIUS  # ball centre when resting
+        n_anchored = ekf.paddle_anchor_update(paddle_pos_w)
+        metrics["anchored"] += n_anchored
+
         # EKF RMSE vs GT (env 0)
         ekf_pos = ekf.pos[0].numpy()
         ekf_err = np.linalg.norm(ekf_pos - ball_pos_w)
@@ -367,8 +390,9 @@ def main():
             det_rate = metrics["detected"] / max(1, step + 1) * 100
             ekf_rmse_recent = np.mean(metrics["rmse_ekf"][-10:]) if metrics["rmse_ekf"] else 0
             det_rmse_recent = np.mean(metrics["rmse_det"][-10:]) if metrics["rmse_det"] else 0
+            anchor_rate = metrics["anchored"] / max(1, (step + 1) * n_envs) * 100
             ep_info = f" episodes={total_episodes} TO={100*total_timeouts/max(1,total_episodes):.0f}%" if use_policy else ""
-            print(f"[demo] Step {step}: det_rate={det_rate:.0f}%, "
+            print(f"[demo] Step {step}: det_rate={det_rate:.0f}%, anchor_rate={anchor_rate:.0f}%, "
                   f"ball_h={ball_h_above_paddle:.3f}m, "
                   f"det_rmse={det_rmse_recent:.4f}m, ekf_rmse={ekf_rmse_recent:.4f}m{ep_info}",
                   flush=True)
@@ -378,6 +402,8 @@ def main():
     mode_str = "TRAINED POLICY" if use_policy else "BOUNCE MODE"
     print(f"\n[demo] SUMMARY ({total} steps, {mode_str}):")
     print(f"  Detection rate: {metrics['detected']}/{total} ({metrics['detected']/max(1,total)*100:.1f}%)")
+    anchor_total = total * n_envs
+    print(f"  Anchor updates: {metrics['anchored']}/{anchor_total} ({metrics['anchored']/max(1,anchor_total)*100:.1f}%)")
     if metrics["rmse_det"]:
         print(f"  Detection RMSE: {np.mean(metrics['rmse_det']):.4f} +/- {np.std(metrics['rmse_det']):.4f} m")
     if metrics["rmse_ekf"]:

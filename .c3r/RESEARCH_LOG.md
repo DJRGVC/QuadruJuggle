@@ -155,3 +155,26 @@ Decision:   Next iter: wire paddle_anchor_update() into demo_camera_ekf.py eval 
             known paddle position from robot state. Then re-run eval to measure improvement
             in EKF accuracy during contact phases. Still blocked on policy agent for
             sustained bouncing — this improves contact-phase accuracy in the meantime.
+
+## Iteration 105 — Wire paddle anchor into demo eval loop  (2026-04-10T16:00:00Z)
+Hypothesis: Wiring paddle_anchor_update() into demo_camera_ekf.py with correct world-frame
+            contact_z_threshold will keep the EKF accurate during the 98%+ contact time,
+            and also fix the contact-aware Q switching (which was silently broken at the
+            default threshold of 0.025m in world frame where ball Z ≈ 0.49).
+Change:     1. demo_camera_ekf.py: get robot from scene, compute paddle world position
+               dynamically from robot.data.root_pos_w + paddle_offset_z + ball_radius.
+            2. Set contact_z_threshold = paddle_z + ball_radius + 10mm (world frame) in
+               EKF config. Previously 0.025m (paddle-relative) → contact-aware Q and
+               anchor would never fire in the demo's world-frame coordinate system.
+            3. Call ekf.paddle_anchor_update(paddle_pos_w) after ekf.step() each timestep.
+            4. Added anchor metrics tracking (count, rate) in periodic logging and summary.
+            5. New test: test_anchor_world_frame_threshold verifying anchor fires with
+               world-frame Z ≈ 0.49 and threshold ≈ 0.50, doesn't fire at Z=0.65.
+Command:    pytest scripts/perception/ → 372/372 passed (7.42s). No GPU needed.
+Result:     Paddle anchor wired into eval loop. Also discovered and fixed a latent bug:
+            contact_z_threshold=0.025 was designed for paddle-relative frame but the demo
+            operates in world frame (ball Z ≈ 0.49). Both contact-aware Q switching AND
+            anchor were silently disabled. Now both fire correctly in world frame.
+Decision:   Next iter: GPU eval to measure EKF accuracy improvement with anchor active.
+            Expect RMSE to drop dramatically during contact phases (ball on paddle 98% of
+            time). If policy agent has Stage G progress, also test with sustained bouncing.
