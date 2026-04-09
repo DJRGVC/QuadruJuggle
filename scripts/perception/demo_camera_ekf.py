@@ -231,6 +231,9 @@ def main():
     _save_summary_plots(traj, metrics, out_dir, dt)
     _compile_video(out_dir)
 
+    # Copy outputs to Quarto folders for site deployment
+    _copy_to_quarto(out_dir)
+
     env.close()
     simulation_app.close()
 
@@ -319,6 +322,35 @@ def _compile_video(out_dir):
             print("[demo] ffmpeg ran but no video produced.")
     except Exception as e:
         print(f"[demo] Video compilation failed: {e}")
+
+
+def _copy_to_quarto(out_dir):
+    """Copy summary plot and video to Quarto site folders for deployment."""
+    import shutil
+
+    repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    img_dst = os.path.join(repo_root, "images", "perception")
+    vid_dst = os.path.join(repo_root, "videos", "perception")
+
+    copied = []
+    summary_src = os.path.join(out_dir, "summary.png")
+    if os.path.exists(summary_src):
+        os.makedirs(img_dst, exist_ok=True)
+        dst = os.path.join(img_dst, "demo_camera_ekf_summary.png")
+        shutil.copy2(summary_src, dst)
+        copied.append(dst)
+
+    video_src = os.path.join(out_dir, "demo.mp4")
+    if os.path.exists(video_src):
+        os.makedirs(vid_dst, exist_ok=True)
+        dst = os.path.join(vid_dst, "demo_camera_ekf.mp4")
+        shutil.copy2(video_src, dst)
+        copied.append(dst)
+
+    if copied:
+        print(f"[demo] Copied to Quarto: {', '.join(copied)}")
+    else:
+        print("[demo] No outputs to copy to Quarto.")
 
 
 def _save_annotated_frame(cam, detection, out_dir, step, ekf_pos_w, ball_pos_w):

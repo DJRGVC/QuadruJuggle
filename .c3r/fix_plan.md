@@ -1,17 +1,20 @@
 # fix_plan.md — experiment queue for perception
 
-# Status: ETH noise+EKF pipeline FEATURE-COMPLETE (264/264 CPU tests).
+# Status: ETH noise+EKF pipeline FEATURE-COMPLETE (294/294 CPU tests).
 # EKF tuned: adaptive R_xy, 3-level q_vel, flight NIS≈3.3-3.8. q_vel=0.40 default.
-# GAP: Sim camera visualization NOT working. Convention fix in iter 77 (world), awaiting GPU.
+# GAP: Sim camera visualization NOT validated on GPU. Convention fix (world) awaiting GPU.
+# testing-dashboard child KILLED (task done iter 4, was idle at iter 10).
 
 # PRIORITY: Sim camera visualization (Daniel's direct request 2026-04-09)
 - [x] Fix D435i camera mount — 45° → 75° tilt (iter 76), ros → world convention (iter 77)
 - [x] Write SimBallDetector for TiledCamera float32 depth (iter 77, 8 tests)
 - [x] Integrate SimBallDetector into debug_d435i_capture.py (iter 77)
-- [ ] GPU smoke test: capture RGB+depth frames with ball visible (blocked by policy training)
+- [x] Sim pipeline integration tests — 8 tests (iter 82, 294/294 pass)
+- [ ] GPU smoke test: capture RGB+depth frames with ball visible (blocked by policy PID 1118275)
 - [ ] If camera still wrong: try identity quaternion, systematically rotate
-- [ ] Wire camera→detect→EKF pipeline for visual demo
-- [ ] Demo script Daniel can run: camera feed + ball detection + EKF overlay
+- [ ] Wire camera→detect→EKF pipeline for visual demo (demo_camera_ekf.py ready, needs GPU)
+- [ ] Demo script Daniel can run + capture video for Quarto
+- [ ] Add video to Quarto page (Daniel requested 2026-04-09)
 
 # EKF tuning (lower priority, mostly done)
 - [ ] GPU sweep at higher target heights (0.3-0.5m) to confirm EKF beats raw at distance

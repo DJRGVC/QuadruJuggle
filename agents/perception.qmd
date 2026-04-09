@@ -18,6 +18,28 @@ reverse chronological order (newest first).
 
 ---
 
+## Iteration 83 — Sim pipeline integration tests + child cleanup {.unnumbered}
+*2026-04-09*
+
+Added 8 integration tests for the full sim camera pipeline chain
+(SimBallDetector → cam_detection_to_world → EKF), covering identity/offset/rotated
+cameras, ballistic trajectory tracking, and 50% dropout resilience. Key learnings:
+
+- EKF gravity model causes ~22mm systematic drift for "stationary" balls (expected)
+- 70° camera tilt causes ball to project outside 640×480 image for nearby objects at rest
+- Pipeline chain verified: detect → transform → EKF converges within 30mm for stationary,
+  <30mm mean error for ballistic trajectories, <80mm under 50% dropout
+
+Killed testing-dashboard child agent (task complete at iter 4, was idle at iter 10).
+294/294 tests pass.
+
+**Status**: GPU still locked by policy training. Camera visualization smoke test
+remains top priority.
+
+Commits: `be3b5c5` (iter 82), this commit
+
+---
+
 ## Iterations 80–81 — frame_transforms module + demo summary visualizations {.unnumbered}
 *2026-04-09*
 

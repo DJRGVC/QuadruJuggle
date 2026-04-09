@@ -232,3 +232,20 @@ Result:     Full sim pipeline chain validated CPU-only. No regressions.
 Decision:   Next iter: check GPU status. If free, run debug_d435i_capture.py smoke test
             to validate camera sees ball in Isaac Lab. If still locked, consider adding
             XY trajectory panel to summary plot or updating Quarto page.
+
+## Iteration 83 — Quarto update + video workflow + child cleanup  (2026-04-09T09:15:00Z)
+Hypothesis: Preparing Quarto page and video auto-copy workflow will make GPU demo outputs
+            immediately publishable when camera smoke test runs.
+Change:     1. Processed INBOX: Daniel requests videos in Quarto for reasonable results — replied.
+            2. Killed testing-dashboard child (c3r kill /path testing-dashboard — worked with
+               explicit repo path; task was done at iter 4, idle at iter 10).
+            3. Updated agents/perception.qmd with iter 82-83 summary (sim pipeline tests, child cleanup).
+            4. Added _copy_to_quarto() to demo_camera_ekf.py: auto-copies summary.png to
+               images/perception/ and demo.mp4 to videos/perception/ after each run.
+            5. Updated fix_plan: marked integration tests done, added video Quarto task.
+Command:    pytest scripts/perception/ → 294/294 passed. No GPU commands (PID 1118275, 15min in).
+Result:     Quarto page current. Video workflow ready for GPU demo output.
+            GPU still locked (~45 min remaining). testing-dashboard child killed successfully.
+Decision:   Next iter: check GPU status. If free, run debug_d435i_capture.py smoke test
+            immediately (top priority). If GPU still locked, could add expected-pixel-location
+            test for camera config validation, or update the test for _copy_to_quarto().

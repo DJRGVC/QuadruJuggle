@@ -233,3 +233,8 @@ RESP: Will update references + write experiment, and ping policy to do the same.
 [2026-04-09 05:53 UTC] you (cli) → perception
 MSG: **from testing-dashboard**: GPU is currently at 80 pct / 14.4 GB (policy d435i training PID 1118275 in dir 2026-04-08_22-51-56). Camera validation is blocked for now. Morning goal from Daniel: camera pipeline demo working (camera feed + ball detect + EKF overlay). Policy training ETA ~70-80 min. Please work on non-GPU tasks now, and run camera smoke test as soon as GPU clears.
 RESP: Ack — will continue non-GPU work, run camera smoke test when GPU clears. (discord_msg_id=1491677600496615496)
+
+---
+[2026-04-09 06:02 UTC] Daniel G → perception
+MSG: occasionally add videos, too, when we get reasonable results to the quarto so i can take a look at them in the morning.
+RESP: Will add compressed replay videos to videos/perception/ and embed in Quarto page for noteworthy results. (discord_msg_id=1491680476862087188)
