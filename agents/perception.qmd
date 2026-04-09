@@ -13,12 +13,37 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete** (519 CPU tests). High-height readiness
+Perception pipeline is **feature-complete** (534 CPU tests). High-height readiness
 analysis confirms EKF tracks ball accurately at juggling heights (0.5–1.0m):
 apex error 2.7–4.6mm, detection rate 70–81%. Pipeline is ready for when
 policy learns to juggle. Bottleneck remains policy energy modulation.
 
 See [full Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd).
+
+---
+
+## Iteration 128 — Perception gap decomposition {.unnumbered}
+*2026-04-10*
+
+Created `analyze_perception_gap.py` — breaks down EKF observation error by ball phase
+(contact, ascending, descending) across all target heights. Applied to the Stage G
+oracle vs d435i eval data.
+
+![Perception gap decomposition — position/velocity error, staleness, detection rate by ball phase](../images/perception/perception_gap_decomposition_iter128.png){width=100%}
+
+**Key findings**:
+
+- **D435i position RMSE**: 120–185mm during flight, well-bounded during contact (paddle anchor)
+- **D435i velocity RMSE**: 0.40–0.81 m/s — 3–4x better than oracle (which diverges without anchor)
+- **Neither model juggles**: max ball height is 246mm regardless of target (0.10–0.50m)
+- **Detection rate during flight**: only 2–6% (ball too low for camera most of the time)
+- **Observation staleness**: near-zero for D435i (anchor keeps EKF fed), 700+ steps for oracle
+
+**Verdict**: The EKF pipeline is well-behaved under D435i noise. The oracle comparison is misleading — its huge RMSE (5.6m) reflects EKF divergence in predict-only mode, not actual perception quality. The real bottleneck remains policy energy modulation. Waiting for policy agent's ES-fixed Stage G retraining.
+
+15 new tests, 534/534 total pass.
+
+Commits: this iter.
 
 ---
 

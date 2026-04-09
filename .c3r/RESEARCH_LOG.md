@@ -155,3 +155,29 @@ Decision:   Pipeline is fully ready. Next: wait for policy Stage G results or or
             comparison. If GPU free, run the oracle checkpoint through d435i pipeline
             (cross-eval from fix_plan). May also prepare comprehensive readiness
             experiment write-up for Quarto.
+
+## Iteration 128 — Perception gap decomposition analysis  (2026-04-10T01:30:00Z)
+Hypothesis: Breaking down EKF observation error by ball phase (contact/ascending/
+            descending) will reveal whether the perception gap at high targets is
+            from noise, dropout, EKF lag, or pure policy limitation.
+Change:     Created analyze_perception_gap.py — decomposes EKF error by phase,
+            computes velocity error, observation staleness, and detection rate per
+            phase. 6-panel publication figure. 15 new tests (534/534 total pass).
+Command:    python analyze_perception_gap.py --oracle-dir eval_stage_g_final_oracle
+              --d435i-dir eval_stage_g_final_d435i --out .../perception_gap_decomposition_iter128.png
+            pytest scripts/perception/ -x -q → 534/534 passed (11.93s)
+Result:     GAP DECOMPOSITION FINDINGS:
+            - D435i pos RMSE: 120-185mm flight, well-bounded contact (paddle anchor)
+            - D435i vel RMSE: 0.40-0.81 m/s (3-4x better than oracle's 1.3-1.6)
+            - Oracle RMSE misleading: 5.6m = EKF divergence without anchor, not perception gap
+            - Neither model juggles: max_h=246mm at ALL targets (both modes)
+            - Detection 2-6% during flight (ball too low for camera)
+            - D435i staleness near-zero (anchor feeds EKF); oracle: 700+ steps stale
+            CONCLUSION: EKF pipeline works correctly. The "perception gap" in policy
+            timeout % (18% at 0.50m per policy iter 32) is policy robustness to noise,
+            NOT observation quality. The EKF tracks well when the ball is in flight.
+            Updated Quarto page with figure and analysis.
+Decision:   Pipeline fully ready + gap analyzed. Waiting for policy agent ES-fixed
+            Stage G retraining. When new checkpoint available, re-run gap decomposition
+            to see if actual juggling (ball >200mm) changes the picture. Meanwhile,
+            can clean up fix_plan or write experiment write-up.
