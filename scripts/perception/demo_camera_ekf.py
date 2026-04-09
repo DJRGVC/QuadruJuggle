@@ -179,6 +179,10 @@ def main():
 
     # Setup detector and EKF (both in world frame)
     detector = SimBallDetector.from_tiled_camera_cfg()
+    robot = unwrapped.scene["robot"]
+    # Paddle offset in body frame + ball radius for anchor position
+    _PADDLE_OFFSET_Z = 0.070  # paddle surface above robot root
+    _BALL_RADIUS = 0.020      # ball centre above paddle when resting
     # Compute world-frame contact threshold from initial robot height
     robot_z_init = robot.data.root_pos_w[0, 2].item()
     paddle_z_init = robot_z_init + _PADDLE_OFFSET_Z
@@ -205,11 +209,6 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
 
     ball = unwrapped.scene["ball"]
-    robot = unwrapped.scene["robot"]
-
-    # Paddle offset in body frame + ball radius for anchor position
-    _PADDLE_OFFSET_Z = 0.070  # paddle surface above robot root
-    _BALL_RADIUS = 0.020      # ball centre above paddle when resting
 
     # Give ball initial upward velocity to get it into the camera FOV.
     # Camera FOV covers 41°-99° elevation → ball must be ≥0.2m above paddle.
@@ -335,9 +334,15 @@ def main():
 
         # Camera scheduling: use phase tracker state from previous step to decide
         # which envs need detection. During contact, paddle anchor handles estimation.
+        # Starvation override: if EKF hasn't had a measurement for too long, force
+        # camera on to prevent EKF drift → wrong phase → no detection death spiral.
         use_scheduling = getattr(args_cli, "camera_scheduling", False)
+        SCHED_STARVE_LIMIT = 50  # force camera on after 50 steps without measurement
         if use_scheduling:
-            schedule_mask = phase_tracker.in_flight  # (N,) bool — True = need detection
+            schedule_mask = phase_tracker.in_flight.clone()  # (N,) bool — True = need detection
+            # Override: force detection for starved envs
+            starved = ekf.steps_since_measurement > SCHED_STARVE_LIMIT
+            schedule_mask = schedule_mask | starved
         else:
             schedule_mask = torch.ones(n_envs, dtype=torch.bool)  # detect all
 

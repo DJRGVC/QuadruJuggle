@@ -76,3 +76,28 @@ Decision:   Next iter: check if smoke test completed (background PID 1309706). I
             verify trajectory.npz was produced correctly, then run full comparison.
             If cold start takes >25 min total, run comparison with longer time budget.
             Stage G checkpoint: /home/daniel-grant/Research/QuadruJuggle-policy/logs/rsl_rl/go1_ball_juggle_hier/2026-04-09_04-56-44/model_best.pt
+
+## Iteration 114 — Camera scheduling starvation fix + Stage G eval  (2026-04-09T14:00:00Z)
+Hypothesis: Stage G eval with d435i+anchor+camera-scheduling will show improved EKF
+            tracking at higher target heights thanks to the policy agent's mixed-target
+            training.
+Change:     1. Fixed UnboundLocalError in demo_camera_ekf.py — `robot` and constants
+               `_PADDLE_OFFSET_Z`/`_BALL_RADIUS` were used before definition (moved up).
+            2. Fixed bash f-string escaping in run_perception_eval.sh summary table.
+            3. Added camera scheduling starvation override: when EKF goes >50 steps
+               without a measurement, force camera on regardless of phase tracker state.
+               Prevents death spiral: wrong phase → no detection → EKF drift → wrong phase.
+            4. Ran Stage G eval (d435i, anchor, camera-scheduling, 5 targets, 1500 steps).
+Command:    GPU eval: run_perception_eval.sh --targets "0.10 0.30 0.50 0.70 1.00"
+            --anchor --camera-scheduling --label stage_g_d435i
+Result:     CRITICAL FINDING: Camera scheduling death spiral confirmed.
+            Detection rate 1.1-1.4% across all targets. Phase tracker classified 98.5%
+            as "contact" because EKF Z was wrong (mean EKF_Z=0.459 vs GT_Z=0.798).
+            EKF RMSE 0.10-0.25m — too high for usable obs. Ball reached max 1.09m at
+            target=0.50 and 1.28m at target=0.70, confirming Stage G policy works.
+            Root cause: camera scheduling uses phase tracker (EKF-based) → EKF has no
+            measurements → drifts low → phase tracker says "contact" → camera stays off.
+            FIX APPLIED: starvation override (>50 steps → force camera on).
+            Re-eval needed to verify fix works.
+Decision:   Next iter: re-run Stage G eval with starvation fix to verify detection rate
+            improves. Then run oracle baseline for comparison.

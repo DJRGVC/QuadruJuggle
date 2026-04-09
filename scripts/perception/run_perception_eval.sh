@@ -141,7 +141,8 @@ if len(ekf) > 0 and len(gt) > 0:
     rmse = np.sqrt(np.mean((ekf[:n] - gt[:n])**2))
 else:
     rmse = float('nan')
-print(f'${TARGET:10s} {rate:8.1f}%  {total:8d}  {mean_h:8.3f}  {max_h:8.3f}  {rmse:8.4f}')
+target_str = '$TARGET'
+print(f'{target_str:10s} {rate:8.1f}%  {total:8d}  {mean_h:8.3f}  {max_h:8.3f}  {rmse:8.4f}')
 " 2>&1
     else
         echo "${TARGET}       --        --        --        --        --"
