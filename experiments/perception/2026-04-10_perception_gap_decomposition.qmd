@@ -1,0 +1,168 @@
+---
+title: "Perception Gap Decomposition: Where Does the Error Come From?"
+description: "Phase-by-phase decomposition of EKF observation error reveals the 'perception gap' is actually a policy gap — the ball never reaches heights where camera perception matters."
+date: 2026-04-10
+author: "perception (c3r agent)"
+categories: [evaluation, perception, gap-analysis]
+---
+
+## Question
+
+Policy agent iter 32 showed an 18% timeout gap between oracle and D435i-trained policies at target=0.50m. Is this gap caused by:
+
+1. **Observation noise** degrading pi1's ball state estimate?
+2. **EKF lag** during fast ballistic transit?
+3. **Camera dropout** at low heights causing stale observations?
+4. **Policy limitation** — the ball never reaches heights where camera perception matters?
+
+We decompose the EKF observation error by ball phase (contact, ascending, descending) across 5 target heights to isolate the root cause.
+
+## Method
+
+### Evaluation setup
+
+- **Env**: `Isaac-BallJuggleHier-Go1-Play-v0`, 4 envs, 1500 steps (30s at 50 Hz)
+- **Targets**: 0.10, 0.20, 0.30, 0.42, 0.50m apex height
+- **Camera**: simulated D435i, 70deg elevation, 640x480 depth
+- **EKF**: 6-state (pos+vel), ballistic+drag dynamics, adaptive R_xy, 3-level Q_vel
+- **Paddle anchor**: enabled for D435i mode (R_pos=5mm, triggers after 5 steps without measurement)
+
+### Checkpoints
+
+| Model | Training stage | Checkpoint |
+|:---:|:---:|:---:|
+| Oracle | Stage F (single target 0.50m, GT obs) | `2026-04-08_19-19-41/model_best.pt` |
+| D435i | Stage G (mixed targets 0.10-0.50m, noisy obs) | `2026-04-09_07-38-27/model_best.pt` |
+| pi2 | Torso tracking (shared) | `2026-03-12_17-16-01/model_best.pt` |
+
+Note: the two pi1 checkpoints trained at different curriculum stages (F vs G) and different noise modes. This comparison isolates the *perception pipeline's contribution* to policy performance, not a controlled ablation. The policy agent's cross-eval (iter 29) provides the controlled comparison.
+
+### Analysis pipeline
+
+1. **`run_oracle_vs_d435i.sh`** — runs both checkpoints through full camera+EKF pipeline at 5 targets
+2. **`analyze_perception_gap.py`** — loads trajectory.npz files, classifies each timestep by ball phase (contact/ascending/descending), computes per-phase EKF RMSE, velocity RMSE, detection rate, and observation staleness
+3. **`analyze_high_height_readiness.py`** — simulates ballistic arcs at 0.50/0.70/1.00m through the D435i noise model + EKF to project pipeline accuracy at juggling heights
+
+### Commands
+
+```bash
+# Stage G eval (GPU)
+$C3R_BIN/gpu_lock.sh bash scripts/perception/run_oracle_vs_d435i.sh \
+  --oracle-pi1 logs/.../2026-04-08_19-19-41/model_best.pt \
+  --d435i-pi1 logs/.../2026-04-09_07-38-27/model_best.pt \
+  --targets "0.10 0.20 0.30 0.42 0.50" --label stage_g_final \
+  --steps 1500 --num-envs 4
+
+# Gap decomposition (CPU)
+python scripts/perception/analyze_perception_gap.py \
+  --oracle-dir logs/perception/eval_stage_g_final_oracle \
+  --d435i-dir logs/perception/eval_stage_g_final_d435i \
+  --out images/perception/perception_gap_decomposition_iter128.png
+
+# High-height readiness (CPU)
+python scripts/perception/analyze_high_height_readiness.py \
+  --out images/perception/high_height_readiness_iter127.png
+```
+
+## Results
+
+### Finding 1: Neither model juggles
+
+The most striking result is that **max ball height is 246mm at every target height, in both modes**. The policy commands target heights from 0.10 to 0.50m but produces identical ball dynamics regardless. Flight time is 1.5--5.7% of the episode — the ball sits on the paddle 94--99% of the time.
+
+| Target | Oracle flight % | D435i flight % | Max ball height (mm) |
+|:---:|:---:|:---:|:---:|
+| 0.10 | 1.5% | 1.5% | 246 |
+| 0.20 | 1.5% | 1.5% | 246 |
+| 0.30 | 1.5% | 3.3% | 246 |
+| 0.42 | 1.5% | 5.7% | 246 |
+| 0.50 | 1.9% | 1.5% | 246 |
+
+The D435i model shows slightly more flight at 0.30--0.42m targets (noise dislodges the ball more), but this is accidental, not controlled energy modulation.
+
+### Finding 2: Oracle EKF RMSE is misleading
+
+| Mode | EKF position RMSE | Reason |
+|:---:|:---:|:---|
+| Oracle | 5,600--5,800 mm | No paddle anchor; EKF diverges in predict-only mode during 700+ step measurement gaps |
+| D435i | 120--530 mm | Paddle anchor feeds EKF during contact, preventing divergence |
+
+The 50x RMSE difference between modes reflects **pipeline configuration** (anchor on/off), not perception quality. Oracle mode has no anchor because in oracle mode the policy sees ground truth — the EKF runs in background for metrics only. The divergence is an artifact of the evaluation setup.
+
+### Finding 3: Phase-by-phase D435i accuracy
+
+D435i EKF position RMSE by ball phase (averaged across targets):
+
+| Phase | Steps (% of episode) | EKF pos RMSE (mm) | Detection rate | Velocity RMSE (m/s) |
+|:---:|:---:|:---:|:---:|:---:|
+| Contact | 66--81% | 120--530 | 0--0.9% | 0.40--0.58 |
+| Ascending | 10--20% | 161--185 | 3.1--5.5% | 0.39--2.72 |
+| Descending | 10--17% | 156--170 | 2.5--5.6% | 0.48--2.23 |
+
+**Contact phase dominates.** The paddle anchor keeps position RMSE at 120--530mm during contact (when the ball is too close for the camera to see). During flight, RMSE is bounded at 156--185mm — adequate for a ball that only reaches 246mm. Velocity error is higher during flight (up to 2.7 m/s at 0.42m) due to sparse measurements.
+
+### Finding 4: Observation staleness confirms the gap source
+
+| Mode | Mean staleness (steps since last measurement) |
+|:---:|:---:|
+| Oracle | 705--707 steps (14 seconds!) |
+| D435i | 0.01--0.01 steps (anchor feeds every step) |
+
+Oracle's EKF goes 700+ steps without any measurement update. D435i's paddle anchor feeds a virtual measurement every step during contact, keeping staleness near zero. This is why the D435i EKF stays bounded despite having noisier raw measurements.
+
+### Finding 5: Pipeline is ready for real juggling
+
+Simulated ballistic arcs at juggling heights through the full D435i noise + EKF pipeline:
+
+| Target height | Apex error | Flight RMSE | Detection rate | Dropout |
+|:---:|:---:|:---:|:---:|:---:|
+| 0.50m | 2.7 mm | 32.0 mm | 81.2% | 20.0% |
+| 0.70m | 2.8 mm | 37.5 mm | 70.3% | 25.8% |
+| 1.00m | 4.6 mm | 44.2 mm | 69.8% | 32.3% |
+
+**Apex error < 5mm at all heights.** This is the critical metric for pi1's energy modulation — it needs to know how high the ball went to decide how hard to launch it next. The pipeline delivers sub-5mm apex accuracy even with 20--32% measurement dropout.
+
+![Perception gap decomposition by ball phase across 5 target heights](../images/perception/perception_gap_decomposition_iter128.png){width=100%}
+
+![High-height readiness: EKF tracks ballistic arcs accurately at 0.50--1.00m](../images/perception/high_height_readiness_iter127.png){width=100%}
+
+## Discussion
+
+### The "perception gap" is a policy gap
+
+The 18% timeout difference between oracle and D435i policies (at target=0.50m, per policy iter 32) comes from **the policy's inability to modulate launch energy**, not from observation degradation. The ball never reaches heights where the camera would be useful — both modes produce identical 246mm max height regardless of target. The camera detection rate is 1--6% because the ball is almost always on the paddle.
+
+When we simulate what would happen with actual juggling (ballistic arcs at 0.5--1.0m), the D435i pipeline delivers 2.7--4.6mm apex error — more than sufficient for closed-loop energy control.
+
+### The paddle anchor is critical infrastructure
+
+Without the paddle anchor, the EKF diverges within seconds (Oracle RMSE: 5.6m after 700+ steps predict-only). The anchor provides:
+
+- Bounded position error during the 94--99% of the episode spent in contact
+- Velocity zeroing during contact (correct, since the ball is stationary on the paddle)
+- Near-zero observation staleness, regardless of camera detection rate
+
+For a task where the ball is on the paddle most of the time, the anchor is arguably more important than the camera.
+
+### Implications for policy training
+
+1. **Stage G needs more training time.** The ES bug (total return instead of per-step reward) killed training at 1531 iters. With the fix, the policy should converge further.
+2. **The perception pipeline is waiting, not blocking.** All camera + EKF components are tested and ready.
+3. **When the ball starts reaching 200mm+**, detection rates will climb from 1--6% to 70--80%, and the EKF will shift from anchor-dominated to measurement-dominated operation.
+
+### Limitations
+
+- Oracle and D435i checkpoints trained at different stages (F vs G) and noise modes — not a controlled ablation
+- Only 4 envs per target (limited by GPU memory during long runs)
+- The 246mm max height is determined by the policy, not the evaluation — a different policy could produce different dynamics
+- High-height readiness is simulated (ballistic arcs), not from actual policy behaviour at those heights
+
+## Reproducibility
+
+- **Commit**: `cf88764` (iter 129)
+- **Eval data**: `logs/perception/eval_stage_g_final_oracle/`, `logs/perception/eval_stage_g_final_d435i/`
+- **Gap decomposition JSON**: `logs/perception/gap_decomposition_iter128.json`
+- **High-height readiness script**: `scripts/perception/analyze_high_height_readiness.py`
+- **Gap decomposition script**: `scripts/perception/analyze_perception_gap.py`
+- **Test suite**: 534/534 passing (`pytest scripts/perception/ -x -q`, ~12s CPU)
+- **Figures**: `images/perception/perception_gap_decomposition_iter128.png`, `images/perception/high_height_readiness_iter127.png`
