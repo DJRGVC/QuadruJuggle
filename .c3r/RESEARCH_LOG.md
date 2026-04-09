@@ -53,3 +53,21 @@ Decision:   Next iter: check oracle_eval_DONE sentinel again. If found, run
             analyze_eval_trajectory.py on the npz for detection rate + height-binned RMSE
             + phase analysis under sustained juggling. If still blocked, consider what
             additional analysis tooling would be useful.
+
+## Iteration 100 — Add --out-dir flag + eval scripts for oracle vs d435i comparison  (2026-04-10T07:45:00Z)
+Hypothesis: Multiple eval runs need separate output directories to enable side-by-side
+            comparison. The hardcoded demo output dir caused each run to overwrite the previous.
+Change:     1. Added --out-dir CLI flag to demo_camera_ekf.py (defaults to legacy path).
+            2. Updated run_oracle_eval.sh to use --out-dir logs/perception/oracle_eval/.
+            3. Created run_d435i_eval.sh (d435i counterpart, --out-dir logs/perception/d435i_eval/).
+            4. Updated run_comparison.sh to read from dedicated eval dirs and support 2-run comparison.
+            5. Killed stale oracle eval (PID 1204960, used old script) and re-queued (PID 1218087).
+Command:    pytest scripts/perception/ → 354/354 passed (7.21s).
+            GPU status: policy training PID 1199965 (ETA ~32 min). Oracle eval PID 1218087 queued.
+Result:     Eval infrastructure now supports multiple named runs with persistent output.
+            Oracle eval will save to logs/perception/oracle_eval/trajectory.npz when GPU frees.
+            After oracle completes, run_d435i_eval.sh produces the d435i counterpart.
+            run_comparison.sh then generates the side-by-side figure automatically.
+Decision:   Next iter: check oracle_eval_DONE sentinel. When oracle eval completes (~45 min),
+            parse results with analyze_eval_trajectory.py. Then queue d435i eval for comparison.
+            If still GPU-blocked, could start writing the experiment write-up template.

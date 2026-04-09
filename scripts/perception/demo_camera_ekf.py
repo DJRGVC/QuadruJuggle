@@ -11,7 +11,7 @@ Usage (from project root):
     uv run --active python scripts/perception/demo_camera_ekf.py \
         --task Isaac-BallJuggleHier-Go1-Play-v0 --num_envs 1 --headless --enable_cameras
 
-Outputs to: source/go1_ball_balance/go1_ball_balance/perception/debug/demo/
+Outputs to: --out-dir (default: source/go1_ball_balance/go1_ball_balance/perception/debug/demo/)
 """
 
 import argparse
@@ -40,6 +40,8 @@ parser.add_argument("--noise-mode", type=str, default="oracle", choices=["oracle
                     help="Ball observation noise mode: 'oracle' (ground truth) or 'd435i' (structured camera noise).")
 parser.add_argument("--target-height", type=float, default=None,
                     help="Fixed target apex height (m). If set, overrides PLAY config's random target range.")
+parser.add_argument("--out-dir", type=str, default=None,
+                    help="Output directory for frames, trajectory.npz, summary.png. Defaults to perception/debug/demo.")
 
 # Strip --pi2-checkpoint
 _pi2_checkpoint_path = None
@@ -169,10 +171,13 @@ def main():
     ekf = BallEKF(num_envs=args_cli.num_envs, device="cpu", cfg=ekf_cfg)
 
     # Output directory
-    out_dir = os.path.normpath(os.path.join(
-        os.path.dirname(__file__), "..", "..",
-        "source", "go1_ball_balance", "go1_ball_balance", "perception", "debug", "demo"
-    ))
+    if getattr(args_cli, "out_dir", None) is not None:
+        out_dir = os.path.abspath(args_cli.out_dir)
+    else:
+        out_dir = os.path.normpath(os.path.join(
+            os.path.dirname(__file__), "..", "..",
+            "source", "go1_ball_balance", "go1_ball_balance", "perception", "debug", "demo"
+        ))
     os.makedirs(out_dir, exist_ok=True)
 
     ball = unwrapped.scene["ball"]

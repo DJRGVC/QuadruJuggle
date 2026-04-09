@@ -23,18 +23,19 @@
   - [x] GPU validation: policy loads + runs (iter 92). Env sync confirmed working.
   - [~] FIX: d435i policy balances but doesn't juggle → 1% detection rate. Camera needs
     ball in-flight (≥0.2m above paddle). Trying oracle checkpoint (100% TO, stable juggling).
-    Added --noise-mode and --target-height flags to demo_camera_ekf.py.
-    GPU queued (PID 1204960, behind policy training lock). Target=0.42m.
-    Next: check oracle_eval_DONE sentinel, parse logs/perception/oracle_eval.log
+    Added --noise-mode, --target-height, --out-dir flags to demo_camera_ekf.py.
+    GPU re-queued (PID 1218087, behind policy training lock). Target=0.42m.
+    Oracle output → logs/perception/oracle_eval/trajectory.npz
   - [x] Created compare_eval_runs.py — multi-run comparison (bar chart + timeseries)
   - [x] 8 tests for comparison script (335/335 total)
-  - [x] run_comparison.sh — one-command comparison once logs ready
-  - [ ] Parse oracle eval results when GPU run completes
+  - [x] run_comparison.sh — updated to use dedicated eval output dirs
+  - [x] run_d435i_eval.sh — d435i counterpart for comparison
+  - [ ] Parse oracle eval results when GPU run completes (PID 1218087 queued)
     - [x] Created analyze_eval_trajectory.py — reads trajectory.npz directly (stdout-independent)
-    - [x] Updated run_oracle_eval.sh to tee output to timestamped log file
-    - [x] Updated run_comparison.sh to use npz-based analysis as primary path
-    - [x] 12 tests for trajectory analysis (347/347 total)
-  - [ ] Generate oracle vs d435i comparison figure for Quarto experiment
+    - [x] Updated run_oracle_eval.sh with --out-dir logs/perception/oracle_eval/
+    - [x] 12 tests for trajectory analysis (354/354 total)
+  - [ ] Run d435i eval (run_d435i_eval.sh) after oracle completes
+  - [ ] Generate oracle vs d435i comparison figure via run_comparison.sh
 
 # EKF tuning (lower priority, mostly done)
 - [x] GPU sweep at higher target heights (0.3-0.5m) — bounce mode sweep done (iter 90)

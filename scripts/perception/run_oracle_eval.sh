@@ -11,10 +11,11 @@ NUM_ENVS=4
 # Use target=0.42m where policy cross-eval showed 83% timeout
 TARGET=0.42
 
+OUT_DIR="logs/perception/oracle_eval"
 LOG_FILE="logs/perception/oracle_eval_$(date +%Y%m%d_%H%M%S).log"
 
 echo "=== Oracle pi1 eval: ${STEPS} steps, ${NUM_ENVS} envs, target=${TARGET}m ==="
-echo "=== Log: ${LOG_FILE} ==="
+echo "=== Log: ${LOG_FILE}, Out: ${OUT_DIR} ==="
 uv run --active python -u scripts/perception/demo_camera_ekf.py \
     --task Isaac-BallJuggleHier-Go1-Play-v0 \
     --num_envs "$NUM_ENVS" \
@@ -24,9 +25,11 @@ uv run --active python -u scripts/perception/demo_camera_ekf.py \
     --pi2-checkpoint "$PI2" \
     --target-height "$TARGET" \
     --noise-mode oracle \
+    --out-dir "$OUT_DIR" \
     2>&1 | tee "$LOG_FILE"
 
 echo ""
 echo "=== Done ==="
 echo "LOG=$LOG_FILE" > logs/perception/oracle_eval_DONE
+echo "OUT_DIR=$OUT_DIR" >> logs/perception/oracle_eval_DONE
 touch logs/perception/oracle_eval_DONE
