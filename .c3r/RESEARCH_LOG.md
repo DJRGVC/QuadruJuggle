@@ -296,3 +296,22 @@ Result:     Demo script ready for GPU. Bounce mode produces ~4-5 bounces in 300 
 Decision:   Next iter: check GPU status. If free, run run_gpu_demo.sh immediately via
             gpu_lock.sh. This is the single most important blocker — camera visualization
             has been waiting since iter 76.
+
+## Iteration 86 — GPU demo queued + robustness improvements  (2026-04-09T06:24:00Z)
+Hypothesis: GPU demo can be queued behind policy training via gpu_lock — if training
+            finishes during this iteration, demo runs automatically.
+Change:     1. Queued run_gpu_demo.sh behind gpu_lock (PID 1133926, waiting for lock).
+            2. Added per-step timeout (5 min default) to run_gpu_demo.sh — prevents hangs.
+            3. Added sentinel file (logs/perception/gpu_demo_DONE) written on success —
+               next iteration can detect completion even if this iter times out.
+            4. Verified all prerequisites: pi2 checkpoint auto-detected, DEBUG scene has
+               d435i camera, Quarto image/video dirs exist, 311/311 tests pass.
+            5. Policy training at iter ~2100/3000, 35 min elapsed, est 30-50 min remaining.
+Command:    pytest scripts/perception/ → 311/311 passed.
+            $C3R_BIN/gpu_lock.sh bash scripts/perception/run_gpu_demo.sh (background PID 1133926)
+Result:     GPU still locked. Background process waiting. All CPU work complete.
+            Policy agent reports d435i outperforms oracle at Stage E (+176% apex) — validates
+            our noise model. Their continuation run (from checkpoint 1550) is in progress.
+Decision:   Next iter: check for sentinel file (logs/perception/gpu_demo_DONE). If found,
+            parse results from GPU log + debug frames. If not found, check if PID 1133926
+            is still running or if it died. Re-queue if needed.
