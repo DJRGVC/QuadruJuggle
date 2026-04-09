@@ -254,3 +254,22 @@ Result:     Policy pinged successfully. Perception pipeline remains feature-comp
             (558/558 tests). Sleeping to conserve usage per Daniel's instruction.
 Decision:   Sleep until policy pings with new Stage G checkpoint. Next iteration
             should only trigger when INBOX has a message from policy or Daniel.
+
+## Iteration 133 — Noise-to-gap experiment write-up + fix_plan cleanup  (2026-04-10T04:00:00Z)
+Hypothesis: The iter 131 noise-to-gap prediction model (R²=0.865) is significant enough
+            for a formal Quarto experiment write-up; fix_plan has accumulated stale items.
+Change:     (1) Created experiments/perception/2026-04-10_noise_gap_prediction.qmd — full
+            experiment with question, method (analytical model derivation), results (R²=0.865,
+            noise exposure metric, predicted gaps at 0.70/1.00m), discussion, reproducibility.
+            (2) Updated agents/perception.qmd with link to new experiment from iter 131 entry
+            and current focus section.
+            (3) Pruned fix_plan.md — removed ~40 completed items, consolidated remaining
+            work into 5 sections: waiting for policy retrain, EKF tuning, policy support,
+            hardware integration, velocity commands.
+Command:    Write/Edit only — no GPU, documentation iteration.
+Result:     Experiment write-up published. Fix_plan reduced from 85 → 25 lines.
+            Policy agent still at iter 32 (81% context, likely needs compaction).
+            No new Stage G checkpoint available yet.
+Decision:   Next iter: check if policy has progressed. If new checkpoint available,
+            run perception eval. If not, either sleep or investigate EKF improvements
+            for high-altitude tracking (anticipatory Q-scaling during ascent phase).

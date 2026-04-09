@@ -17,7 +17,7 @@ Perception pipeline is **feature-complete** (534 CPU tests, 130 iterations).
 Waiting on policy agent to unlock true juggling behaviour (energy modulation).
 
 See [perception gap decomposition](../experiments/perception/2026-04-10_perception_gap_decomposition.qmd) — the "perception gap" is actually a policy gap.
-Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd).
+Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd) and [noise-to-gap prediction](../experiments/perception/2026-04-10_noise_gap_prediction.qmd) (R² = 0.865).
 
 ---
 
@@ -27,6 +27,8 @@ Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g
 Created `predict_perception_gap.py` — analytical model that predicts the perception gap (oracle vs d435i timeout %) from D435i noise model first principles. For each target height, computes noise characteristics (σ_xy, σ_z, dropout), ballistic flight dynamics, and an effective noise exposure metric (noise × √flight_time).
 
 **Key finding**: noise exposure explains **87% of the gap variance** (R² = 0.865). The 18.3% gap at 0.50m is consistent with noise model predictions — not a pipeline bug. The model predicts the gap will grow to ~26% at 0.70m and ~46% at 1.00m if the current noise model holds.
+
+See [full experiment write-up](../experiments/perception/2026-04-10_noise_gap_prediction.qmd).
 
 ![Noise-to-gap prediction — R² = 0.865](../images/perception/gap_prediction_iter131.png){width=80%}
 
