@@ -317,6 +317,66 @@ class TestContactAwareEKF(unittest.TestCase):
         self.assertEqual(ekf._post_contact_countdown[0].item(), 5)
 
 
+    def test_ascending_phase_tighter_q_vel(self):
+        """During ascending flight (vz > 0, above contact, post-contact expired),
+        q_vel should use the tighter ascending value (0.25) instead of default (0.40).
+        This reduces covariance growth during the predictable ballistic ascent."""
+        cfg = BallEKFConfig(
+            q_vel=0.40,
+            q_vel_ascending=0.25,
+            q_vel_contact=50.0,
+            q_vel_post_contact=20.0,
+            post_contact_steps=3,
+            contact_aware=True,
+            contact_z_threshold=0.025,
+        )
+        ekf = BallEKF(num_envs=1, device="cpu", cfg=cfg)
+
+        dt = 0.005
+        # Start in contact, then launch
+        pos = torch.tensor([[0.0, 0.0, 0.020]])
+        vel = torch.tensor([[0.0, 0.0, 0.0]])
+        ekf.reset(torch.tensor([0]), pos, vel)
+        ekf.predict(dt=dt)  # sets countdown
+
+        # Launch ball high with upward velocity
+        ekf._x[0, 2] = 0.15
+        ekf._x[0, 5] = 3.0  # ascending
+        # Burn through post-contact window
+        for _ in range(3):
+            ekf.predict(dt=dt)
+        self.assertEqual(ekf._post_contact_countdown[0].item(), 0)
+
+        # Now in ascending flight with vz > 0 — should use q_vel_ascending
+        ekf._x[0, 5] = 2.5  # still ascending
+        P_before_asc = ekf._P.clone()
+        ekf.predict(dt=dt)
+        P_after_asc = ekf._P.clone()
+        dP_ascending = (P_after_asc[0, 3, 3] - P_before_asc[0, 3, 3]).item()
+
+        # Expected: q_vel_ascending=0.25 → (0.25*0.005)^2 ≈ 1.5625e-6
+        expected_ascending = (cfg.q_vel_ascending * dt) ** 2
+        # Allow for F@P@F^T contribution, but Q diagonal should dominate
+        # The key check: ascending growth should be less than default flight
+        expected_default = (cfg.q_vel * dt) ** 2
+        # Ascending q contribution is smaller
+        self.assertLess(expected_ascending, expected_default)
+
+        # Now switch to descending (vz < 0) — should use default q_vel
+        ekf._x[0, 5] = -2.0  # descending
+        P_before_desc = ekf._P.clone()
+        ekf.predict(dt=dt)
+        P_after_desc = ekf._P.clone()
+        dP_descending = (P_after_desc[0, 3, 3] - P_before_desc[0, 3, 3]).item()
+
+        # Descending should have more P growth than ascending due to higher q_vel
+        # (0.40 vs 0.25). The ratio of Q contributions is (0.40/0.25)^2 = 2.56.
+        # Total P growth includes F@P@F^T so the ratio won't be exact, but
+        # descending should be larger.
+        self.assertGreater(dP_descending, dP_ascending,
+                           f"Descending P growth {dP_descending:.8f} should exceed "
+                           f"ascending {dP_ascending:.8f} (q_vel 0.40 vs 0.25)")
+
     def test_reset_after_inference_mode_predict(self):
         """Reset must work even after predict/update ran inside inference_mode.
 

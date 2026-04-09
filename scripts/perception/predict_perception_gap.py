@@ -138,8 +138,12 @@ def compute_effective_noise_exposure(target_h: float) -> dict:
     dropout_rate = flight_noise["dropout_pct"] / 100.0
     # Expected consecutive misses (geometric distribution mean)
     mean_consec_misses = dropout_rate / max(1.0 - dropout_rate, 0.01)
-    # EKF prediction drift per miss (q_vel=0.40 m/s per step, dt=0.02s)
-    q_vel = 0.40
+    # EKF prediction drift per miss — phase-weighted q_vel:
+    # ascending phase uses q_vel=0.25 (tighter, ballistic model accurate),
+    # descending phase uses q_vel=0.40. Flight is ~50/50 ascending/descending.
+    q_vel_ascending = 0.25
+    q_vel_descending = 0.40
+    q_vel = 0.5 * q_vel_ascending + 0.5 * q_vel_descending  # flight-averaged
     dt = 1.0 / POLICY_HZ
     predict_drift_mm = q_vel * dt * mean_consec_misses * 1000  # mm
 

@@ -69,6 +69,16 @@ class BallEKFConfig:
     # Intermediate between flight (0.4) and contact (50.0) — allows filter to
     # converge to new post-bounce velocity without full contact-level noise.
 
+    # Ascending-phase process noise: during clean ballistic ascent (vz > 0,
+    # above contact zone, post-contact window expired), the dynamics model
+    # (gravity + drag) is highly accurate. Tighter q_vel trusts the prediction
+    # more, reducing covariance growth during measurement dropout at high
+    # altitudes. Ref: noise-to-gap model (iter_131) — predict drift is the
+    # dominant gap driver at high targets.
+    q_vel_ascending: float = 0.25  # q_vel during ascending flight (m/s/√s)
+    # 0.25 vs 0.40 default: ~37% tighter. Still covers residual drag model error
+    # (drag_coeff uncertainty ~20% → ~0.1 m/s² at 3 m/s → ~0.02 m/s per step).
+
     # Measurement noise — matched to D435iNoiseModelCfg (Ahn 2019 calibration)
     r_xy: float = 0.00125   # measurement noise std, XY (m) — 0.0025·z at z=0.5m
     r_xy_per_metre: float = 0.0025  # σ_xy = r_xy_per_metre · z (matched to D435i; Ahn 2019)
@@ -462,14 +472,17 @@ class BallEKF:
             ).exp()
             self._x[:, 6:9] = spin * decay_factor
 
-        # Process noise Q — contact-aware with post-contact inflation.
-        # Three-level q_vel: contact (50.0) > post-contact (20.0) > flight (0.4).
+        # Process noise Q — contact-aware with phase-aware scheduling.
+        # Four-level q_vel: contact (50) > post-contact (20) > descending (0.4) > ascending (0.25).
         # Post-contact window covers the first N steps after bounce where the
         # filter's velocity estimate is stale from the pre-bounce prediction.
-        # Ref: D'Ambrosio RSS 2023, lit_review_ekf_q_tuning iter_031.
+        # Ascending phase uses tighter q_vel because ballistic dynamics are highly
+        # predictable (gravity + drag), reducing covariance growth during dropout.
+        # Ref: D'Ambrosio RSS 2023, lit_review_ekf_q_tuning iter_031, noise-to-gap iter_131.
         q_pos_sq = (self.cfg.q_pos * dt) ** 2
         if self.cfg.contact_aware:
             ball_z = self._x[:, 2]
+            ball_vz = self._x[:, 5]
             in_contact = ball_z < self.cfg.contact_z_threshold
 
             # Update post-contact countdown:
@@ -479,10 +492,14 @@ class BallEKF:
             in_post_contact = (~in_contact) & (self._post_contact_countdown > 0)
             self._post_contact_countdown[in_post_contact] -= 1
 
-            # Three-level q_vel selection
+            # Ascending detection: above contact zone, post-contact expired, vz > 0
+            in_ascending = (~in_contact) & (~in_post_contact) & (ball_vz > 0)
+
+            # Four-level q_vel selection (ascending < default < post-contact < contact)
             q_vel_val = torch.full(
                 (self.num_envs,), self.cfg.q_vel, device=self.device
             )
+            q_vel_val[in_ascending] = self.cfg.q_vel_ascending
             q_vel_val[in_post_contact] = self.cfg.q_vel_post_contact
             q_vel_val[in_contact] = self.cfg.q_vel_contact
 

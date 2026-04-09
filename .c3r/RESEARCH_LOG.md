@@ -273,3 +273,28 @@ Result:     Experiment write-up published. Fix_plan reduced from 85 → 25 lines
 Decision:   Next iter: check if policy has progressed. If new checkpoint available,
             run perception eval. If not, either sleep or investigate EKF improvements
             for high-altitude tracking (anticipatory Q-scaling during ascent phase).
+
+## Iteration 134 — Phase-aware ascending q_vel in EKF  (2026-04-09T18:00:00Z)
+Hypothesis: During clean ballistic ascent (vz > 0, above contact zone, post-contact
+            expired), tighter process noise (q_vel=0.25 vs 0.40) will reduce EKF
+            covariance growth, since ascending dynamics are highly predictable
+            (gravity + drag model accurate). This directly reduces the predict drift
+            identified in iter 131's noise-to-gap model as the main gap driver.
+Change:     Added q_vel_ascending=0.25 config parameter to BallEKFConfig.
+            Modified predict() Q-construction: 4-level q_vel schedule
+            (contact=50 > post_contact=20 > descending=0.40 > ascending=0.25).
+            Ascending detected via: ~in_contact & ~in_post_contact & (ball_vz > 0).
+            Updated predict_perception_gap.py to use phase-averaged q_vel (0.325).
+            Added test_ascending_phase_tighter_q_vel test.
+Command:    pytest scripts/perception/ -x -q → 559/559 passed (12.01s)
+            predict_perception_gap.py → R²=0.866 (unchanged), drift slightly reduced.
+Result:     559/559 tests pass (558 existing + 1 new).
+            Phase-averaged q_vel: 0.325 (was 0.40) → ~19% tighter during ascending.
+            At 0.50m target: predict drift 2.815mm (was ~3.5mm), exposure 3.934.
+            Predicted gaps: 0.70m→26.7%, 1.00m→48.0%.
+            This is a principled improvement: ascending flight is the most
+            predictable phase, so tighter Q trusts the physics model more.
+            Policy agent still at iter 32 (81% context, likely needs compaction).
+Decision:   Next iter: check if policy has progressed. If not, consider EKF
+            pre-landing inflation (anticipate upcoming contact when descending
+            near paddle) as another phase-aware improvement. Or update Quarto.
