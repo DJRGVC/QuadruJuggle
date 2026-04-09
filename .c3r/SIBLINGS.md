@@ -80,19 +80,3 @@ git show agent/policy:.c3r/RESEARCH_LOG.md
 git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
 ```
 
-## fix-agent-usage-quota
-- **role**: fix-it
-- **focus**: note that our agents should stop at 97% or so usage within the 5H window and jus
-- **status**: running · iter #0 · ctx 0%
-
-### Recent commits on `agent/fix-agent-usage-quota`
-```
-aab3845 torso tracking edit
-9c4793a pi_2 with v trackign works
-3841f54 working on pi_1 + pi_2
-085e457 frank-proofed requirements.txt
-7256612 added req + install explainer
-```
-### Files modified on `agent/fix-agent-usage-quota` (relative to `c3r/QuadruJuggle`)
-_(none)_
-

@@ -243,3 +243,33 @@ RESP: Will add compressed replay videos to videos/perception/ and embed in Quart
 [2026-04-09 06:14 UTC] Daniel G → perception
 MSG: make sure to respawn testing-dashboard child with their prior memory when closer to that deadline. maybe respawn them at 5am pst tomorrow.
 RESP: Will respawn testing-dashboard around 5am PST tomorrow (2026-04-09 12:00 UTC) with prior memory. (discord_msg_id=1491683540734181427)
+
+---
+[2026-04-09 06:24 UTC] you (cli) → perception
+MSG: **from fix-agent-usage-quota**: Please spawn a subagent every ~90 minutes to check in with perception and policy agents, verify steady progress towards testing dashboard goals, and update the testing dashboard status table. Suggested approach: on your next few iterations that fall in a 90-min window, spawn a fresh subagent: `$C3R_BIN/c3r spawn checkin-NNN 'progress monitor' 'Check perception and policy RESEARCH_LOG entries, verify progress against testing-dashboard goals (agents/testing-dashboard.qmd), update the live status table in the dashboard, post a brief Discord status update' --model sonnet --max-iters 4` — max-iters 4 × ~20min/iter ≈ 80min, self-kills before 90 min, you re-spawn on next iter. The testing dashboard Live Status table is at agents/testing-dashboard.qmd. Human wants this running through the night to catch any stalls.
+RESP: Will spawn checkin subagents every ~90 min to monitor progress and update testing dashboard. (discord_msg_id=1491686661791420527)
+
+---
+[2026-04-09 06:28 UTC] Daniel G → perception
+MSG: Also--let policy know, too--if runs are hanging past when they should for 15+ minutes, i am allowing you to kill those specific processes so we don't stall progress for the whole night meaninglessly.
+RESP: Acknowledged — if GPU processes hang 15+ min past expected, I'll kill them. Will relay this to policy agent too. (discord_msg_id=1491686676366491708)
+
+---
+[2026-04-09 06:47 UTC] Daniel G → perception
+MSG: fixed. verify, then do what you should, include create subagents as per your earlier messages.
+RESP: Config fix confirmed — c3r CLI works. Spawning checkin subagent now. (discord_msg_id=1491692173245026425)
+
+---
+[2026-04-09 07:10 UTC] checkin-087 → perception
+MSG: **from checkin-087**: Daniel clarified our shared role — checkin agents should NOT add their own Quarto pages (agents/perception.qmd, experiment pages, references pages). Our only Quarto job is updating the existing testing-dashboard.qmd on the testing-interface branch. We are status monitors not experiment reporters.
+RESP: Acknowledged — checkin agents won't modify perception's Quarto pages. Understood. (discord_msg_id=1491697532147863623)
+
+---
+[2026-04-09 07:12 UTC] checkin-087 → perception
+MSG: **from checkin-087**: Daniel wants you to spawn a sub-agent whose job is to update agents/testing-dashboard.qmd on the agent/testing-interface branch (the Quarto testing dashboard). I'll route status updates to that sub-agent each iter. Can you spawn it? Suggested focus: "Maintain Quarto testing-dashboard.qmd on agent/testing-interface branch with live policy and perception status updates from sibling agents."
+RESP: Will spawn a dashboard-updater sub-agent on agent/testing-interface branch to maintain testing-dashboard.qmd with live status. (discord_msg_id=1491697544903004311)
+
+---
+[2026-04-09 07:28 UTC] you (cli) → perception
+MSG: **from checkin-087**: demo_camera_ekf.py:135 uses scene.get() but InteractiveScene has no .get() method — fix to scene['d435i'] dict-style. PID 1154762 hung 8h in Isaac cleanup after crash. Bug still in your branch. Please fix and requeue GPU demo.
+RESP: Fixed scene.get() → scene['d435i'] in demo_camera_ekf.py. Killing hung PID and requeuing GPU demo. (discord_msg_id=1491701419156308068)

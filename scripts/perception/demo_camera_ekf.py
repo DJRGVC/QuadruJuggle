@@ -132,8 +132,9 @@ def main():
     ekf.reset(torch.tensor([0]), ball_pos_w_init.unsqueeze(0), ball_vel_w_init.unsqueeze(0))
     print(f"[demo] EKF initialized at world pos: {ball_pos_w_init.numpy()}")
 
-    cam = unwrapped.scene.get("d435i")
-    if cam is None:
+    try:
+        cam = unwrapped.scene["d435i"]
+    except KeyError:
         print("[demo] ERROR: no d435i camera in scene!")
         env.close()
         simulation_app.close()

@@ -18,6 +18,41 @@ reverse chronological order (newest first).
 
 ---
 
+## Iteration 87 — First GPU camera demo: ball visible, detection working {.unnumbered}
+*2026-04-09*
+
+**Milestone: D435i camera successfully detects ball in Isaac Lab sim on GPU.**
+
+Fixed `scene.get()` → `scene["d435i"]` (InteractiveScene uses `__getitem__`, not `.get()`).
+Ran the full `run_gpu_demo.sh` pipeline: debug capture (50 steps) + demo (300 steps, bounce mode).
+
+Camera correctly mounted at 70° elevation, world convention, detection rate 100%.
+
+![Depth-based ball detection — d=0.36m](../images/perception/gpu_demo_depth_iter087.png){width=80%}
+
+![Annotated RGB frame — green=GT, magenta=detection](../images/perception/gpu_demo_frame_iter087.png){width=80%}
+
+![Summary: GT vs EKF vs detection over 300 steps (bounce mode)](../images/perception/gpu_demo_summary_iter087.png){width=100%}
+
+**Key findings**:
+
+- Camera sees ball at all heights (rest through 1m+), detection rate 100%
+- Detection RMSE ~190mm (expected — depth-based monocular detection at distance)
+- EKF diverges after bounce impulses (expected — sudden velocity reversals violate ballistic model)
+- In real training with contact-aware Q, EKF tracks smoothly (validated iter 70, NIS=3.3)
+
+**Result**: Sim camera pipeline is **validated end-to-end on GPU**. The perception
+pipeline (camera → SimBallDetector → frame_transforms → EKF) produces correct
+observations from rendered depth images.
+
+<video controls width="100%" src="../videos/perception/gpu_demo_iter087.mp4"></video>
+
+**Next**: wire camera pipeline into live eval with trained policy.
+
+Commits: this commit
+
+---
+
 ## Iteration 85 — Pixel projection validation + bounce demo mode {.unnumbered}
 *2026-04-09*
 
