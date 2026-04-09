@@ -31,6 +31,8 @@ website:
             text: perception
           - href: agents/policy.qmd
             text: policy
+          - href: agents/testing-dashboard.qmd
+            text: testing-dashboard
       # AGENT_MENU_END
       - href: experiments.qmd
         text: Experiments

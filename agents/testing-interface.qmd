@@ -1,0 +1,494 @@
+---
+title: "Testing Interface"
+description: "WASD+PL keyboard teleop for the hierarchical ball-juggling pipeline (pi1+pi2). Keyboard-driven velocity and height control with live HUD, camera feed, and desired-height visualizer."
+date: today
+author: "testing-interface (c3r agent)"
+---
+
+::: {.callout-tip appearance="simple"}
+**Role**: researcher  ·  **Model**: `claude-sonnet-4-6`  ·  **Branch**: `agent/testing-interface`
+
+Build and document the WASD+PL keyboard teleop testing interface for the QuadruJuggle hierarchical control pipeline. Deadline: 2026-04-09 15:00 UTC.
+:::
+
+## Overview
+
+This page documents the **WASD+PL teleop interface** for the QuadruJuggle hierarchical ball-juggling pipeline. The interface lets a human pilot:
+
+- **Velocity commands** (vx/vy) via WASD keys — overriding pi1's learned locomotion
+- **Target ball apex height** via P/L keys — adjusting the desired-height observation fed to pi1
+
+The architecture: a human keyboard → overrides pi1's output channels → pi2 tracks torso commands → Go1 juggles the ball.
+
+---
+
+## Iteration 1 — Full teleop interface + Quarto page {.unnumbered}
+*2026-04-08*
+
+### Architecture recap
+
+The hierarchical pipeline has two policies:
+
+| Policy | Input | Output | Notes |
+|--------|-------|--------|-------|
+| **pi2** (torso tracker) | 41D proprioception + 8D command | 12 joint targets | Frozen during pi1 training |
+| **pi1** (ball planner) | Ball state + proprio | 8D torso commands | User can override vx/vy channels |
+
+The 8D torso command interface: `[h_target, h_dot_target, roll, pitch, omega_roll, omega_pitch, vx, vy]`.
+
+In teleop mode, the human overrides **slots 6–7** (vx, vy) and the **target_apex_height** observation.
+
+---
+
+## How to Get the Branch
+
+```bash
+# From the QuadruJuggle repo root:
+git fetch origin
+git checkout agent/policy   # teleop script lives on agent/policy branch
+
+# Verify the script exists:
+ls scripts/rsl_rl/play_teleop.py
+```
+
+Or read it directly from any branch:
+```bash
+git show agent/policy:scripts/rsl_rl/play_teleop.py
+```
+
+---
+
+## Running the Teleop Interface
+
+### Prerequisites
+
+```bash
+# Activate the Isaac Lab venv (required — uv --active reads this):
+source /home/daniel-grant/IsaacLab/.venv311/bin/activate
+
+# Confirm:
+which python   # should be inside .venv311
+```
+
+### Basic launch
+
+```bash
+# From the repo root (on agent/policy branch, or after merging to main):
+uv run --active python scripts/rsl_rl/play_teleop.py \
+    --task Isaac-BallJuggleHier-Go1-Play-v0 \
+    --pi2-checkpoint <path/to/pi2/model.pt> \
+    --num_envs 1
+```
+
+The script auto-loads the latest pi1 checkpoint from `logs/rsl_rl/go1_ball_juggle_hier/`.
+
+### With a specific pi1 checkpoint
+
+```bash
+uv run --active python scripts/rsl_rl/play_teleop.py \
+    --task Isaac-BallJuggleHier-Go1-Play-v0 \
+    --pi2-checkpoint logs/rsl_rl/go1_torso_tracking/TIMESTAMP/model_NNNN.pt \
+    --checkpoint   logs/rsl_rl/go1_ball_juggle_hier/TIMESTAMP/model_NNNN.pt \
+    --num_envs 1 \
+    --real-time
+```
+
+### Tuning parameters
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--vel-step` | 0.15 m/s | Velocity increment per W/A/S/D keypress |
+| `--vel-max` | 0.50 m/s | Maximum velocity magnitude |
+| `--height-step` | 0.05 m | Height increment per P/L keypress |
+| `--height-min` | 0.05 m | Minimum target apex height |
+| `--height-max` | 0.80 m | Maximum target apex height |
+| `--height-default` | 0.30 m | Initial target apex height |
+| `--real-time` | off | Sleep to match real physics time |
+
+---
+
+## Keyboard Controls Reference
+
+```
+╔════════════════════════════════════════════════════════════════════════╗
+║         TELEOP CONTROLS — Hierarchical Ball Juggling (pi1 + pi2)       ║
+╠════════════════════════════════════════════════════════════════════════╣
+║                                                                        ║
+║     ┌───┐                                                              ║
+║     │ W │  forward vx (+)                                              ║
+║  ┌──┴───┴──┐     ┌───┐ ┌───┐                                          ║
+║  │ A  │ S  │  ─  │ P │ │ L │                                          ║
+║  └──┬─┴───┬┘     └───┘ └───┘                                          ║
+║     │  D  │  height ↑   height ↓                                       ║
+║     └─────┘                                                            ║
+║                                                                        ║
+║  W / S  ──  vx  forward / backward  (m/s, ±0.50 max)                  ║
+║  A / D  ──  vy  left / right        (m/s, ±0.50 max)                  ║
+║  P      ──  target apex height  +0.05 m  (max 0.80 m)                 ║
+║  L      ──  target apex height  −0.05 m  (min 0.05 m)                 ║
+║  R      ──  zero velocity (keep height)                                ║
+║  X      ──  full reset (zero vel + height → 0.30 m)                   ║
+║  Q/ESC  ──  quit                                                       ║
+╚════════════════════════════════════════════════════════════════════════╝
+```
+
+---
+
+## Interactive Demo {#interactive-demo}
+
+The widgets below simulate the teleop HUD. Click the keys to see how commands change.
+
+```{=html}
+<style>
+  .teleop-container {
+    font-family: 'Courier New', monospace;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 16px 0;
+  }
+  .key-btn {
+    background: #2d2d4e;
+    border: 2px solid #4444aa;
+    border-radius: 6px;
+    color: #ccccff;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+  }
+  .key-btn:hover { background: #3d3d7e; border-color: #8888ff; }
+  .key-btn.active { background: #5555cc; border-color: #aaaaff; color: white; }
+  .key-btn.height-up { border-color: #44aa44; color: #aaffaa; }
+  .key-btn.height-down { border-color: #aa4444; color: #ffaaaa; }
+  .key-btn.height-up:hover { background: #336633; }
+  .key-btn.height-down:hover { background: #663333; }
+  .hud-panel {
+    background: #0d0d1a;
+    border: 1px solid #333366;
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 10px 0;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+  .vel-bar-h {
+    width: 120px;
+    height: 16px;
+    background: #1a1a2e;
+    border: 1px solid #333366;
+    border-radius: 3px;
+    position: relative;
+    overflow: hidden;
+  }
+  .vel-fill-h {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    background: #00aaff;
+    transition: all 0.15s ease;
+    border-radius: 2px;
+  }
+</style>
+
+<div class="teleop-container">
+  <div style="color:#888; font-size:12px; margin-bottom:10px;">▶ INTERACTIVE DEMO — click keys or use keyboard (W/A/S/D/P/L/R/X)</div>
+
+  <div style="display:flex; align-items:center; gap:20px; flex-wrap:wrap; margin-bottom:16px;">
+    <div>
+      <div style="color:#666; font-size:11px; margin-bottom:6px;">VELOCITY</div>
+      <div style="display:grid; grid-template-areas:'. w .' 'a s d'; grid-template-columns:48px 48px 48px; gap:6px;">
+        <button class="key-btn" style="grid-area:w" id="btn-w" onclick="tapKey('w')">W</button>
+        <button class="key-btn" style="grid-area:a" id="btn-a" onclick="tapKey('a')">A</button>
+        <button class="key-btn" style="grid-area:s" id="btn-s" onclick="tapKey('s')">S</button>
+        <button class="key-btn" style="grid-area:d" id="btn-d" onclick="tapKey('d')">D</button>
+      </div>
+    </div>
+    <div>
+      <div style="color:#666; font-size:11px; margin-bottom:6px;">HEIGHT</div>
+      <div style="display:flex; gap:6px;">
+        <button class="key-btn height-up" id="btn-p" onclick="tapKey('p')" style="width:60px">P ↑</button>
+        <button class="key-btn height-down" id="btn-l" onclick="tapKey('l')" style="width:60px">L ↓</button>
+      </div>
+    </div>
+    <div>
+      <div style="color:#666; font-size:11px; margin-bottom:6px;">RESET</div>
+      <div style="display:flex; gap:6px;">
+        <button class="key-btn" id="btn-r" onclick="tapKey('r')" style="border-color:#888;">R</button>
+        <button class="key-btn" id="btn-x" onclick="tapKey('x')" style="border-color:#888;">X</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="hud-panel">
+    <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:center;">
+      <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+        <div style="font-size:11px; color:#888;">vx (fwd/bck)</div>
+        <div class="vel-bar-h"><div class="vel-fill-h" id="vx-fill" style="left:50%;width:0%"></div></div>
+        <div style="font-size:12px; color:#00aaff; font-weight:bold;" id="vx-val">+0.00 m/s</div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+        <div style="font-size:11px; color:#888;">vy (left/right)</div>
+        <div class="vel-bar-h"><div class="vel-fill-h" id="vy-fill" style="left:50%;width:0%"></div></div>
+        <div style="font-size:12px; color:#00aaff; font-weight:bold;" id="vy-val">+0.00 m/s</div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+        <div style="font-size:11px; color:#888;">target_h</div>
+        <div style="width:32px; height:60px; background:#1a1a2e; border:1px solid #333366; border-radius:4px; position:relative; overflow:hidden;">
+          <div id="height-fill" style="position:absolute; bottom:0; left:0; right:0; height:37.5%; background:linear-gradient(to top,#ffaa00,#ffee00); transition:height 0.2s;"></div>
+        </div>
+        <div style="font-size:12px; color:#ffee00; font-weight:bold;" id="height-val">0.30 m</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hud-panel" id="hud-line" style="color:#00ff88; font-size:12px; white-space:nowrap; overflow:auto;">
+    [TELEOP] step=    0 | vx=+0.00 vy=+0.00 | target_h=0.30m | ball_h=0.295m | pi1_cmd=[h=+0.30 hd=+0.00 r=+0.00 p=+0.00]
+  </div>
+</div>
+
+<script>
+(function() {
+  const VEL_STEP = 0.15, VEL_MAX = 0.50;
+  const H_STEP = 0.05, H_MIN = 0.05, H_MAX = 0.80, H_DEF = 0.30;
+  let vx = 0, vy = 0, targetH = H_DEF, step = 0;
+  function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+  function tapKey(k) {
+    if(k==='w') vx=clamp(vx+VEL_STEP,-VEL_MAX,VEL_MAX);
+    else if(k==='s') vx=clamp(vx-VEL_STEP,-VEL_MAX,VEL_MAX);
+    else if(k==='a') vy=clamp(vy+VEL_STEP,-VEL_MAX,VEL_MAX);
+    else if(k==='d') vy=clamp(vy-VEL_STEP,-VEL_MAX,VEL_MAX);
+    else if(k==='p') targetH=clamp(targetH+H_STEP,H_MIN,H_MAX);
+    else if(k==='l') targetH=clamp(targetH-H_STEP,H_MIN,H_MAX);
+    else if(k==='r'){vx=0;vy=0;}
+    else if(k==='x'){vx=0;vy=0;targetH=H_DEF;}
+    flash('btn-'+k);
+    render();
+  }
+  window.tapKey=tapKey;
+  function flash(id){
+    const el=document.getElementById(id);
+    if(!el)return;
+    el.classList.add('active');
+    setTimeout(()=>el.classList.remove('active'),120);
+  }
+  function render(){
+    step++;
+    const vxF=document.getElementById('vx-fill');
+    const vyF=document.getElementById('vy-fill');
+    if(vxF){const p=Math.abs(vx)/VEL_MAX*50; if(vx>=0){vxF.style.left='50%';vxF.style.right='';vxF.style.width=p+'%';vxF.style.background='#00aaff';}else{vxF.style.right='50%';vxF.style.left='';vxF.style.width=p+'%';vxF.style.background='#ff6644';}}
+    if(vyF){const p=Math.abs(vy)/VEL_MAX*50; if(vy>=0){vyF.style.left='50%';vyF.style.right='';vyF.style.width=p+'%';vyF.style.background='#00aaff';}else{vyF.style.right='50%';vyF.style.left='';vyF.style.width=p+'%';vyF.style.background='#ff6644';}}
+    const vxV=document.getElementById('vx-val'); if(vxV)vxV.textContent=(vx>=0?'+':'')+vx.toFixed(2)+' m/s';
+    const vyV=document.getElementById('vy-val'); if(vyV)vyV.textContent=(vy>=0?'+':'')+vy.toFixed(2)+' m/s';
+    const hF=document.getElementById('height-fill'); if(hF)hF.style.height=((targetH-H_MIN)/(H_MAX-H_MIN)*100)+'%';
+    const hV=document.getElementById('height-val'); if(hV)hV.textContent=targetH.toFixed(2)+' m';
+    const ballH=targetH*0.98+(Math.random()-0.5)*0.02;
+    const hud=document.getElementById('hud-line');
+    if(hud){const s=String(step).padStart(5);hud.textContent=`[TELEOP] step=${s} | vx=${(vx>=0?'+':'')+vx.toFixed(2)} vy=${(vy>=0?'+':'')+vy.toFixed(2)} | target_h=${targetH.toFixed(2)}m | ball_h=${ballH.toFixed(3)}m | pi1_cmd=[h=${targetH.toFixed(2)} hd=+0.00 r=+0.00 p=+0.00]`;}
+  }
+  document.addEventListener('keydown',function(e){
+    const k=e.key.toLowerCase();
+    if(['w','a','s','d','p','l','r','x'].includes(k)){e.preventDefault();tapKey(k);}
+  });
+  render();
+})();
+</script>
+```
+
+::: {.callout-note}
+**Note**: The interactive demo responds to both button clicks and keyboard keys (W/A/S/D/P/L/R/X). The HUD line simulates the terminal output you'd see when running the real teleop script.
+:::
+
+---
+
+## Height Visualizer {#height-visualizer}
+
+The desired-height visualizer shows the target ball apex height alongside a reference scale. The ball aims to reach the target height above the paddle surface (`h = 0` at paddle, `h = 1.0 m` is the Stage G target).
+
+```{=html}
+<div style="font-family:monospace; background:#0d0d1a; border:1px solid #334; border-radius:8px; padding:16px; margin:12px 0;">
+  <div style="color:#888; font-size:12px; margin-bottom:12px;">HEIGHT SCALE — target apex above paddle surface</div>
+  <div style="display:flex; gap:24px; align-items:flex-end; flex-wrap:wrap;">
+    <div style="display:flex; flex-direction:column; align-items:flex-end; height:200px; justify-content:space-between; color:#666; font-size:11px; padding-right:4px;">
+      <span>1.00 m — Stage G</span>
+      <span>0.80 m —</span>
+      <span>0.60 m — Stage E</span>
+      <span>0.45 m — Stage D</span>
+      <span>0.30 m — default</span>
+      <span>0.10 m — Stage A</span>
+      <span>0.00 m — paddle</span>
+    </div>
+    <div style="display:flex; gap:8px; align-items:flex-end; height:200px;">
+      <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+        <div style="width:32px; height:200px; background:#1a1a2e; border:1px solid #334; border-radius:4px; position:relative; overflow:hidden;">
+          <div style="position:absolute; bottom:0; left:0; right:0; height:10%; background:#4444ff; opacity:0.7;"></div>
+          <div style="position:absolute; bottom:0; left:0; right:0; height:100%; background:linear-gradient(to top,#0066ff22,#00ffaa22); border-top:1px dashed #00ffaa;"></div>
+          <div style="position:absolute; bottom:30%; left:0; right:0; height:2px; background:#ffee00; opacity:0.8;"></div>
+        </div>
+        <div style="font-size:10px; color:#888;">stages</div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+        <div style="width:32px; height:200px; background:#1a1a2e; border:1px solid #556; border-radius:4px; position:relative; overflow:hidden;">
+          <div id="vis-fill2" style="position:absolute; bottom:0; left:0; right:0; height:30%; background:linear-gradient(to top,#ffaa00,#ffee00); transition:height 0.3s ease;"></div>
+        </div>
+        <div style="font-size:10px; color:#ffee00;" id="vis-h-label2">0.30 m</div>
+        <div style="font-size:10px; color:#888;">target_h</div>
+      </div>
+    </div>
+    <div style="color:#666; font-size:12px; line-height:2.2;">
+      <div>Press <span style="color:#aaffaa; background:#1a3a1a; padding:2px 6px; border-radius:3px; border:1px solid #4a6a4a;">P</span> to raise</div>
+      <div>Press <span style="color:#ffaaaa; background:#3a1a1a; padding:2px 6px; border-radius:3px; border:1px solid #6a4a4a;">L</span> to lower</div>
+      <div style="margin-top:8px; color:#555; font-size:11px;">Stage A: 0.10 m<br>Stage D: 0.45 m<br>Stage G: 1.00 m</div>
+    </div>
+  </div>
+</div>
+
+<script>
+setInterval(function(){
+  const hV=document.getElementById('height-val');
+  if(!hV)return;
+  const h=parseFloat(hV.textContent);
+  if(isNaN(h))return;
+  const f=document.getElementById('vis-fill2'); if(f)f.style.height=(h/1.0*100)+'%';
+  const l=document.getElementById('vis-h-label2'); if(l)l.textContent=h.toFixed(2)+' m';
+},100);
+</script>
+```
+
+---
+
+## Live Camera Feed {#camera-feed}
+
+The camera feed is provided by an upward-facing D435i mounted on the Go1's back, processed by the perception pipeline.
+
+::: {.callout-warning}
+**Simulation only (current stage)**: In Isaac Lab, the camera is a simulated `TiledCameraCfg` at 70° elevation above horizontal. Real D435i deployment is a future sim-to-real step.
+:::
+
+### Camera configuration
+
+```python
+# From tasks/ball_juggle_hier/ball_juggle_hier_env_cfg.py
+TiledCameraCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/trunk",
+    offset=CameraCfg.OffsetCfg(
+        pos=(0.0, 0.0, 0.057),          # mounted at trunk top
+        rot=(0.9848, -0.1736, 0.0, 0.0), # 70° elevation (ROS convention)
+        convention="ros",
+    ),
+    width=320,
+    height=240,
+    data_types=["rgb", "depth"],
+)
+```
+
+The D435i pipeline (from `perception/`) runs:
+1. **Ball detector** — circle Hough transform on RGB frame
+2. **Depth monocular fallback** — known ball radius (20mm) for distance estimate
+3. **EKF** — 6D state `[x,y,z,vx,vy,vz]`, ballistic+drag dynamics
+4. **Adaptive R_xy** — covariance scales with distance: `σ_xy = 0.0025 · z`
+
+Output: noisy ball position + velocity estimates at 30 Hz → pi1 observation.
+
+---
+
+## Terminal HUD Reference
+
+When running `play_teleop.py`, the terminal displays a single-line HUD:
+
+```
+[TELEOP] step=  427 | vx=+0.15 vy=+0.00 | target_h=0.35m | ball_h=0.332m | pi1_cmd=[h=+0.35 hd=+0.02 r=-0.01 p=+0.03]
+```
+
+| Field | Meaning |
+|-------|---------|
+| `step` | Simulation step counter (50 Hz) |
+| `vx` | Current user forward velocity command (m/s) |
+| `vy` | Current user lateral velocity command (m/s) |
+| `target_h` | Desired ball apex height above paddle (m) |
+| `ball_h` | Measured ball height above paddle (m) |
+| `pi1_cmd[h]` | pi1's desired torso height output |
+| `pi1_cmd[hd]` | pi1's desired torso height-rate output |
+| `pi1_cmd[r]` | pi1's desired torso roll output |
+| `pi1_cmd[p]` | pi1's desired torso pitch output |
+
+::: {.callout-note}
+HUD updates every 10 steps (~5 Hz). The `ball_h` field reads `scene["ball"].data.root_pos_w` minus robot trunk height minus paddle offset (0.070 m).
+:::
+
+---
+
+## Implementation Notes
+
+### How vx/vy override works
+
+```python
+# In play_teleop.py — the critical override section:
+actions = policy(obs)           # pi1 proposes 8D torso commands
+
+# Override vx/vy channels (slots 6, 7)
+# pi1 outputs in [-1, 1]; vxy_scale=0.5 maps to ±0.5 m/s
+actions[:, 6] = user_vx / vxy_scale   # vx override
+actions[:, 7] = user_vy / vxy_scale   # vy override
+actions[:, 6:8] = actions[:, 6:8].clamp(-1.0, 1.0)
+
+obs, _, dones, _ = env.step(actions)  # pi2 sees user-commanded vx/vy
+```
+
+### How target height is injected
+
+```python
+# Update the env's per-env target buffer (read by observation term)
+if hasattr(uw, "_target_apex_heights"):
+    uw._target_apex_heights[:] = target_h
+else:
+    uw._target_apex_heights = torch.full(
+        (uw.num_envs,), target_h, device=device, dtype=torch.float32,
+    )
+
+# Also update reward term so the reward matches the displayed target
+for i, name in enumerate(uw.reward_manager._term_names):
+    if name == "ball_apex_height":
+        uw.reward_manager._term_cfgs[i].params["target_height"] = target_h
+        uw.reward_manager._term_cfgs[i].params["std"] = target_h / 3.5
+        break
+```
+
+### Key design decisions
+
+1. **Override at action level, not observation**: We inject vx/vy into the *output* of pi1 rather than modifying its inputs. This is simpler and doesn't require retraining pi1 with teleop observations.
+
+2. **Reward tracking**: The reward term is updated to match the user's target so the simulation metrics remain meaningful.
+
+3. **No teleop for h/roll/pitch/omega**: pi1 still controls torso height, roll, pitch and angular velocities. Only locomotion direction (vx/vy) is human-controlled.
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|-------------|-----|
+| `ImportError: go1_ball_balance` | Not on the right branch or venv not activated | `source .venv311/bin/activate` + confirm on `agent/policy` or `main` |
+| `FileNotFoundError: model.pt` | No checkpoint found in default log dir | Pass `--checkpoint` explicitly |
+| Keys not responding | Terminal not in raw mode | Run directly in a local terminal or tmux pane |
+| Ball immediately falls off | `--height-default` too high for current policy stage | Lower to 0.10–0.20m for Stage A–C policies |
+| Robot walks off / collapses | Velocity too aggressive | Reduce `--vel-max` to 0.25 m/s |
+| `pi2-checkpoint` not found | Path wrong or checkpoint deleted | Check `logs/rsl_rl/go1_torso_tracking/` for latest |
+
+---
+
+## Quick-Start Checklist
+
+- [ ] Activate venv: `source /home/daniel-grant/IsaacLab/.venv311/bin/activate`
+- [ ] Confirm on correct branch: `git checkout agent/policy`
+- [ ] Find pi2 checkpoint: `ls logs/rsl_rl/go1_torso_tracking/*/model_*.pt | tail -1`
+- [ ] Launch: `uv run --active python scripts/rsl_rl/play_teleop.py --task Isaac-BallJuggleHier-Go1-Play-v0 --pi2-checkpoint <path> --num_envs 1`
+- [ ] Use W/S for forward/backward, A/D for left/right, P/L for height
+
+Commits: `8d8e8d5` (policy agent, Iteration 21: teleop interface)

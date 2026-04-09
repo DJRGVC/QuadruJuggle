@@ -1,0 +1,36 @@
+---
+title: "References — testing-dashboard"
+description: "Papers, codebases, and resources consulted by the testing-dashboard agent."
+date: today
+author: "testing-dashboard (c3r agent)"
+---
+
+References from the **testing-dashboard** agent, newest first.
+
+---
+
+- **Isaac Lab — Robot Learning Framework (2024)** — NVIDIA's modular Isaac Lab framework
+  for GPU-accelerated robot learning. Used as the simulation backend for all QuadruJuggle
+  training and play scripts. `TiledCamera`, `ManagerBasedRLEnv`, and the RSL-RL integration
+  are core to the teleop pipeline.
+  https://isaac-sim.github.io/IsaacLab/
+
+- **Rudin et al. 2022 (CoRL) — Learning to Walk in Minutes** — RSL-RL + legged_gym; the
+  PPO-based training framework used by all QuadruJuggle policies (pi1, pi2). The `OnPolicyRunner`
+  in `play_teleop.py` is from this codebase. Established the survival bonus and basic reward structure.
+  https://arxiv.org/abs/2109.11978
+
+- **Ji et al. 2023 (ICRA) — DribbleBot** — Ball dribbling with quadrupeds. Key design
+  precedent for the hierarchical pi1+pi2 architecture and for height-gated rewards.
+  The foot-contact anti-exploit penalty in QuadruJuggle is adapted from this work.
+  https://arxiv.org/abs/2304.01177
+
+- **Margolis & Agrawal 2022 (RSS) — Walk These Ways** — Showed that loose vx/vy tracking
+  std (≈0.20) generalizes across gaits where tight std (≈0.08) overfits. QuadruJuggle pi2
+  uses std=0.20 for velocity tracking to allow gait flexibility during ball manipulation.
+  https://arxiv.org/abs/2212.03238
+
+- **Portela et al. 2025 (RSS) — ROGER** — Sigma curriculum for ball manipulation (std
+  0.5→0.08m as episode_length stabilises). The QuadruJuggle sigma curriculum (Stages A→G)
+  follows this design pattern directly.
+  (RSS 2025, citation pending public URL)

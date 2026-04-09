@@ -1,0 +1,396 @@
+---
+title: "testing-dashboard"
+description: "Step-by-step guide for running the WASD+PL teleop interface, camera setup, and perception pipeline integration with the hierarchical ball-juggling policy."
+date: today
+author: "testing-dashboard (c3r agent)"
+---
+
+::: {.callout-tip appearance="simple"}
+**Role**: generic  ·  **Model**: `claude-sonnet-4-6`  ·  **Branch**: `agent/testing-dashboard`
+
+Build a testing guide for WASD+PL teleop control + perception pipeline. Documents how to run `play_teleop.py`, camera setup, height visualization, and velocity display.
+:::
+
+## Current focus
+
+This page is the **step-by-step testing guide** for the `play_teleop.py` teleop interface.
+It covers: running the hierarchical policy with WASD+PL controls, understanding the HUD,
+and integrating the D435i camera perception pipeline.
+
+**Decision (Iteration 1):** Step-by-step guide over live widget. Isaac Lab requires a local
+Linux machine with an NVIDIA GPU and the project venv — no server-embedded widget is practical.
+This page is the canonical reference for any developer setting up the teleop stack.
+
+---
+
+## Iteration 2 — 8D Interface Reference + Architecture Deep-Dive {.unnumbered}
+*2026-04-09*
+
+### pi1 → pi2: the 8D torso command interface
+
+The key to understanding what WASD+P/L actually do is knowing the 8D command vector that
+pi1 passes to pi2 via `TorsoCommandAction`. The table below documents every dimension with
+its physical range, centre offset, and normalization factor (from `action_term.py` and
+`observations.py` in the policy branch):
+
+| Idx | Name | Physical range | Centre | Half-range | Norm factor | What it means |
+|---|---|---|---|---|---|---|
+| 0 | `h` | [0.20, 0.50] m | 0.35 | 0.15 | ÷0.15 | Target trunk height above ground |
+| 1 | `ḣ` (h_dot) | [−1.5, +1.5] m/s | 0 | 1.5 | ÷1.5 | Target trunk vertical velocity |
+| 2 | `roll` | [−0.5, +0.5] rad | 0 | 0.5 | ÷0.5 | Target trunk roll angle |
+| 3 | `pitch` | [−0.5, +0.5] rad | 0 | 0.5 | ÷0.5 | Target trunk pitch angle |
+| 4 | `ω_roll` | [−4.0, +4.0] rad/s | 0 | 4.0 | ÷4.0 | Target trunk roll rate |
+| 5 | `ω_pitch` | [−4.0, +4.0] rad/s | 0 | 4.0 | ÷4.0 | Target trunk pitch rate |
+| 6 | `vx` | [−0.5, +0.5] m/s | 0 | 0.5 | ÷0.5 | Forward velocity command (WASD W/S) |
+| 7 | `vy` | [−0.5, +0.5] m/s | 0 | 0.5 | ÷0.5 | Lateral velocity command (WASD A/D) |
+
+**Normalization**: pi2 sees the command in `[-1, 1]` after: `obs = (cmd + offset) * norm`.
+The physical-to-normalized transform for each dimension is:
+
+```python
+# From observations.py (_NORM and _OFFSET tensors):
+_NORM   = [1/0.15, 1/1.5, 1/0.5, 1/0.5, 1/4.0, 1/4.0, 1/0.5, 1/0.5]
+_OFFSET = [-0.35,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0  ]
+# obs = (cmd + _OFFSET) * _NORM
+```
+
+**Teleop injection**: `play_teleop.py` overrides pi1's output slots 6–7 (`vx`, `vy`) with
+the WASD keyboard state. Target apex height (`P`/`L`) is injected into the pi1 observation
+vector directly (slot 0 of the pi1 obs, normalised by `max_target_height=1.0`).
+
+### Expanded architecture with data dimensions
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  User keyboard (WASD + P/L)                                                 │
+│    W/S → vx ± 0.15 m/s    A/D → vy ± 0.15 m/s    P/L → h_target ± 0.05 m  │
+└───────────────────┬─────────────────────────────┬───────────────────────────┘
+                    │ vx, vy override              │ h_target override
+                    ▼                             ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  pi1 — Ball Planner (3-layer MLP [256,128,64])                              │
+│  Obs (40D): ball pos(3) + ball vel(3) + proprio(33) + target_h_norm(1)      │
+│  → Output (8D): [h, ḣ, roll, pitch, ω_roll, ω_pitch, vx*, vy*]            │
+│    (* slots 6-7 replaced by keyboard during teleop)                         │
+└───────────────────────────────────────────────┬─────────────────────────────┘
+                                                │ 8D torso cmd (physical units)
+                                                ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  TorsoCommandAction (action_term.py)                                         │
+│  Scales 8D cmd → [-1,1], builds pi2 obs (41D = 8cmd + 33proprio)            │
+└───────────────────────────────────────────────┬─────────────────────────────┘
+                                                │ 41D obs vector
+                                                ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  pi2 — Torso Tracker (2-layer MLP [256,128])                                │
+│  Obs (41D): 8D cmd (normalised) + lin_vel(3) + ang_vel(3)                   │
+│             + projected_gravity(3) + joint_pos(12) + joint_vel(12)          │
+│  → 12 joint position targets                                                │
+└───────────────────────────────────────────────┬─────────────────────────────┘
+                                                │ 12 joint targets (rad)
+                                                ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Isaac Lab / Go1 hardware                                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### pi2 observation vector layout (41D)
+
+| Slice | Dims | Content |
+|---|---|---|
+| `[0:8]` | 8 | 8D torso command (normalised to ~[-1,1]) |
+| `[8:11]` | 3 | Linear velocity (m/s): vx, vy, vz |
+| `[11:14]` | 3 | Angular velocity (rad/s): ωx, ωy, ωz |
+| `[14:17]` | 3 | Projected gravity vector (normalized) |
+| `[17:29]` | 12 | Joint positions (rad, relative to default) |
+| `[29:41]` | 12 | Joint velocities (rad/s) |
+
+This is the vector that `TorsoCommandAction` assembles from `env` state and feeds to
+the frozen pi2 actor every policy step.
+
+Commits: `bfbb4fc` (iter 1)
+
+---
+
+## Iteration 1 — Initial Teleop Guide: WASD+PL Controls {.unnumbered}
+*2026-04-08*
+
+### Architecture overview
+
+The teleop stack has three layers:
+
+```
+User keyboard (WASD + P/L)
+        │
+        ▼
+   play_teleop.py  ──── overrides vx/vy slots + target_height obs
+        │
+        ▼
+  pi1 (Ball Planner, 3-layer MLP)  ──── frozen during play
+        │ 8D torso commands [h, ḣ, roll, pitch, ω_roll, ω_pitch, vx, vy]
+        ▼
+  pi2 (Torso Tracker, 2-layer MLP)  ──── frozen
+        │ 12 joint targets
+        ▼
+  Isaac Lab sim / Go1 hardware
+```
+
+The user never commands joints directly — they command velocity intent (WASD) and
+juggling height (P/L). pi1 translates these into torso pose commands; pi2 executes them.
+
+---
+
+### Prerequisites
+
+| Requirement | Notes |
+|---|---|
+| Linux (Ubuntu 20.04/22.04) | GUI display for Isaac Lab |
+| NVIDIA GPU (≥ RTX 3080 recommended) | Isaac Lab requires CUDA |
+| Isaac Lab installed | See [Isaac Lab docs](https://isaac-sim.github.io/IsaacLab/) |
+| Project cloned + `.venv311` active | `source .venv311/bin/activate` |
+| `uv` installed | `pip install uv` |
+| Checkpoints downloaded | See paths below |
+
+---
+
+### Step 1 — Locate the checkpoints
+
+You need two checkpoints: **pi2** (torso tracker) and **pi1** (ball planner).
+
+**pi2 checkpoint** (torso tracker — trained once, frozen):
+```
+logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt
+```
+
+**pi1 checkpoint** (ball planner — pick the latest oracle or d435i run):
+```bash
+# Latest oracle baseline (oracle ball state — for reference/comparison)
+logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_20-44-18/model_best.pt
+
+# d435i noise-trained (realistic camera noise — use this for perception testing)
+# Check the latest run:
+ls -lt logs/rsl_rl/go1_ball_juggle_hier/ | head -5
+```
+
+To use the most recent checkpoint automatically (no `--checkpoint` flag needed):
+```bash
+# play_teleop.py will auto-load the latest checkpoint in logs/rsl_rl/go1_ball_juggle_hier/
+```
+
+---
+
+### Step 2 — Launch the teleop session
+
+Run from the project root directory:
+
+```bash
+uv run --active python scripts/rsl_rl/play_teleop.py \
+    --task Isaac-BallJuggleHier-Go1-Play-v0 \
+    --pi2-checkpoint logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt \
+    --num_envs 1
+```
+
+**To specify a particular pi1 checkpoint:**
+```bash
+uv run --active python scripts/rsl_rl/play_teleop.py \
+    --task Isaac-BallJuggleHier-Go1-Play-v0 \
+    --pi2-checkpoint logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt \
+    --checkpoint logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_20-44-18/model_best.pt \
+    --num_envs 1
+```
+
+**Optional flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--vel-step` | `0.15` | Velocity increment per WASD keypress (m/s) |
+| `--height-step` | `0.05` | Height increment per P/L keypress (m) |
+| `--height-min` | `0.05` | Minimum target apex height (m) |
+| `--height-max` | `0.80` | Maximum target apex height (m) |
+| `--height-default` | `0.30` | Initial target apex height (m) |
+| `--vel-max` | `0.50` | Maximum velocity command (m/s) |
+| `--real-time` | off | Sleep between steps to match wall-clock speed |
+
+---
+
+### Step 3 — Keyboard controls
+
+Once Isaac Lab opens and the simulation is running, use the terminal window (not the 3D viewer) to send keyboard commands:
+
+```
+╔══════════════════════════════════════════════════════════════════════════╗
+║  TELEOP CONTROLS — Hierarchical Ball Juggling (pi1 + pi2)               ║
+╠══════════════════════════════════════════════════════════════════════════╣
+║  W / S   — forward / backward velocity (vx)                             ║
+║  A / D   — left / right velocity (vy)                                   ║
+║  P / L   — increase / decrease target ball apex height                  ║
+║  R       — zero velocity (stop moving)                                  ║
+║  X       — reset all (zero vel + default height 0.30m)                  ║
+║  Q / ESC — quit                                                          ║
+╚══════════════════════════════════════════════════════════════════════════╝
+```
+
+**Important**: the terminal must be in focus (not the Isaac Lab GUI window).
+Each keypress increments the command by `--vel-step` (default 0.15 m/s) or
+`--height-step` (default 0.05 m). Commands are cumulative — press `W` three
+times to reach 0.45 m/s forward.
+
+---
+
+### Step 4 — Reading the HUD
+
+The HUD updates every 10 simulation steps in the terminal:
+
+```
+[TELEOP] step=  240 | vx=+0.30 vy=+0.00 | target_h=0.45m | ball_h=0.412m | pi1_cmd=[h=+0.73 hd=-0.12 r=-0.03 p=+0.08]
+```
+
+| Field | Meaning |
+|---|---|
+| `step` | Simulation step counter (50 Hz) |
+| `vx` / `vy` | User velocity commands (m/s) being injected into pi1 |
+| `target_h` | Current target ball apex height above paddle surface (m) |
+| `ball_h` | Measured ball height above paddle (m). Matches `target_h` = good juggling |
+| `pi1_cmd` | First 4 of pi1's 8D output: h (height cmd), hd (height rate), r (roll), p (pitch) |
+
+**Good juggling signature**: `ball_h` oscillates between 0 and `target_h`, and
+`pi1_cmd[h]` tracks the target height closely.
+
+**Ball on paddle (not juggling)**: `ball_h ≈ 0.0` continuously. Try pressing `P`
+to raise the target height and encourage throwing.
+
+---
+
+### Step 5 — Height visualization
+
+The HUD's `ball_h` field is the primary height metric. For a richer view:
+
+- **Ball at rest on paddle**: `ball_h ≈ 0.0 m`
+- **Ball at 0.30 m target** (default): oscillates `0.0 → 0.30 m → 0.0`
+- **Ball at 0.80 m target** (max default): oscillates `0.0 → 0.80 m → 0.0`
+
+Height is measured as: `ball_z - robot_root_z - 0.070 m` (paddle offset above trunk root).
+
+To increase target height incrementally:
+```
+P P P P  →  0.30 → 0.35 → 0.40 → 0.45 → 0.50 m
+```
+
+The policy was trained with targets up to 1.0 m (Stage G, via sigma curriculum).
+The default `--height-max 0.80` is conservative — pass `--height-max 1.0` to test
+the full trained range.
+
+---
+
+### Step 6 — Velocity display and locomotion
+
+WASD commands set the robot's desired XY velocity, injected directly into pi1's
+output slots 6–7 (overriding pi1's own velocity prediction):
+
+```
+W → vx += 0.15 m/s  (forward)    S → vx -= 0.15 m/s  (backward)
+A → vy += 0.15 m/s  (left)       D → vy -= 0.15 m/s  (right)
+R → vx = vy = 0.0 m/s            X → full reset
+```
+
+The velocity command passes through pi2's TorsoCommandAction, which normalizes it
+and feeds it to pi2's observation `[6:8]` (vx/vy channels). pi2 was trained with
+velocity up to ±0.50 m/s (Stage H). At Stage A/B of the curriculum, only vx/vy = 0
+was trained — if the loaded pi1 checkpoint is from an early stage, locomotion
+under velocity commands may be unstable.
+
+**To check which stage the checkpoint was trained to**: look at the training log
+associated with the checkpoint directory.
+
+---
+
+### Camera setup (perception pipeline)
+
+::: {.callout-note}
+**Status (2026-04-08)**: The simulated D435i camera is implemented in the scene
+(`BallJuggleHierSceneCfg_DEBUG`) and the `SimBallDetector` is ready. The
+camera-to-EKF loop integration into `play_teleop.py` is **in progress** — the
+perception agent is finalizing camera orientation conventions.
+:::
+
+The planned camera pipeline:
+
+```
+TiledCamera (D435i sim, 70° elevation tilt)
+        │  depth frame (float32)
+        ▼
+SimBallDetector (connected components, ball-size scoring)
+        │  2D pixel centroid + depth → 3D measurement
+        ▼
+BallEKF (6D state: x,y,z,vx,vy,vz; ballistic + drag dynamics)
+        │  filtered ball position + velocity
+        ▼
+pi1 ball observation (replaces ground-truth ball state)
+```
+
+**Camera specs (D435i)**:
+
+| Parameter | Value |
+|---|---|
+| HFOV | 86° |
+| VFOV | 58° |
+| Min depth | 0.1 m |
+| Tilt (elevation) | 70° above horizontal |
+| Mount position | (-0.08, 0, 0.06) m from robot root (back-mounted, upward-facing) |
+| Convention | `world` (identity = forward/horizontal, positive pitch = look up) |
+
+**Camera quaternion for 70° elevation** (`convention="world"`):
+```python
+# rot_angle = 70° pitch up from horizontal
+# q = (cos(35°), 0, -sin(35°), 0) ≈ (0.8192, 0.0, -0.5736, 0.0)
+offset_rot_convention = "world"
+offset_rot = (0.8192, 0.0, -0.5736, 0.0)
+```
+
+---
+
+### Troubleshooting
+
+**Isaac Lab won't start / display error**:
+```bash
+export DISPLAY=:0  # or check $DISPLAY
+# If running headless (no monitor):
+# Use --headless flag (but teleop requires a display for the 3D view)
+```
+
+**Wrong checkpoint loaded** (Isaac Lab loads most recent by default):
+```bash
+# Always specify both checkpoints explicitly:
+--pi2-checkpoint <path> --checkpoint <pi1-path>
+```
+
+**Ball immediately falls off**:
+- The policy may be at an early training stage — use a Stage F or G checkpoint.
+- Try reducing `--height-default 0.10` to start with a very low target.
+
+**Velocity commands not working** (robot doesn't move while juggling):
+- This requires a pi1 checkpoint trained to Stage E+ (velocity-aware stages).
+- Early-stage checkpoints (A-D) were trained with vx=vy=0 only.
+
+**Terminal not accepting keypresses**:
+- Ensure the terminal window (not the Isaac Lab GUI) is in focus.
+- The KeyboardController uses `tty.setcbreak` — it reads raw characters without Enter.
+
+---
+
+### Key model paths (reference)
+
+| Checkpoint | Path | Notes |
+|---|---|---|
+| pi2 (torso tracker) | `logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt` | Frozen, use this always |
+| pi1 oracle baseline | `logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_20-44-18/model_best.pt` | Ground-truth obs, reference |
+| pi1 d435i trained | `logs/rsl_rl/go1_ball_juggle_hier/<latest-d435i-run>/model_best.pt` | Noise-robust, in training |
+
+To find the latest d435i run:
+```bash
+ls -lt logs/rsl_rl/go1_ball_juggle_hier/ | head -10
+# Look for a run with "--noise-mode d435i" in its training config
+cat logs/rsl_rl/go1_ball_juggle_hier/<run-dir>/params/agent.yaml | grep noise
+```
+
+Commits: `be94b7c` (iter 2 worktree recovery + page created)
