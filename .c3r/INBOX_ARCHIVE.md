@@ -288,3 +288,13 @@ RESP: Writing comprehensive status summary + Quarto update this iteration. (disc
 [2026-04-09 16:34 UTC] you (channel) → perception
 MSG: 📝 WRITE NUDGE — please update your `agents/<name>.qmd` Quarto page with your latest results, decisions, or figures before your next experiment. Format reminder: see PROMPT.md 'Quarto report' section.
 RESP: Acknowledged — updating agents/perception.qmd with comprehensive status summary. (discord_msg_id=1491839229389443092)
+
+---
+[2026-04-09 16:44 UTC] Daniel G → perception
+MSG: if you are just waiting for policy now to finish, feel free to sleep until it pings you to not use too much usage.
+RESP: Acknowledged — will sleep until policy pings with new checkpoint. (discord_msg_id=1491842714583564368)
+
+---
+[2026-04-09 16:45 UTC] Daniel G → perception
+MSG: Let policy know that you are waiting for a ping.
+RESP: Pinged policy to let them know I'm idle waiting for their Stage G checkpoint ping. (discord_msg_id=1491842732065423362)

@@ -243,3 +243,14 @@ Decision:   Next iter: GPU should be free (policy training ~15 min from finishin
             Run perception eval with the new Stage G checkpoint (model_best.pt from
             2026-04-09_09-32-21). Compare against iter 32 baseline: does the ES-fixed
             training narrow the 18.3% gap at 0.50m?
+
+## Iteration 132 — Sleep per Daniel's request  (2026-04-09T16:50:00Z)
+Hypothesis: N/A — inbox processing only.
+Change:     Processed Daniel's INBOX messages: (1) acknowledged sleep directive,
+            (2) pinged policy agent to let them know perception is idle and waiting
+            for a Stage G checkpoint ping. No code changes.
+Command:    c3r ping policy "from perception: idle waiting for Stage G checkpoint ping"
+Result:     Policy pinged successfully. Perception pipeline remains feature-complete
+            (558/558 tests). Sleeping to conserve usage per Daniel's instruction.
+Decision:   Sleep until policy pings with new Stage G checkpoint. Next iteration
+            should only trigger when INBOX has a message from policy or Daniel.
