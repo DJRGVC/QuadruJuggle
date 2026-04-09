@@ -65,37 +65,11 @@ import go1_ball_balance  # noqa: F401
 from go1_ball_balance.tasks.ball_juggle_hier.ball_juggle_hier_env_cfg import BallJuggleHierEnvCfg_PLAY
 from go1_ball_balance.perception.sim_detector import SimBallDetector
 from go1_ball_balance.perception.ball_ekf import BallEKF, BallEKFConfig
+from go1_ball_balance.perception.frame_transforms import quat_to_rotmat, cam_detection_to_world
 
 
-def _quat_to_rotmat(q: np.ndarray) -> np.ndarray:
-    """Convert quaternion (w, x, y, z) to 3x3 rotation matrix."""
-    w, x, y, z = q
-    return np.array([
-        [1 - 2*(y*y + z*z), 2*(x*y - w*z),     2*(x*z + w*y)],
-        [2*(x*y + w*z),     1 - 2*(x*x + z*z), 2*(y*z - w*x)],
-        [2*(x*z - w*y),     2*(y*z + w*x),     1 - 2*(x*x + y*y)],
-    ])
-
-
-def cam_detection_to_world(pos_cam: np.ndarray, cam_pos_w: np.ndarray,
-                           cam_quat_w_ros: np.ndarray) -> np.ndarray:
-    """Transform a camera-frame detection to world frame.
-
-    Uses the camera's reported world pose (from Isaac Lab sensor data)
-    rather than recomputing from robot pose + mount offset. This is more
-    robust since it accounts for the exact camera placement.
-
-    pos_cam: (3,) detection in ROS camera optical frame [x_right, y_down, z_fwd]
-    cam_pos_w: (3,) camera world position from cam.data.pos_w
-    cam_quat_w_ros: (4,) camera world quaternion (w,x,y,z) in ROS convention
-                    from cam.data.quat_w_ros
-
-    ROS camera convention: +X right, +Y down, +Z forward (optical axis).
-    The quaternion from quat_w_ros rotates from ROS camera frame to world.
-    """
-    R_cam_w = _quat_to_rotmat(cam_quat_w_ros)
-    pos_world = R_cam_w @ pos_cam + cam_pos_w
-    return pos_world
+# Keep _quat_to_rotmat alias for backward compat in _save_annotated_frame
+_quat_to_rotmat = quat_to_rotmat
 
 
 def main():

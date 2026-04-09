@@ -162,3 +162,27 @@ Result:     Quarto content populated: 15 references, 2 experiment write-ups, age
             GPU still locked — camera validation remains the blocker for demo.
 Decision:   Next iter: check if GPU freed. If yes, run demo_camera_ekf.py smoke test.
             If GPU still locked, work on unit tests for cam_detection_to_world().
+
+## Iteration 80 — frame_transforms module + 18 cam-to-world tests  (2026-04-09T07:15:00Z)
+Hypothesis: cam_detection_to_world and quat_to_rotmat need proper unit tests and should
+            live in a reusable module (not embedded in the argparse-guarded demo script).
+Change:     1. Created perception/frame_transforms.py with quat_to_rotmat() and
+               cam_detection_to_world() — clean importable module.
+            2. Updated demo_camera_ekf.py to import from frame_transforms.
+            3. Created test_cam_to_world.py with 18 tests covering:
+               - Identity/axis rotations, orthogonality, determinant checks
+               - 70-degree body pitch (D435i config validation)
+               - Inverse property (q vs conjugate(q))
+               - Roundtrip rotmat->quat->rotmat
+               - Identity/translation/rotation transforms
+               - 70-deg tilt detection with constructed quat_w_ros
+               - World->cam->world roundtrip (10 random poses)
+               - Height batch consistency
+               - Edge cases: zero detection, -q equivalence, non-unit tolerance
+            Key learning: config quaternion != quat_w_ros. Isaac Lab adds body-to-ROS
+            fixed rotation. Tests now construct quat_w_ros correctly via rotation matrices.
+Command:    pytest scripts/perception/ → 282/282 passed (264 existing + 18 new).
+            GPU blocked by policy d435i training (12288 envs, resuming from model_1499.pt).
+Result:     All transforms verified. Module extracted cleanly. No regressions.
+Decision:   Next iter: GPU capture smoke test (top priority). Policy training should
+            finish soon — check nvidia-smi / process list.

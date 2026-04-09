@@ -30,7 +30,7 @@ they get stuck, or they exceed their useful budget.** Each child
 also has a hard iteration cap and will self-kill at MAX_ITERATIONS,
 but that's a safety net — proactive management is your job.
 
-- **testing-dashboard** (generic, parent=perception) — status=running, iter=#5, last=1m ago
+- **testing-dashboard** (generic, parent=perception) — status=running, iter=#5, last=6m ago
   Focus: Build a Quarto testing page for the WASD+PL control + perception pipeline. Deadline: 2026-04-09 15:00 UTC. Page documents how to run play_teleop.py with WASD+PL controls, camera setup, height viz, velocity display. Decide by iter 3: live widget vs step-by-step guide for local Linux with Isaac Lab. Read sibling branches for model paths.
 
 **Decision rules** (apply at the top of every iteration):
