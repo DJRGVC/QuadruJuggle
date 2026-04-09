@@ -60,3 +60,35 @@ Decision:   Next: create a minimal dummy ONNX model (single-layer) for
             fine-tuning pipeline (train script using synthetic data from
             iter 146). Policy agent at iter 32 with 81% context — check
             if they've produced new Stage G results.
+
+## Iteration 148 — YOLO training + ONNX export script  (2026-04-10T02:00:00Z)
+Hypothesis: A training script wrapping ultralytics YOLOv8 that handles
+            dataset splitting, depth-to-RGB conversion, training with
+            depth-appropriate augmentation, and ONNX export will complete
+            the synthetic→model→detector pipeline.
+Change:     Added train_yolo_ball.py and test_train_yolo_ball.py:
+            (1) split_dataset(): shuffles and moves images/labels into
+            train/val splits (val_fraction=0.15). Deterministic seed,
+            idempotent (skips if already split).
+            (2) depth_png_to_rgb(): converts uint16 depth PNGs to 3-ch
+            uint8 in-place (maps [168,2000]mm → [0,255]). Idempotent.
+            (3) write_dataset_yaml(): generates ultralytics-compatible
+            dataset.yaml with relative paths.
+            (4) train(): orchestrates split→convert→train→export. Disables
+            colour jitter (hsv_h/s/v=0), mosaic, mixup for depth data.
+            Enables flipud/fliplr. Early stopping patience=20.
+            (5) 18 tests: split counts, label-image matching, idempotency,
+            seed determinism, error cases, depth conversion (3-channel,
+            uint8, valid/invalid mapping, channel equality), integration.
+            Note: ultralytics not installed — train() itself untestable,
+            but all utility functions fully tested.
+Command:    pytest scripts/perception/test_train_yolo_ball.py -x -q → 18/18
+            pytest scripts/perception/ -x -q → 650/650 passed (17.89s)
+Result:     Test count: 632 → 650 (+18). All pass.
+            Policy agent at iter 32 — Stage G eval shows 80% timeout at
+            0.10-0.20m, 48% at 0.50m under d435i noise. Planning to retrain
+            Stage G with fixed ES metric for longer.
+Decision:   Next: install ultralytics + onnxruntime and do a real training
+            run on synthetic data, OR create a dummy ONNX model using the
+            onnx package for end-to-end integration testing without
+            ultralytics. Check if ultralytics can be pip-installed.
