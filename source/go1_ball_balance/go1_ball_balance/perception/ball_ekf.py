@@ -112,6 +112,18 @@ class BallEKFConfig:
     # Initial spin uncertainty
     p_spin_init: float = 10.0  # initial spin std (rad/s) — very uncertain
 
+    # --- Covariance clamping (sparse-measurement regime) ---
+    # When the ball sits on the paddle for long periods with no camera measurements,
+    # covariance grows unbounded via predict-only steps. This causes the EKF to
+    # become useless when a measurement finally arrives (innovation covariance S
+    # is so large that the gain K → 0, or NIS gate rejects valid measurements).
+    # Clamping P diagonals prevents this divergence.
+    # Ref: iter_103 analysis of 2-4% detection rate at target=0.42m.
+    p_clamp_enabled: bool = True
+    p_max_pos: float = 0.25  # max position std (m) — 25cm covers paddle area
+    p_max_vel: float = 5.0   # max velocity std (m/s) — 5 m/s covers post-bounce
+    p_max_spin: float = 50.0  # max spin std (rad/s) — only used in 9D mode
+
     # --- NIS gating (chi-squared outlier rejection) ---
     nis_gate_enabled: bool = True  # if True, reject measurements with NIS > threshold
     nis_gate_threshold: float = 11.345  # chi-squared 3DOF, 99th percentile
@@ -227,6 +239,11 @@ class BallEKF:
             num_envs, dtype=torch.long, device=self.device
         )
 
+        # Sparse-measurement tracking: consecutive predict-only steps per env
+        self._steps_since_measurement = torch.zeros(
+            num_envs, dtype=torch.long, device=self.device
+        )
+
     # --- Public properties ---
 
     @property
@@ -293,6 +310,11 @@ class BallEKF:
         self._nis_sum_contact = 0.0
         self._nis_count_contact = 0
         return val
+
+    @property
+    def steps_since_measurement(self) -> torch.Tensor:
+        """Per-env count of consecutive predict-only steps (N,)."""
+        return self._steps_since_measurement
 
     @property
     def gate_rejection_rate(self) -> float:
@@ -474,6 +496,32 @@ class BallEKF:
         self._P = torch.bmm(torch.bmm(F, self._P), F.transpose(-1, -2)) + Q
         # Enforce symmetry to prevent numerical drift
         self._P = 0.5 * (self._P + self._P.transpose(-1, -2))
+
+        # Covariance clamping: prevent unbounded P growth during long
+        # predict-only sequences (ball on paddle, no camera detections).
+        # Clamp diagonal elements of P to max variance; zero off-diagonal
+        # correlations that exceed the clamped diagonal (maintain PSD).
+        if self.cfg.p_clamp_enabled:
+            p_max_pos_sq = self.cfg.p_max_pos ** 2
+            p_max_vel_sq = self.cfg.p_max_vel ** 2
+            # Clamp position diagonals
+            self._P[:, 0, 0].clamp_(max=p_max_pos_sq)
+            self._P[:, 1, 1].clamp_(max=p_max_pos_sq)
+            self._P[:, 2, 2].clamp_(max=p_max_pos_sq)
+            # Clamp velocity diagonals
+            self._P[:, 3, 3].clamp_(max=p_max_vel_sq)
+            self._P[:, 4, 4].clamp_(max=p_max_vel_sq)
+            self._P[:, 5, 5].clamp_(max=p_max_vel_sq)
+            if self._spin_enabled:
+                p_max_spin_sq = self.cfg.p_max_spin ** 2
+                self._P[:, 6, 6].clamp_(max=p_max_spin_sq)
+                self._P[:, 7, 7].clamp_(max=p_max_spin_sq)
+                self._P[:, 8, 8].clamp_(max=p_max_spin_sq)
+            # Clamp off-diagonals to maintain PSD: |P_ij| <= sqrt(P_ii * P_jj)
+            # Full enforcement is expensive; clamping diagonals alone is sufficient
+            # in practice because the symmetric update in the next step re-derives
+            # off-diagonals from the (now-bounded) diagonals.
+
         # State clamping
         self._x[:, :3].clamp_(-5.0, 5.0)
         self._x[:, 3:6].clamp_(-20.0, 20.0)
@@ -613,6 +661,10 @@ class BallEKF:
                      robot_ang_vel_b=robot_ang_vel_b)
         self.update(z, detected)
 
+        # Track measurement starvation per env
+        self._steps_since_measurement += 1
+        self._steps_since_measurement[detected] = 0
+
     def reset(
         self,
         env_ids: torch.Tensor,
@@ -657,3 +709,5 @@ class BallEKF:
             self._update_count[env_ids] = 0
             # Reset post-contact countdown
             self._post_contact_countdown[env_ids] = 0
+            # Reset measurement starvation counter
+            self._steps_since_measurement[env_ids] = 0

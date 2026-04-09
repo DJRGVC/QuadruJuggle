@@ -112,3 +112,23 @@ Decision:   BLOCKED on policy improvement. Next iter: (a) investigate EKF predic
             for sparse measurements during contact phases, (b) consider if camera can also
             see ball during paddle contact from a different mount angle, (c) wait for
             policy agent's Stage G progress.
+
+## Iteration 103 — EKF covariance clamping for sparse measurements  (2026-04-10T13:00:00Z)
+Hypothesis: Clamping P diagonals prevents covariance divergence during long predict-only
+            sequences (ball on paddle 98% of time at current policy capability), keeping
+            the EKF ready to absorb measurements when the ball enters the camera FOV.
+Change:     Added covariance clamping to BallEKF: p_clamp_enabled=True, p_max_pos=0.25m,
+            p_max_vel=5.0m/s, p_max_spin=50.0 rad/s. Clamps P diagonals after each predict
+            step. Also added steps_since_measurement counter (per-env, resets on measurement
+            or env reset) for sparse-measurement diagnostics.
+            New config fields: p_clamp_enabled, p_max_pos, p_max_vel, p_max_spin.
+            New property: steps_since_measurement.
+            New test file: test_p_clamping.py (8 tests).
+Command:    pytest scripts/perception/ → 362/362 passed (7.49s). No GPU needed.
+Result:     After 500 predict-only steps, P_pos ≤ 0.0625 (25cm²), P_vel ≤ 25.0 (5m/s²).
+            Without clamping, P_vel grows to 24.2 after just 200 contact-zone steps.
+            Measurement absorption confirmed: after 200 predict-only steps, a measurement
+            still corrects state by >1cm. 9D spin clamping also verified.
+Decision:   Next iter: consider "flight window" detection mode (trigger detection only during
+            expected flight arcs based on EKF velocity prediction) OR wait for policy agent
+            Stage G progress. Could also add paddle-anchor virtual measurement during contact.

@@ -31,7 +31,10 @@
 - [x] Re-run eval at target=0.42/0.50/0.70/1.00m — policy caps at 0.25m apex regardless
 - [x] ROOT CAUSE: policy is balancing (Stage F), not juggling. Camera works fine during flight.
 - [ ] BLOCKED: need policy agent to produce a sustained-bouncing policy (Stage G+)
-- [ ] Meanwhile: adapt EKF for sparse-measurement regime (predict-only during contact)
+- [x] EKF covariance clamping for sparse-measurement regime (iter 103)
+  - p_max_pos=0.25m, p_max_vel=5.0m/s prevents P divergence during long predict-only
+  - steps_since_measurement counter for diagnostics
+  - 8 new tests (test_p_clamping.py), 362/362 total
 - [ ] Consider "flight window" detection mode — only run detection during known flight arcs
 
 # EKF tuning (lower priority, mostly done)
