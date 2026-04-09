@@ -1,7 +1,8 @@
 """Ball detection from D435i depth frames.
 
 Two-stage pipeline:
-1. YOLOv8n+P2 (TensorRT FP16) detects ball bounding box in depth image
+1. YOLOv8n+P2 (ONNX Runtime / TensorRT FP16) detects ball bounding box
+   in depth image
 2. Median depth within bbox -> camera-frame 3D position
 
 Fallback: Hough circle detection on depth image when YOLO is unavailable
@@ -22,10 +23,18 @@ try:
 except ImportError:
     cv2 = None
 
+try:
+    import onnxruntime as ort  # type: ignore[import-untyped]
+except ImportError:
+    ort = None
+
 from .camera import CameraIntrinsics
 
 # Expected ball radius in metres (40mm ping-pong ball)
 _BALL_RADIUS_M = 0.020
+
+# YOLOv8 input size (square, letterboxed)
+_YOLO_INPUT_SIZE = 640
 
 
 @dataclass
@@ -38,12 +47,48 @@ class Detection:
     method: str = "yolo"  # "yolo" or "hough"
 
 
+def _letterbox(
+    img: np.ndarray,
+    target_size: int = _YOLO_INPUT_SIZE,
+) -> tuple[np.ndarray, float, tuple[int, int]]:
+    """Resize image with letterboxing (pad to square).
+
+    Args:
+        img: (H, W) or (H, W, C) image.
+        target_size: Output square dimension.
+
+    Returns:
+        (padded_img, scale, (pad_x, pad_y)) where scale maps target→original
+        coords and (pad_x, pad_y) are the pixel offsets in the padded image.
+    """
+    h, w = img.shape[:2]
+    scale = target_size / max(h, w)
+    new_w = int(round(w * scale))
+    new_h = int(round(h * scale))
+
+    if cv2 is not None:
+        resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+    else:
+        raise RuntimeError("cv2 required for YOLO preprocessing")
+
+    pad_x = (target_size - new_w) // 2
+    pad_y = (target_size - new_h) // 2
+
+    if img.ndim == 3:
+        padded = np.full((target_size, target_size, img.shape[2]), 114, dtype=img.dtype)
+    else:
+        padded = np.full((target_size, target_size), 114, dtype=img.dtype)
+    padded[pad_y:pad_y + new_h, pad_x:pad_x + new_w] = resized
+
+    return padded, scale, (pad_x, pad_y)
+
+
 class BallDetector:
     """Detect 40mm ping-pong ball in D435i depth frame.
 
     Usage::
 
-        detector = BallDetector("models/ball_detector.engine")
+        detector = BallDetector("models/ball_detector.onnx")
         detection = detector.detect(depth_frame, intrinsics)
         if detection is not None:
             ball_pos_cam = detection.pos_cam  # (3,) in camera frame
@@ -58,6 +103,7 @@ class BallDetector:
         min_depth: float = 0.168,
         max_depth: float = 2.0,
         ball_radius_m: float = _BALL_RADIUS_M,
+        yolo_input_size: int = _YOLO_INPUT_SIZE,
     ) -> None:
         self._model_path = model_path
         self._conf_thresh = conf_thresh
@@ -66,7 +112,34 @@ class BallDetector:
         self._min_depth = min_depth
         self._max_depth = max_depth
         self._ball_radius_m = ball_radius_m
-        self._model = None  # TensorRT engine, loaded lazily
+        self._yolo_input_size = yolo_input_size
+        self._model: ort.InferenceSession | None = None
+        self._input_name: str | None = None
+
+        if model_path is not None:
+            self._load_model(model_path)
+
+    def _load_model(self, path: str) -> None:
+        """Load ONNX model via onnxruntime.
+
+        Tries TensorRT EP first (for Jetson/GPU), then CUDA EP, then CPU.
+        Also accepts .engine files via TensorRT EP.
+        """
+        if ort is None:
+            raise RuntimeError(
+                "onnxruntime is required for YOLO inference. "
+                "Install with: pip install onnxruntime-gpu  (or onnxruntime for CPU)"
+            )
+        providers = []
+        available = ort.get_available_providers()
+        if "TensorrtExecutionProvider" in available:
+            providers.append("TensorrtExecutionProvider")
+        if "CUDAExecutionProvider" in available:
+            providers.append("CUDAExecutionProvider")
+        providers.append("CPUExecutionProvider")
+
+        self._model = ort.InferenceSession(path, providers=providers)
+        self._input_name = self._model.get_inputs()[0].name
 
     def detect(
         self,
@@ -106,11 +179,110 @@ class BallDetector:
 
         return None
 
+    def _preprocess(self, depth_frame: np.ndarray) -> tuple[np.ndarray, float, tuple[int, int]]:
+        """Preprocess depth frame for YOLO input.
+
+        Converts uint16 depth (mm) to 3-channel uint8 (repeated grayscale),
+        letterboxes to model input size, normalises to float32 [0, 1].
+
+        Returns:
+            (input_tensor, scale, (pad_x, pad_y)) where input_tensor is
+            (1, 3, H, W) float32 and scale/pad map back to original coords.
+        """
+        min_mm = int(self._min_depth * 1000)
+        max_mm = int(self._max_depth * 1000)
+
+        # Normalise depth to 0-255
+        depth_f = depth_frame.astype(np.float32)
+        valid = (depth_frame >= min_mm) & (depth_frame <= max_mm)
+        img8 = np.zeros(depth_frame.shape, dtype=np.uint8)
+        img8[valid] = np.clip(
+            (depth_f[valid] - min_mm) * 255.0 / (max_mm - min_mm),
+            0, 255,
+        ).astype(np.uint8)
+
+        # Letterbox to square
+        padded, scale, (pad_x, pad_y) = _letterbox(img8, self._yolo_input_size)
+
+        # Stack to 3 channels (YOLO expects RGB input)
+        img3 = np.stack([padded, padded, padded], axis=-1)  # (H, W, 3)
+
+        # NCHW float32 normalised to [0, 1]
+        blob = img3.astype(np.float32).transpose(2, 0, 1)[np.newaxis] / 255.0
+
+        return blob, scale, (pad_x, pad_y)
+
     def _detect_yolo(
         self, depth_frame: np.ndarray, intrinsics: CameraIntrinsics
     ) -> Detection | None:
-        """YOLO-based detection (primary path)."""
-        raise NotImplementedError("_detect_yolo is a stub.")
+        """YOLO-based detection (primary path).
+
+        Runs YOLOv8 inference, extracts best detection, deprojects to 3D.
+        YOLOv8 output shape: (1, 5, N) for single class —
+        rows are [cx, cy, w, h, conf] in letterboxed pixel coords.
+        """
+        blob, scale, (pad_x, pad_y) = self._preprocess(depth_frame)
+
+        # Run inference
+        outputs = self._model.run(None, {self._input_name: blob})
+        preds = outputs[0]  # (1, 5, N) or (1, N, 5)
+
+        # Handle both (1, 5, N) and (1, N, 5) output layouts
+        if preds.ndim == 3:
+            if preds.shape[1] == 5:
+                # (1, 5, N) — standard YOLOv8 export
+                preds = preds[0].T  # (N, 5)
+            else:
+                preds = preds[0]  # (N, 5)
+        elif preds.ndim == 2:
+            pass  # already (N, 5)
+        else:
+            return None
+
+        if preds.shape[0] == 0:
+            return None
+
+        # Columns: cx, cy, w, h, conf
+        confidences = preds[:, 4]
+        best_idx = int(np.argmax(confidences))
+        conf = float(confidences[best_idx])
+
+        if conf < self._hough_fallback_thresh:
+            return None
+
+        cx_lb, cy_lb, w_lb, h_lb = preds[best_idx, :4]
+
+        # Map from letterboxed coords back to original image
+        cx_orig = (float(cx_lb) - pad_x) / scale
+        cy_orig = (float(cy_lb) - pad_y) / scale
+        w_orig = float(w_lb) / scale
+        h_orig = float(h_lb) / scale
+
+        # Compute bbox in original pixel coords
+        x1 = max(0, int(cx_orig - w_orig / 2))
+        y1 = max(0, int(cy_orig - h_orig / 2))
+        x2 = min(depth_frame.shape[1], int(cx_orig + w_orig / 2) + 1)
+        y2 = min(depth_frame.shape[0], int(cy_orig + h_orig / 2) + 1)
+        bbox = (x1, y1, x2, y2)
+
+        # Get depth at bbox centre via median
+        depth_m = self._median_depth_in_bbox(
+            depth_frame, bbox,
+            int(self._min_depth * 1000),
+            int(self._max_depth * 1000),
+        )
+        if depth_m is None:
+            return None
+
+        # Deproject to 3D camera frame
+        pos_cam = intrinsics.deproject(cx_orig, cy_orig, depth_m)
+
+        return Detection(
+            pos_cam=pos_cam,
+            confidence=conf,
+            bbox=bbox,
+            method="yolo",
+        )
 
     def _detect_hough(
         self, depth_frame: np.ndarray, intrinsics: CameraIntrinsics
