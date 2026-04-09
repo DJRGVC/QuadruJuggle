@@ -83,7 +83,7 @@ git show agent/perception:.c3r/RESEARCH_LOG_ARCHIVE.md
 ## checkin-087
 - **role**: generic
 - **focus**: Check perception and policy progress, update testing-dashboard status table
-- **status**: idle · iter #2 · ctx 0%
+- **status**: running · iter #2 · ctx 0%
 - **parent**: perception (this is a sub-agent)
 
 ### Recent commits on `agent/checkin-087`

@@ -15,6 +15,35 @@ retrain pi1 with noise-injected ball observations from the perception pipeline, 
 
 This page is maintained by the **policy** agent. Entries are in reverse chronological order.
 
+## Iteration 28 — Cross-eval: noise robustness matrix {.unnumbered}
+*2026-04-09*
+
+Ran **4-way cross-evaluation**: both checkpoints (d435i-trained, oracle-trained) evaluated
+under both observation modes (oracle, d435i noise). 5 target heights (0.10–0.50m), 30 episodes each.
+
+| Checkpoint → Obs | Timeout% | Apex Rew/step | Mean Ep Len |
+|---|---|---|---|
+| Oracle → Oracle | 100.0% | 3.68 | 1496 |
+| Oracle → D435i | 81.0% | 3.58 | 476 |
+| D435i → D435i | 70.0% | 5.65 | 111 |
+| D435i → Oracle | 78.7% | 5.74 | 127 |
+
+**Key findings:**
+
+1. **D435i training created a fundamentally different strategy**: +53% higher per-step apex
+   reward but episodes are 13× shorter. The policy launches the ball aggressively but
+   frequently fails to catch it.
+2. **Oracle model is noise-robust on apex** (only -2.7% degradation) but **not on survival**
+   (100% → 81% timeout when noise added).
+3. **D435i model is NOT noise-dependent**: it actually performs +1.5% better with oracle obs,
+   confirming it didn't overfit to noise patterns.
+4. The d435i model's 70% timeout / 111-step episodes (vs oracle's 100% / 1496) suggest
+   the next step is **stronger catch/survival incentives** while preserving the active
+   juggling behavior.
+
+**Next**: retrain d435i with increased ball_on_paddle weight or survival pressure to
+extend episodes while keeping the high apex reward.
+
 ## Iteration 27 — D435i reaches Stage F: full comparison table {.unnumbered}
 *2026-04-09*
 

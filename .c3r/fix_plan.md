@@ -13,8 +13,12 @@
       Checkpoint: logs/.../2026-04-08_21-16-05/model_best.pt
 - [x] Continue d435i training to Stage F — DONE (log dir 2026-04-08_22-51-56, step 3049)
 - [x] D435i vs oracle comparison at Stage F — DONE: d435i +59% apex, +34% noise_std
-- [ ] Cross-eval: noise-trained checkpoint under oracle obs vs d435i obs (needs GPU)
+- [x] Cross-eval: noise-trained checkpoint under oracle obs vs d435i obs — DONE iter 28
+      Oracle: noise-robust on apex (-2.7%) but drops more (100%→81% timeout)
+      D435i: +53% apex but 13× shorter episodes. Not noise-dependent (+1.5% under oracle).
 - [ ] Capture play.py video of d435i checkpoint for Quarto (Daniel requested videos)
+- [ ] Diagnose d435i short episodes: 70% timeout / 111 mean steps vs oracle 100% / 1496
+      Likely needs: stronger ball_on_paddle weight OR survival pressure OR catch reward
 
 ## NEXT — Validate juggling behavior
 
