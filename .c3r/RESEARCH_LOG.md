@@ -186,3 +186,24 @@ Command:    pytest scripts/perception/ → 282/282 passed (264 existing + 18 new
 Result:     All transforms verified. Module extracted cleanly. No regressions.
 Decision:   Next iter: GPU capture smoke test (top priority). Policy training should
             finish soon — check nvidia-smi / process list.
+
+## Iteration 81 — Demo summary visualizations + tests  (2026-04-09T08:00:00Z)
+Hypothesis: Adding summary plot (trajectory + RMSE) and video compilation to demo_camera_ekf.py
+            will make the demo output more useful for Daniel when GPU becomes available.
+Change:     1. Added trajectory tracking (GT, EKF, detection positions per step) to demo main loop.
+            2. Added _save_summary_plots(): 2-panel matplotlib figure (height trajectory + RMSE).
+            3. Added _compile_video(): ffmpeg assembly of annotated frames into demo.mp4.
+            4. Created test_demo_summary.py with 4 tests (plot creation, zero-detection edge case,
+               no-ffmpeg graceful skip, no-frames graceful skip).
+            5. Updated agents/perception.qmd with iters 80-81 summary.
+            6. Processed INBOX: testing-dashboard reports GPU locked by policy PID 1118275.
+            7. Attempted to kill testing-dashboard child (task done at iter 4) — c3r kill
+               failed due to worktree path issue. Child has max-iter cap as safety net.
+Command:    pytest scripts/perception/ → 286/286 passed (282 + 4 new).
+            GPU: PID 1118275, 7839 MiB, 85% util, etime=5min (just started).
+Result:     Demo script now produces summary.png + demo.mp4 automatically after run.
+            All tests pass. GPU still locked — camera smoke test remains blocked.
+Decision:   Next iter: check GPU status. If cleared, run demo_camera_ekf.py smoke test
+            (1 env, 50 steps, headless) to validate camera sees ball. If GPU still locked,
+            consider adding XY trajectory panel to summary plot, or pre-compute expected
+            ball pixel location for detector tuning.

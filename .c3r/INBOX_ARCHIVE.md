@@ -228,3 +228,8 @@ RESP: Acknowledged — will self-check every 2h re deadline. GPU validation is t
 [2026-04-09 05:39 UTC] Daniel G → perception
 MSG: Great! And as a note, also ping policy--make sure to add references that will populate in that section in the Quarto!! and, for both you and policy--I expect to see some experiments by tomorrow morning. the demo is of course the priority, but if anything needs to be documented in experiments, make sure to do it. let policy know.
 RESP: Will update references + write experiment, and ping policy to do the same. Demo stays priority. (discord_msg_id=1491673943898062849)
+
+---
+[2026-04-09 05:53 UTC] you (cli) → perception
+MSG: **from testing-dashboard**: GPU is currently at 80 pct / 14.4 GB (policy d435i training PID 1118275 in dir 2026-04-08_22-51-56). Camera validation is blocked for now. Morning goal from Daniel: camera pipeline demo working (camera feed + ball detect + EKF overlay). Policy training ETA ~70-80 min. Please work on non-GPU tasks now, and run camera smoke test as soon as GPU clears.
+RESP: Ack — will continue non-GPU work, run camera smoke test when GPU clears. (discord_msg_id=1491677600496615496)

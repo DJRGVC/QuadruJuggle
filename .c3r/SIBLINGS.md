@@ -30,7 +30,7 @@ they get stuck, or they exceed their useful budget.** Each child
 also has a hard iteration cap and will self-kill at MAX_ITERATIONS,
 but that's a safety net — proactive management is your job.
 
-- **testing-dashboard** (generic, parent=perception) — status=running, iter=#5, last=6m ago
+- **testing-dashboard** (generic, parent=perception) — status=running, iter=#7, last=5m ago
   Focus: Build a Quarto testing page for the WASD+PL control + perception pipeline. Deadline: 2026-04-09 15:00 UTC. Page documents how to run play_teleop.py with WASD+PL controls, camera setup, height viz, velocity display. Decide by iter 3: live widget vs step-by-step guide for local Linux with Isaac Lab. Read sibling branches for model paths.
 
 **Decision rules** (apply at the top of every iteration):
@@ -46,16 +46,16 @@ but that's a safety net — proactive management is your job.
 ## policy
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
-- **status**: running · iter #14 · ctx 81%
-- **last iter**: 1h ago
+- **status**: running · iter #15 · ctx 81%
+- **last iter**: 7m ago
 
 ### Recent commits on `agent/policy`
 ```
+a7c6d74 Iteration 26: d435i vs oracle comparison — noise outperforms oracle at Stage E (+176% apex)
 56ee92e Iteration 25: sync perception noise model (Ahn 2019 calibration) + prepare d435i training
 b99bfab Iteration 24: discovered iters 22-23 ran oracle (not d435i) — noise_mode flag was missing
 bf3d8a8 Iteration 23: σ_ratio 3.5→2.5 breaks Stage D plateau — all 6 stages reached (A→F)
 f4981a6 Iteration 22: fresh 6-stage training — advanced A→D, stuck at D (apex plateau)
-8d8e8d5 Iteration 21: teleop interface — WASD velocity + P/L height control
 ```
 ### Files modified on `agent/policy` (relative to `c3r/QuadruJuggle`)
 ```
@@ -75,21 +75,21 @@ agents/index.qmd
 agents/perception.qmd
 agents/policy.qmd
 docs/noise_curriculum_plan.md
+experiments/policy/2026-04-09_d435i_vs_oracle_curriculum.qmd
 images/README.md
 images/perception/.gitkeep
 images/policy/.gitkeep
 images/policy/iter_023_training_curves.png
 images/shared/.gitkeep
 index.qmd
+references/policy.qmd
 scripts/rsl_rl/compare_pi1.py
 scripts/rsl_rl/eval_juggle_hier.py
 scripts/rsl_rl/play_teleop.py
 scripts/rsl_rl/train_juggle_hier.py
 source/go1_ball_balance/go1_ball_balance/perception/__init__.py
 source/go1_ball_balance/go1_ball_balance/perception/ball_ekf.py
-source/go1_ball_balance/go1_ball_balance/perception/ball_obs_spec.py
-source/go1_ball_balance/go1_ball_balance/perception/noise_model.py
-... and 7 more
+... and 9 more
 ```
 ### Read one with:
 ```

@@ -152,6 +152,8 @@ def main():
     dt = 0.02  # 50 Hz policy rate
 
     metrics = {"detected": 0, "missed": 0, "rmse_det": [], "rmse_ekf": []}
+    # Trajectory tracking for summary visualizations
+    traj = {"gt": [], "ekf": [], "det": [], "det_steps": [], "steps": []}
 
     print(f"[demo] Running {args_cli.steps} steps...")
     for step in range(args_cli.steps):
@@ -186,6 +188,8 @@ def main():
             # Detection RMSE vs GT (world frame)
             det_err = np.linalg.norm(pos_world - ball_pos_w)
             metrics["rmse_det"].append(det_err)
+            traj["det"].append(pos_world.copy())
+            traj["det_steps"].append(step)
         else:
             metrics["missed"] += 1
             z_meas = torch.zeros(1, 3)
@@ -197,6 +201,10 @@ def main():
         ekf_pos = ekf.pos[0].numpy()
         ekf_err = np.linalg.norm(ekf_pos - ball_pos_w)
         metrics["rmse_ekf"].append(ekf_err)
+
+        traj["gt"].append(ball_pos_w.copy())
+        traj["ekf"].append(ekf_pos.copy())
+        traj["steps"].append(step)
 
         # Save annotated frame periodically
         if step % args_cli.capture_interval == 0 and "rgb" in cam.data.output:
@@ -219,8 +227,98 @@ def main():
     if metrics["rmse_ekf"]:
         print(f"  EKF RMSE: {np.mean(metrics['rmse_ekf']):.4f} +/- {np.std(metrics['rmse_ekf']):.4f} m")
 
+    # Generate summary visualizations
+    _save_summary_plots(traj, metrics, out_dir, dt)
+    _compile_video(out_dir)
+
     env.close()
     simulation_app.close()
+
+
+def _save_summary_plots(traj, metrics, out_dir, dt):
+    """Generate summary figure: height trajectory + RMSE over time."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        gt = np.array(traj["gt"])
+        ekf = np.array(traj["ekf"])
+        steps = np.array(traj["steps"])
+        t = steps * dt  # seconds
+
+        fig, axes = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+
+        # Panel 1: Z (height) trajectory — GT vs EKF vs detections
+        ax1 = axes[0]
+        ax1.plot(t, gt[:, 2], "k-", linewidth=1.5, label="GT")
+        ax1.plot(t, ekf[:, 2], "b-", linewidth=1.2, alpha=0.8, label="EKF")
+        if traj["det"]:
+            det = np.array(traj["det"])
+            det_t = np.array(traj["det_steps"]) * dt
+            ax1.scatter(det_t, det[:, 2], s=8, c="green", alpha=0.5, label="Detection", zorder=5)
+        ax1.set_ylabel("Height z (m)")
+        ax1.set_title("Ball Height: GT vs EKF vs Camera Detection")
+        ax1.legend(loc="upper right", fontsize=9)
+        ax1.grid(True, alpha=0.3)
+
+        # Panel 2: RMSE over time (EKF and detection)
+        ax2 = axes[1]
+        rmse_ekf = np.array(metrics["rmse_ekf"])
+        ax2.plot(t, rmse_ekf * 1000, "b-", linewidth=1.0, alpha=0.7, label="EKF error")
+        if traj["det"]:
+            # Sparse detection errors at det_steps
+            rmse_det = np.array(metrics["rmse_det"])
+            det_t = np.array(traj["det_steps"]) * dt
+            ax2.scatter(det_t, rmse_det * 1000, s=8, c="green", alpha=0.5, label="Det error")
+        ax2.set_ylabel("Position error (mm)")
+        ax2.set_xlabel("Time (s)")
+        ax2.set_title("Position Error vs Ground Truth")
+        ax2.legend(loc="upper right", fontsize=9)
+        ax2.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        path = os.path.join(out_dir, "summary.png")
+        fig.savefig(path, dpi=150)
+        plt.close(fig)
+        print(f"[demo] Summary plot saved: {path}")
+    except Exception as e:
+        print(f"[demo] Could not generate summary plot: {e}")
+
+
+def _compile_video(out_dir):
+    """Compile saved frames into an mp4 video using ffmpeg."""
+    import subprocess
+    import shutil
+
+    if shutil.which("ffmpeg") is None:
+        print("[demo] ffmpeg not found — skipping video compilation.")
+        return
+
+    pattern = os.path.join(out_dir, "frame_%04d.png")
+    # Check if any frames exist
+    if not os.path.exists(os.path.join(out_dir, "frame_0000.png")):
+        print("[demo] No frames found — skipping video compilation.")
+        return
+
+    video_path = os.path.join(out_dir, "demo.mp4")
+    cmd = [
+        "ffmpeg", "-y",
+        "-framerate", "10",
+        "-i", pattern,
+        "-c:v", "libx264", "-crf", "23", "-preset", "fast",
+        "-pix_fmt", "yuv420p",
+        video_path,
+    ]
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=30)
+        if os.path.exists(video_path):
+            size_kb = os.path.getsize(video_path) / 1024
+            print(f"[demo] Video saved: {video_path} ({size_kb:.0f} KB)")
+        else:
+            print("[demo] ffmpeg ran but no video produced.")
+    except Exception as e:
+        print(f"[demo] Video compilation failed: {e}")
 
 
 def _save_annotated_frame(cam, detection, out_dir, step, ekf_pos_w, ball_pos_w):

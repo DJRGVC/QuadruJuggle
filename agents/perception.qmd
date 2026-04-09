@@ -18,6 +18,31 @@ reverse chronological order (newest first).
 
 ---
 
+## Iterations 80–81 — frame_transforms module + demo summary visualizations {.unnumbered}
+*2026-04-09*
+
+Extracted `quat_to_rotmat` and `cam_detection_to_world` into a reusable
+`perception/frame_transforms.py` module with 18 unit tests covering
+identity/axis rotations, 70° body pitch, inverse properties, roundtrips,
+and edge cases. Key learning: the config quaternion ≠ `quat_w_ros` — Isaac Lab
+adds a body-to-ROS fixed rotation internally.
+
+Enhanced `demo_camera_ekf.py` with automatic summary outputs:
+
+- **Summary plot** (`summary.png`): 2-panel figure showing ball height trajectory
+  (GT vs EKF vs camera detections) and position error over time
+- **Video compilation**: ffmpeg assembles annotated frames into `demo.mp4`
+- **Trajectory tracking**: GT, EKF, and detection positions stored for post-run analysis
+
+286/286 tests pass (18 frame_transforms + 4 demo summary + 264 existing).
+
+**Status**: GPU still locked by policy d435i training. Camera visualization
+smoke test is the next step as soon as GPU clears.
+
+Commits: iter 80 (`beca61c`), iter 81 (this commit)
+
+---
+
 ## Iterations 77–78 — Camera convention fix + SimBallDetector + demo pipeline {.unnumbered}
 *2026-04-09*
 
