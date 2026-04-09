@@ -34,7 +34,8 @@
 - [x] D435iCamera wrapper (pyrealsense2, depth-only 848x480 @ 90fps) — iter 141
 - [x] CameraCalibrator.from_checkerboard() — gravity-aligned via PnP + Wahba — iter 142
 - [ ] BallDetector._detect_yolo (TRT FP16 inference)
-- [ ] YOLO training data collection + fine-tune
+- [x] Synthetic YOLO training data generator (generate_yolo_data.py) — iter 146
+- [ ] YOLO fine-tune on synthetic + real depth data
 - [ ] End-to-end hardware test
 
 ## Velocity commands (blocked on policy)

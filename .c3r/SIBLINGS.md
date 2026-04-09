@@ -80,19 +80,3 @@ git show agent/policy:.c3r/RESEARCH_LOG.md
 git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
 ```
 
-## fix-keyboard-vision-control-ui
-- **role**: fix-it
-- **focus**: great. so what is left for me being able to have keyboard-based control of a vis
-- **status**: running · iter #0 · ctx 0%
-
-### Recent commits on `agent/fix-keyboard-vision-control-ui`
-```
-aab3845 torso tracking edit
-9c4793a pi_2 with v trackign works
-3841f54 working on pi_1 + pi_2
-085e457 frank-proofed requirements.txt
-7256612 added req + install explainer
-```
-### Files modified on `agent/fix-keyboard-vision-control-ui` (relative to `c3r/QuadruJuggle`)
-_(none)_
-

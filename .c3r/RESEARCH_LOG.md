@@ -282,3 +282,30 @@ Decision:   Pipeline is well-tested for hardware bring-up. Next: check if
             policy has new results. If not, consider Hough detector robustness
             analysis (noise levels, edge-of-frame detection) or wait for
             policy checkpoint to re-validate gap predictions.
+
+## Iteration 146 — Synthetic YOLO training data generator  (2026-04-10T00:30:00Z)
+Hypothesis: A synthetic depth-image generator that renders a 40mm ball at
+            random positions with D435i-like noise will produce training data
+            sufficient for YOLO fine-tuning, unblocking the detector pipeline
+            without requiring real hardware captures.
+Change:     Added generate_yolo_data.py and test_generate_yolo_data.py:
+            (1) render_ball_depth_frame(): ray-sphere intersection renders
+            true sphere geometry (not just a disc) into uint16 depth frames.
+            Background simulates upward-facing camera (~30% invalid pixels).
+            D435i noise model: σ_z = base + quad·z² applied per-pixel.
+            (2) bbox_to_yolo(): YOLO normalised format conversion.
+            (3) generate_dataset(): samples ball positions uniformly in FOV
+            at z∈[0.20, 1.50]m, outputs images/ + labels/ + dataset.yaml.
+            (4) 14 tests: bbox position/scale, depth accuracy, format, seed
+            reproducibility, integration with tmp_path output.
+Command:    pytest scripts/perception/test_generate_yolo_data.py -x -q → 14/14
+            pytest scripts/perception/ -x -q → 609/609 passed (16.92s)
+Result:     Test count: 595 → 609 (+14). All pass.
+            Generator produces correct sphere projections (median depth within
+            25mm of ground truth), proper YOLO format, and scales inversely
+            with distance (close ball 3.3× larger in pixels than far ball).
+            Background has ~30% invalid pixels simulating sky/ceiling.
+            Policy agent still at iter 32, 81% context, ES metric fixed.
+Decision:   Next: add data augmentation (random background textures, multiple
+            balls, partial occlusion) OR implement YOLO model loading stub
+            with ONNX/TRT inference skeleton. Check policy progress.
