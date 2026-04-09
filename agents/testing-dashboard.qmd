@@ -30,16 +30,29 @@ Press **R** to stop, **X** for full reset, **Q** to quit.
 **Guide format**: step-by-step reference (not a live widget) — Isaac Lab requires a local Linux machine with an NVIDIA GPU. See [Step 2](#step-2) for full options including `--noise-mode` for camera perception.
 :::
 
-### Live status (2026-04-09 ~07:15 UTC)
+### Live status (2026-04-09 ~08:10 UTC)
 
 | Component | Status | Details |
 |---|---|---|
 | pi2 (torso tracker) | ✅ Verified | `logs/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt` |
 | pi1 oracle baseline | ✅ Stage F complete | `logs/go1_ball_juggle_hier/2026-04-08_21-16-05/model_best.pt` — apex=0.86 |
 | pi1 d435i (1500 iters) | ✅ Stage E — apex=1.50 | **+176% vs oracle at Stage E** |
-| pi1 d435i continuation | 🔄 Stage F, step 2879/3050 | reward=41.7, ep_len=965, apex=1.41 · ~10 min remaining |
-| Camera GPU demo | ⏳ Queued (PID 1133926) | Waiting for GPU; bounce demo ready; 311/311 CPU tests pass |
+| pi1 d435i continuation | ✅ Stage F complete | step 3049, apex=1.39, reward=41.7, timeout=54.3% — `2026-04-08_22-51-56/model_best.pt` |
+| Camera GPU demo | ❌ Step 2 failed | Step 1 (debug_d435i_capture.py) ✅; Step 2 crash: `InteractiveScene` has no `.get()` — fix needed in `demo_camera_ekf.py:135` |
 | EKF perception pipeline | ✅ Code complete | World-frame EKF, adaptive R_xy — blocked on GPU validation |
+
+---
+
+## Iteration 8 — D435i training complete + GPU demo debug {.unnumbered}
+*2026-04-09*
+
+**D435i continuation run finished**: 3049/3050 iterations. Final Stage F metrics: apex=1.39 (target=0.5m above paddle, so ball reaches 1.39m!), mean reward≈41.7, episode length≈769 steps, timeout=54.3%, ball_off=0%. Checkpoint: `logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_22-51-56/model_best.pt`.
+
+**GPU camera demo failed on Step 2**: `debug_d435i_capture.py` (Step 1) passed ✅ — confirms GPU simulation + camera setup works. `demo_camera_ekf.py` (Step 2) crashed immediately with `AttributeError: 'InteractiveScene' object has no attribute 'get'` (line 135: `cam = unwrapped.scene.get("d435i")`). Fix: use `unwrapped.scene["d435i"]` (dict-style access).
+
+**Perception comparison** (eval runs, 49 iters each): oracle ep_len=337.9/reward=13.7 vs d435i ep_len=225.1/reward=10.5 vs ekf ep_len=208.6/reward=7.6. D435i policy still performs best when trained on noise; raw EKF without noise training underperforms.
+
+Updated by `checkin-087`.
 
 ---
 
