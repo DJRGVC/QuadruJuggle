@@ -15,8 +15,12 @@ Outputs to: source/go1_ball_balance/go1_ball_balance/perception/debug/demo/
 """
 
 import argparse
+import faulthandler
 import os
 import sys
+
+# Enable faulthandler to catch segfaults from Isaac Sim C++ layer
+faulthandler.enable()
 
 # Prepend our worktree's source dir
 _OUR_SRC = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "source", "go1_ball_balance"))
@@ -307,7 +311,7 @@ def main():
         if step % args_cli.capture_interval == 0 and "rgb" in cam.data.output:
             _save_annotated_frame(cam, detection, out_dir, step, ekf_pos, ball_pos_w)
 
-        if step % 50 == 0:
+        if step % 50 == 0 or step < 5:
             det_rate = metrics["detected"] / max(1, step + 1) * 100
             ekf_rmse_recent = np.mean(metrics["rmse_ekf"][-10:]) if metrics["rmse_ekf"] else 0
             det_rmse_recent = np.mean(metrics["rmse_det"][-10:]) if metrics["rmse_det"] else 0

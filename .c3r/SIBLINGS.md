@@ -22,32 +22,12 @@ Siblings will see it in their next SIBLINGS.md refresh.
 
 ---
 
-## YOUR CHILDREN — agents YOU spawned and YOU must manage
-
-These are sub-agents you spawned (directly or transitively).
-**YOU are responsible for killing them when their task is done,
-they get stuck, or they exceed their useful budget.** Each child
-also has a hard iteration cap and will self-kill at MAX_ITERATIONS,
-but that's a safety net — proactive management is your job.
-
-- **checkin-087** (generic, parent=perception) — status=idle, iter=#4, last=4m ago
-  Focus: Check perception and policy progress, update testing-dashboard status table
-
-**Decision rules** (apply at the top of every iteration):
-1. If a child's last RESEARCH_LOG entry says its task is done, kill it: `$C3R_BIN/c3r kill <name>`
-2. If a child has been stale (no iter for >2 hours), kill it.
-3. If a child's fail_streak ≥ 3 in state.json, investigate or kill it.
-4. Otherwise, leave it running and check again next iteration.
-
----
-
 ## SIBLINGS — peers you do NOT manage (other agents' work)
 
 ## policy
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
 - **status**: running · iter #16 · ctx 81%
-- **last iter**: 10m ago
 
 ### Recent commits on `agent/policy`
 ```

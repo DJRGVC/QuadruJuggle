@@ -2,6 +2,35 @@
 
 _(older entries auto-archived to RESEARCH_LOG_ARCHIVE.md at 2026-04-09 06:29 UTC)_
 
+## Iteration 89 — GPU smoke test: camera pipeline with trained pi1  (2026-04-09T14:50:00Z)
+Hypothesis: Running demo_camera_ekf.py with trained pi1 checkpoint will validate the
+            full camera→detect→EKF pipeline under realistic policy-driven ball dynamics.
+Change:     1. Fixed stdout buffering issue: added `faulthandler.enable()` and must use
+               `python -u` (unbuffered) to see output before Isaac Sim's simulation_app.close()
+               kills the process. Without -u, only step 0 appeared in logs.
+            2. Tested 3 pi1 checkpoints: d435i-trained (policy branch), oracle-trained
+               (policy branch), and main-branch pi1. All fail on our env config.
+            3. Root cause: policy branch env has restitution=0.99 + ball_pos_perceived obs;
+               our perception branch has restitution=0.85 + ball_pos_in_paddle_frame obs.
+               Policies trained on incompatible physics/obs cannot balance ball on our branch.
+Command:    $C3R_BIN/gpu_lock.sh bash -c 'uv run --active python -u scripts/perception/demo_camera_ekf.py
+              --task Isaac-BallJuggleHier-Go1-Play-v0 --num_envs 1 --steps 300 --headless
+              --pi1-checkpoint <various>' (4 GPU runs total: debug 10-step + 3 × 300-step)
+Result:     Pipeline mechanically works (no crashes with python -u, correct API):
+            - d435i pi1: 2% det rate, 60mm RMSE when detected, EKF diverges (7m)
+            - oracle pi1: 1.7% det rate, 40mm RMSE when detected, EKF diverges (5m)
+            - main-branch pi1: 4.3% det rate, 92mm RMSE, EKF diverges (4.4m)
+            - All: 0 episodes in 300 steps → ball falls off immediately, no termination fires
+            - Detection works correctly in first 5 steps (20-40mm RMSE) before ball leaves FOV
+            Key finding: cross-branch policy incompatibility is the blocker, not the camera
+            pipeline. Bounce mode demo (iter 87, 100% det rate) remains the valid demo.
+Decision:   Live policy demo is BLOCKED on branch integration. Two paths forward:
+            (a) Merge policy branch env changes (restitution + perceived obs) into perception
+            (b) Train a pi1 on our perception branch's env config
+            Neither is in our scope alone. Will ping policy agent about option (a).
+            Next iter: update Quarto page with cross-branch findings + focus on remaining
+            fix_plan items (GPU sweep at higher heights for EKF vs raw comparison).
+
 ## Iteration 88 — Wire camera pipeline into live policy eval  (2026-04-09T10:45:00Z)
 Hypothesis: Adding --pi1-checkpoint to demo_camera_ekf.py will enable camera→detect→EKF
             evaluation under realistic trained-policy ball dynamics (not just bounce mode).

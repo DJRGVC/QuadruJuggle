@@ -18,7 +18,10 @@
   - [x] Add --pi1-checkpoint flag + RSL-RL policy loading to demo_camera_ekf.py
   - [x] Multi-env EKF + per-env camera detection loop
   - [x] Episode tracking (timeouts, resets) with EKF re-init on done
-  - [ ] GPU smoke test with trained pi1 (queued behind policy cross-eval)
+  - [x] GPU smoke test with trained pi1 — pipeline works, but policy incompatible (iter 89)
+  - [ ] BLOCKED: need pi1 trained on perception branch env config (or branch merge)
+    Policy branch has restitution=0.99 + perceived obs; our branch has 0.85 + oracle obs.
+    Bounce mode demo (iter 87) validates camera pipeline independently.
 
 # EKF tuning (lower priority, mostly done)
 - [ ] GPU sweep at higher target heights (0.3-0.5m) to confirm EKF beats raw at distance
