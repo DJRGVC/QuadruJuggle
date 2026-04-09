@@ -20,6 +20,24 @@ See [full Stage G bottleneck analysis](../experiments/perception/2026-04-09_stag
 
 ---
 
+## Iteration 119 — Trajectory time-series visualization + oracle comparison tooling {.unnumbered}
+*2026-04-09*
+
+Created time-series visualization of ball height during Stage G eval, clearly
+showing the balancing-vs-juggling behavioral split. Also prepared automated
+oracle-vs-d435i comparison pipeline (`run_oracle_vs_d435i.sh`) for launch
+once the policy agent's Stage G training completes and GPU frees.
+
+![Ball height time series across target heights — policy oscillates at 0.5-0.7m regardless of target, detections (orange triangles) cluster in initial drop](../images/perception/trajectory_timeseries_stage_g.png){width=100%}
+
+**Key visual findings:** Ball never sustains flight. Small oscillations (~0.1m
+amplitude) at all targets. Camera detections only fire during the initial ball
+drop in the first ~1s. EKF diverges from GT after that as anchor takes over.
+
+Commits: iter 119
+
+---
+
 ## Iterations 115-116 — Starvation fix disproved; policy is the bottleneck {.unnumbered}
 *2026-04-09*
 

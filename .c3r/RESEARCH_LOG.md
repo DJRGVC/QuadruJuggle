@@ -210,3 +210,31 @@ Decision:   Next iter: check if policy training completed. If new checkpoint ava
             run full oracle vs d435i comparison using the new tool. If GPU still blocked,
             consider updating Quarto with latest status or preparing the oracle eval
             command so it can launch immediately when GPU frees.
+
+## Iteration 119 — Trajectory time-series visualization + oracle comparison tooling  (2026-04-09T17:30:00Z)
+Hypothesis: Time-series visualization of ball height will clearly show the
+            balancing-vs-juggling behavioral split, and preparing automated
+            oracle-vs-d435i comparison tooling will enable immediate launch
+            when GPU frees from policy training.
+Change:     1. Created plot_trajectory_timeseries.py — multi-panel figure showing
+               GT ball height, EKF estimate, detection events, and phase coloring
+               per target height. Clear visual evidence of contact-dominated regime.
+            2. Created run_oracle_vs_d435i.sh — one-command pipeline that runs oracle
+               eval then d435i eval then generates comparison dashboard figure.
+            3. Generated trajectory_timeseries_stage_g.png from existing iter 116 data.
+            4. Updated agents/perception.qmd with new figure and iter 119 entry.
+Command:    python plot_trajectory_timeseries.py --eval-dir eval_stage_g_d435i --out ... (CPU only)
+            pytest scripts/perception/ -x -q → 457/457 passed (10.02s)
+Result:     TIME SERIES FIGURE: clearly shows ball oscillates at 0.5-0.7m regardless
+            of target height. Detections cluster in first ~1s (initial ball drop).
+            After that, 98.5% contact phase — ball on paddle. Camera only active
+            for 1.5% of steps. EKF tracks via anchor after initial flight window.
+            GPU still blocked by policy Stage G training (PID 1348279, model_3200.pt,
+            ~68 min remaining). Oracle/d435i checkpoints all verified available.
+            READY TO LAUNCH: run_oracle_vs_d435i.sh with:
+              --oracle-pi1 .../2026-04-08_19-19-41/model_best.pt
+              --d435i-pi1  .../2026-04-09_07-38-27/model_best.pt (or latest Stage G)
+Decision:   Next iter: check if GPU freed. If yes, launch oracle vs d435i comparison
+            using run_oracle_vs_d435i.sh. If GPU still blocked, consider deeper
+            analysis of detection timing (are detections useful even in the first 1s?)
+            or preparing real-hardware integration specs.
