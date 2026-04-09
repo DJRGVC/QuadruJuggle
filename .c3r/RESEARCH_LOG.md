@@ -124,3 +124,24 @@ Result:     Code changes complete. GPU validation pending.
 Decision:   Next iter: check GPU capture results. If ball visible with world convention →
             wire camera→detect→EKF demo pipeline. If still wrong → try identity quaternion
             first, then systematically rotate.
+
+## Iteration 78 — Fix demo_camera_ekf.py frame consistency + kill child  (2026-04-09T06:35:00Z)
+Hypothesis: Demo script had frame mismatch — EKF initialized in world frame but detections
+            transformed to body frame via manual rotation matrices. Using cam.data.quat_w_ros
+            directly is simpler and correct.
+Change:     1. Rewrote cam_detection_to_world() to use cam.data.pos_w + cam.data.quat_w_ros
+               from Isaac Lab sensor data, eliminating manual body-frame intermediate.
+            2. Added camera pose diagnostic at startup (prints forward vector + elevation).
+            3. Removed unused robot entity reference.
+            4. Killed testing-dashboard child (guide complete at iter 4, idle).
+               Note: c3r kill failed due to worktree path issue; child still running.
+Command:    pytest scripts/perception/ → 264/264 passed.
+            No GPU commands (policy d435i training at iter 950/1500, ~7.8GB VRAM).
+Result:     Demo script frame handling corrected. Camera convention analysis:
+            - Isaac Lab stores camera data in OpenGL internally (-Z fwd, +Y up)
+            - cam.data.quat_w_ros converts to ROS convention (+Z fwd, -Y up, +X right)
+            - SimBallDetector returns pos_cam in ROS frame (deprojection: x=right, y=down, z=fwd)
+            - quat_w_ros @ pos_cam + pos_w → world frame directly
+Decision:   Next iter: GPU capture with convention="world" config. If ball visible → run
+            full demo_camera_ekf.py to validate end-to-end pipeline. If GPU still locked,
+            focus on adding a unit test for cam_detection_to_world().

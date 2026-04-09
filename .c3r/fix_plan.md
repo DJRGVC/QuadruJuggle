@@ -1,14 +1,15 @@
 # fix_plan.md — experiment queue for perception
 
-# Status: ETH noise+EKF pipeline FEATURE-COMPLETE (256/256 CPU tests).
+# Status: ETH noise+EKF pipeline FEATURE-COMPLETE (264/264 CPU tests).
 # EKF tuned: adaptive R_xy, 3-level q_vel, flight NIS≈3.3-3.8. q_vel=0.40 default.
-# GAP: Sim camera visualization NOT working. No camera→detect→EKF loop.
+# GAP: Sim camera visualization NOT working. Convention fix in iter 77 (world), awaiting GPU.
 
 # PRIORITY: Sim camera visualization (Daniel's direct request 2026-04-09)
-- [x] Fix D435i camera mount — 45° → 75° tilt, moved pos from (-0.05,0,0.08) to (-0.08,0,0.06)
+- [x] Fix D435i camera mount — 45° → 75° tilt (iter 76), ros → world convention (iter 77)
+- [x] Write SimBallDetector for TiledCamera float32 depth (iter 77, 8 tests)
+- [x] Integrate SimBallDetector into debug_d435i_capture.py (iter 77)
 - [ ] GPU smoke test: capture RGB+depth frames with ball visible (blocked by policy training)
-      Debug script updated: applies 2m/s upward ball velocity before capture.
-- [ ] Simple sim ball detector (from camera depth/RGB) — Hough circle or threshold
+- [ ] If camera still wrong: try identity quaternion, systematically rotate
 - [ ] Wire camera→detect→EKF pipeline for visual demo
 - [ ] Demo script Daniel can run: camera feed + ball detection + EKF overlay
 

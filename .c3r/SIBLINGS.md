@@ -22,20 +22,40 @@ Siblings will see it in their next SIBLINGS.md refresh.
 
 ---
 
+## YOUR CHILDREN — agents YOU spawned and YOU must manage
+
+These are sub-agents you spawned (directly or transitively).
+**YOU are responsible for killing them when their task is done,
+they get stuck, or they exceed their useful budget.** Each child
+also has a hard iteration cap and will self-kill at MAX_ITERATIONS,
+but that's a safety net — proactive management is your job.
+
+- **testing-dashboard** (generic, parent=perception) — status=running, iter=#4, last=38s ago
+  Focus: Build a Quarto testing page for the WASD+PL control + perception pipeline. Deadline: 2026-04-09 15:00 UTC. Page documents how to run play_teleop.py with WASD+PL controls, camera setup, height viz, velocity display. Decide by iter 3: live widget vs step-by-step guide for local Linux with Isaac Lab. Read sibling branches for model paths.
+
+**Decision rules** (apply at the top of every iteration):
+1. If a child's last RESEARCH_LOG entry says its task is done, kill it: `$C3R_BIN/c3r kill <name>`
+2. If a child has been stale (no iter for >2 hours), kill it.
+3. If a child's fail_streak ≥ 3 in state.json, investigate or kill it.
+4. Otherwise, leave it running and check again next iteration.
+
+---
+
 ## SIBLINGS — peers you do NOT manage (other agents' work)
 
 ## policy
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
-- **status**: running · iter #12 · ctx 81%
+- **status**: running · iter #14 · ctx 81%
+- **last iter**: 1h ago
 
 ### Recent commits on `agent/policy`
 ```
+56ee92e Iteration 25: sync perception noise model (Ahn 2019 calibration) + prepare d435i training
+b99bfab Iteration 24: discovered iters 22-23 ran oracle (not d435i) — noise_mode flag was missing
 bf3d8a8 Iteration 23: σ_ratio 3.5→2.5 breaks Stage D plateau — all 6 stages reached (A→F)
 f4981a6 Iteration 22: fresh 6-stage training — advanced A→D, stuck at D (apex plateau)
 8d8e8d5 Iteration 21: teleop interface — WASD velocity + P/L height control
-6e99ed8 Iteration 18: apex plateau diagnosis + Quarto report
-206e928 iter_017: compaction (summarized iters 009-014)
 ```
 ### Files modified on `agent/policy` (relative to `c3r/QuadruJuggle`)
 ```
@@ -58,6 +78,7 @@ docs/noise_curriculum_plan.md
 images/README.md
 images/perception/.gitkeep
 images/policy/.gitkeep
+images/policy/iter_023_training_curves.png
 images/shared/.gitkeep
 index.qmd
 scripts/rsl_rl/compare_pi1.py
@@ -68,8 +89,7 @@ source/go1_ball_balance/go1_ball_balance/perception/__init__.py
 source/go1_ball_balance/go1_ball_balance/perception/ball_ekf.py
 source/go1_ball_balance/go1_ball_balance/perception/ball_obs_spec.py
 source/go1_ball_balance/go1_ball_balance/perception/noise_model.py
-source/go1_ball_balance/go1_ball_balance/tasks/ball_juggle/mdp/rewards.py
-... and 6 more
+... and 7 more
 ```
 ### Read one with:
 ```
@@ -79,4 +99,20 @@ git show agent/policy:.c3r/PROMPT.md
 git show agent/policy:.c3r/RESEARCH_LOG.md
 git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
 ```
+
+## fix-quarto-rebuild-failure
+- **role**: fix-it
+- **focus**: take a look at the quarto rebuild failue--lets try to figure out why is was not 
+- **status**: running · iter #0 · ctx 0%
+
+### Recent commits on `agent/fix-quarto-rebuild-failure`
+```
+aab3845 torso tracking edit
+9c4793a pi_2 with v trackign works
+3841f54 working on pi_1 + pi_2
+085e457 frank-proofed requirements.txt
+7256612 added req + install explainer
+```
+### Files modified on `agent/fix-quarto-rebuild-failure` (relative to `c3r/QuadruJuggle`)
+_(none)_
 
