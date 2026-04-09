@@ -87,6 +87,7 @@ from go1_ball_balance.tasks.ball_juggle_hier.ball_juggle_hier_env_cfg import Bal
 from go1_ball_balance.perception.sim_detector import SimBallDetector
 from go1_ball_balance.perception.ball_ekf import BallEKF, BallEKFConfig
 from go1_ball_balance.perception.frame_transforms import quat_to_rotmat, cam_detection_to_world
+from go1_ball_balance.perception.phase_tracker import BallPhaseTracker
 
 
 # Keep _quat_to_rotmat alias for backward compat in _save_annotated_frame
@@ -188,6 +189,7 @@ def main():
         anchor_enabled=not getattr(args_cli, "no_anchor", False),
     )
     ekf = BallEKF(num_envs=args_cli.num_envs, device="cpu", cfg=ekf_cfg)
+    phase_tracker = BallPhaseTracker(num_envs=args_cli.num_envs, device="cpu")
 
     # Output directory
     if getattr(args_cli, "out_dir", None) is not None:
@@ -254,7 +256,7 @@ def main():
     metrics = {"detected": 0, "missed": 0, "rmse_det": [], "rmse_ekf": [], "anchored": 0}
     # Trajectory tracking for summary visualizations
     traj = {"gt": [], "ekf": [], "det": [], "det_steps": [], "steps": [],
-            "ball_h": [], "anchored_step": []}
+            "ball_h": [], "anchored_step": [], "phase": []}
 
     # Periodic impulse parameters for simulating juggling without a trained policy.
     # When the ball falls near the paddle, give it an upward kick.
@@ -299,6 +301,7 @@ def main():
                     ball.data.root_pos_w[done_ids, :3].cpu(),
                     ball.data.root_vel_w[done_ids, :3].cpu(),
                 )
+                phase_tracker.reset(done_ids.cpu())
         else:
             action = torch.zeros(unwrapped.action_space.shape, device=unwrapped.device)
             obs, _, _, _, _ = env.step(action)
@@ -373,6 +376,9 @@ def main():
         n_anchored = ekf.paddle_anchor_update(paddle_pos_w)
         metrics["anchored"] += n_anchored
 
+        # Phase tracking: classify ball state from EKF estimates
+        phase_tracker.update(ekf.pos, ekf.vel, contact_z_threshold=contact_z_world)
+
         # EKF RMSE vs GT (env 0)
         ekf_pos = ekf.pos[0].numpy()
         ekf_err = np.linalg.norm(ekf_pos - ball_pos_w)
@@ -383,6 +389,7 @@ def main():
         traj["steps"].append(step)
         traj["ball_h"].append(ball_pos_w[2] - _PADDLE_Z_APPROX)
         traj["anchored_step"].append(1 if n_anchored > 0 else 0)
+        traj["phase"].append(phase_tracker.phase[0].item())
 
         # Save annotated frame periodically (env 0 only)
         if cam is not None and step % args_cli.capture_interval == 0 and "rgb" in cam.data.output:
@@ -425,6 +432,12 @@ def main():
     if use_policy:
         print(f"  Episodes: {total_episodes}  |  Timeout: {100*total_timeouts/max(1,total_episodes):.1f}%")
 
+    # Phase tracker summary
+    phase_stats = phase_tracker.summary()
+    print(f"  Phase tracker: {phase_stats['mean_bounces']:.1f} bounces/env, "
+          f"flight={phase_stats['mean_flight_fraction']*100:.1f}%, "
+          f"peak={phase_stats['mean_peak_height']:.3f}m")
+
     # Save raw trajectory data for offline analysis (EKF vs raw sweep etc.)
     _save_trajectory_npz(traj, metrics, out_dir, dt)
 
@@ -451,6 +464,7 @@ def _save_trajectory_npz(traj, metrics, out_dir, dt):
         rmse_det = np.array(metrics["rmse_det"])
         ball_h = np.array(traj.get("ball_h", []))
         anchored_step = np.array(traj.get("anchored_step", []))
+        phase = np.array(traj.get("phase", []))
 
         path = os.path.join(out_dir, "trajectory.npz")
         np.savez_compressed(
@@ -459,6 +473,7 @@ def _save_trajectory_npz(traj, metrics, out_dir, dt):
             det=det, det_steps=det_steps,
             rmse_ekf=rmse_ekf, rmse_det=rmse_det,
             ball_h=ball_h, anchored_step=anchored_step,
+            phase=phase,
         )
         print(f"[demo] Trajectory data saved: {path} ({gt.shape[0]} steps, {det.shape[0]} detections)")
     except Exception as e:

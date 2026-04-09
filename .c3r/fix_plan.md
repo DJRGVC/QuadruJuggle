@@ -43,7 +43,11 @@
   - Dynamic world-frame contact_z_threshold from robot root Z + offset + ball_radius + 10mm
   - Paddle position computed from robot.data.root_pos_w each step
   - Also fixed contact-aware Q threshold (was 0.025 paddle-relative, now world-frame)
-- [ ] Consider "flight window" detection mode — only run detection during known flight arcs
+- [x] Ball phase tracker (phase_tracker.py) — contact/ascending/descending state machine
+  - BallPhaseTracker with bounce counting, peak height, flight fraction
+  - 21 tests (test_phase_tracker.py), wired into demo_camera_ekf.py
+  - Phase data saved in trajectory.npz for offline analysis
+- [ ] Consider camera scheduling: skip detection during contact phase (saves YOLO compute on real HW)
 
 # EKF tuning (lower priority, mostly done)
 - [x] GPU sweep at higher target heights (0.3-0.5m) — bounce mode sweep done (iter 90)

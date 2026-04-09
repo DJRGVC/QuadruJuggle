@@ -16,3 +16,4 @@ from .ball_obs_spec import (  # noqa: F401
 
 from .ball_ekf import BallEKF, BallEKFConfig  # noqa: F401
 from .noise_model import D435iNoiseModel, D435iNoiseModelCfg  # noqa: F401
+from .phase_tracker import BallPhaseTracker, BallPhaseTrackerConfig, BallPhase  # noqa: F401

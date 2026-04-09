@@ -214,3 +214,26 @@ Result:     Tooling ready. Script tested with synthetic data. Produces clear fig
             occupied by policy agent.
 Decision:   Next iter: run anchor ablation on GPU if available. If still blocked,
             consider flight-window detection mode OR Quarto update with recent progress.
+
+## Iteration 108 — Ball phase tracker for flight-window detection  (2026-04-10T21:00:00Z)
+Hypothesis: A state machine that classifies ball phase (contact/ascending/descending)
+            from EKF estimates will enable camera scheduling (skip detection during
+            contact), phase-aware metrics without post-hoc recomputation, and bounce
+            counting for curriculum diagnostics.
+Change:     Created perception/phase_tracker.py with BallPhaseTracker class:
+            - 3 phases: CONTACT(0), ASCENDING(1), DESCENDING(2)
+            - Transitions: contact→ascending (vz>0.5 + above threshold), ascending→
+              descending (vz≤0), descending→contact (enters contact zone)
+            - Weak bounce handling: ascending→contact if ball falls back without descent
+            - Per-env: bounce_count, peak_height, flight_fraction, steps_in_phase
+            - Per-env tensor contact_z_threshold support
+            - Wired into demo_camera_ekf.py: update after EKF step, reset on episode done,
+              phase stats in summary output, phase array saved in trajectory.npz
+            - Exported from perception/__init__.py
+Command:    pytest scripts/perception/ → 409/409 passed (8.11s). No GPU needed.
+Result:     21 new tests (test_phase_tracker.py) all pass. Full suite 409/409.
+            Phase tracker provides real-time ball state classification that was previously
+            only available via post-hoc trajectory analysis.
+Decision:   Next iter: run anchor ablation on GPU if available. The phase tracker data
+            in trajectory.npz will also enable phase-conditioned analysis of anchor
+            improvement (anchor should only matter during CONTACT phase).
