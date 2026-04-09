@@ -71,9 +71,11 @@ class BallEKFConfig:
 
     # Measurement noise — matched to D435iNoiseModelCfg (Ahn 2019 calibration)
     r_xy: float = 0.00125   # measurement noise std, XY (m) — 0.0025·z at z=0.5m
+    r_xy_per_metre: float = 0.0025  # σ_xy = r_xy_per_metre · z (matched to D435i; Ahn 2019)
+    r_xy_floor: float = 0.0005  # 0.5mm floor (avoid singular R at z≈0)
     r_z: float = 0.00225    # measurement noise std, Z (m) — 0.001 + 0.005·0.5² at z=0.5m
     r_z_per_metre: float = 0.005  # additional Z noise std per metre (matched to D435i quadratic)
-    adaptive_r: bool = True  # if True, r_z varies with estimated ball height
+    adaptive_r: bool = True  # if True, R_xy and R_z vary with estimated ball height
 
     # Drag coefficient: F_drag = -drag_coeff * |v| * v
     # For a 40mm ping-pong ball at low speeds: Cd ≈ 0.4, A = pi*0.02^2,
@@ -489,11 +491,18 @@ class BallEKF:
             return
 
         D = self._state_dim
-        # Time-varying R: depth noise grows with distance (D435i stereo baseline)
+        # Time-varying R: noise grows with distance (D435i stereo baseline)
         if self.cfg.adaptive_r:
             z_height = self._x[:, 2].abs()
+            # XY noise: σ_xy = r_xy_per_metre · z, floored
+            sigma_xy = torch.clamp(
+                self.cfg.r_xy_per_metre * z_height, min=self.cfg.r_xy_floor
+            )
+            # Z noise: σ_z = r_z + r_z_per_metre · z
             sigma_z = self.cfg.r_z + self.cfg.r_z_per_metre * z_height
-            R = self._R_base.unsqueeze(0).expand(self.num_envs, -1, -1).clone()
+            R = torch.zeros(self.num_envs, 3, 3, device=self.device)
+            R[:, 0, 0] = sigma_xy ** 2
+            R[:, 1, 1] = sigma_xy ** 2
             R[:, 2, 2] = sigma_z ** 2
         else:
             R = self._R.unsqueeze(0).expand(self.num_envs, -1, -1)

@@ -338,5 +338,79 @@ class TestNISGateUndetectedUnaffected(unittest.TestCase):
         self.assertEqual(ekf._gate_total_count, 2)
 
 
+class TestAdaptiveR(unittest.TestCase):
+    """Adaptive R scales XY and Z noise with estimated ball height."""
+
+    def test_adaptive_r_xy_scales_with_height(self):
+        """R_xy should be smaller at low z and larger at high z."""
+        cfg = BallEKFConfig(
+            adaptive_r=True,
+            r_xy_per_metre=0.0025,
+            r_xy_floor=0.0005,
+            q_vel=0.40,
+            contact_aware=False,
+            nis_gate_enabled=False,
+        )
+        ekf = BallEKF(num_envs=2, cfg=cfg)
+        # Env 0 at z=0.10, Env 1 at z=0.80
+        pos_low = torch.tensor([[0.0, 0.0, 0.10]])
+        pos_high = torch.tensor([[0.0, 0.0, 0.80]])
+        ekf.reset(torch.tensor([0]), pos_low)
+        ekf.reset(torch.tensor([1]), pos_high)
+
+        # Run one predict+update cycle with perfect measurements
+        ekf.predict(0.02)
+        z = torch.stack([pos_low[0], pos_high[0]])
+        ekf.update(z, torch.ones(2, dtype=torch.bool))
+
+        # After update, P should differ: env 1 (high z) has larger R → less
+        # measurement trust → larger posterior P
+        P_low = ekf._P[0, :3, :3].diag()
+        P_high = ekf._P[1, :3, :3].diag()
+        # XY posterior covariance should be smaller at low z (tighter R)
+        self.assertLess(P_low[0].item(), P_high[0].item(),
+                        "P_xx at z=0.10 should be < P_xx at z=0.80")
+
+    def test_adaptive_r_xy_floor(self):
+        """R_xy should not go below r_xy_floor even at z≈0."""
+        cfg = BallEKFConfig(
+            adaptive_r=True,
+            r_xy_per_metre=0.0025,
+            r_xy_floor=0.0005,
+            q_vel=0.40,
+            contact_aware=False,
+            nis_gate_enabled=False,
+        )
+        ekf = BallEKF(num_envs=1, cfg=cfg)
+        ekf.reset(torch.tensor([0]), torch.tensor([[0.0, 0.0, 0.01]]))
+
+        ekf.predict(0.02)
+        z = torch.tensor([[0.0, 0.0, 0.01]])
+        ekf.update(z, torch.ones(1, dtype=torch.bool))
+
+        # At z=0.01, sigma_xy = max(0.0025*0.01, 0.0005) = 0.0005
+        # P should still be finite and reasonable
+        self.assertTrue(torch.isfinite(ekf._P).all())
+        self.assertGreater(ekf._P[0, 0, 0].item(), 0.0)
+
+    def test_non_adaptive_r_ignores_height(self):
+        """With adaptive_r=False, R is constant regardless of height."""
+        cfg = BallEKFConfig(adaptive_r=False, q_vel=0.40, contact_aware=False,
+                            nis_gate_enabled=False)
+        ekf = BallEKF(num_envs=2, cfg=cfg)
+        ekf.reset(torch.tensor([0]), torch.tensor([[0.0, 0.0, 0.10]]))
+        ekf.reset(torch.tensor([1]), torch.tensor([[0.0, 0.0, 0.80]]))
+
+        ekf.predict(0.02)
+        z = torch.tensor([[0.0, 0.0, 0.10], [0.0, 0.0, 0.80]])
+        ekf.update(z, torch.ones(2, dtype=torch.bool))
+
+        # Both envs should have identical XY posterior P (same fixed R)
+        P0_xx = ekf._P[0, 0, 0].item()
+        P1_xx = ekf._P[1, 0, 0].item()
+        self.assertAlmostEqual(P0_xx, P1_xx, places=8,
+                               msg="Non-adaptive R should give identical P regardless of height")
+
+
 if __name__ == "__main__":
     unittest.main()

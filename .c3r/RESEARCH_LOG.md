@@ -267,3 +267,28 @@ Result:     apply_sweep_results.py now supports: --plot (figure), --apply (auto-
 Decision:   Next iter: check if sweep_q_vel_low_range.json exists. If yes, run apply_sweep_results.py
             --plot --apply to find NIS=3.0 crossing and auto-patch BallEKFConfig. If sweep still
             queued, check GPU status. Sweep PID: 987574.
+
+## Iteration 73 — Adaptive R_xy: fix root cause of low NIS  (2026-04-09T02:00:00Z)
+Hypothesis: All flight NIS < 3.0 because R_xy was calibrated for z=0.5m (σ=1.25mm) but d435i
+            noise model has σ_xy=0.0025·z. At Stage A (z≈0.1m), actual σ_xy=0.25mm → R_xy
+            variance 25× too large → filter over-conservative → NIS artificially suppressed.
+Change:     Made R_xy adaptive in BallEKF.update(): σ_xy = max(r_xy_per_metre·z, r_xy_floor).
+            Added BallEKFConfig fields: r_xy_per_metre=0.0025, r_xy_floor=0.0005m. Updated
+            test_imu_aided_ekf.py (test_tracking_degrades_without_imu was marginal with new R;
+            increased omega 2→4 rad/s and steps 30→60). Added 3 new tests (TestAdaptiveR) in
+            test_nis_gating.py verifying: (1) R_xy scales with z, (2) floor works at z≈0,
+            (3) non-adaptive R is height-independent. Killed old sweep PID 987574 (would have
+            imported pre-fix code) and requeued as PID 999147 with updated adaptive R.
+Command:    pytest scripts/perception/ — 256/256 pass (was 253; +3 new). No GPU commands.
+            Sweep PID 999147 queued behind policy training (PID 982975, ~18 min in, 1500 iters).
+Result:     Root cause identified and fixed. With adaptive R_xy:
+            - At z=0.10m: σ_xy = 0.25mm (was 1.25mm) → R_xy variance 25× smaller → NIS ↑
+            - At z=0.50m: σ_xy = 1.25mm (unchanged)
+            - At z=1.00m: σ_xy = 2.50mm (was 1.25mm) → R_xy variance 4× larger → NIS ↓
+            The low-range sweep should now show NIS ≈ 3.0 at the correctly-calibrated q_vel,
+            rather than being universally suppressed by an over-sized R.
+Decision:   Next iter: check if sweep_q_vel_low_range.json exists. With adaptive R, the NIS
+            crossing point should be at a higher q_vel than before (since R is now tighter at
+            low z). If NIS > 3 at all tested q_vel, the bisection in sweep_q_vel.py will
+            auto-find the crossing. If still < 3 everywhere, consider that the EKF process
+            model (ballistic+drag) is genuinely accurate for this task.

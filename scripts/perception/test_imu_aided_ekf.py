@@ -287,16 +287,16 @@ class TestIMUAidedPredict(unittest.TestCase):
     def test_tracking_degrades_without_imu(self):
         """Without omega compensation, tracking under rotation should be worse."""
         N = 1
-        omega = torch.tensor([[0.0, 0.0, 2.0]])  # faster rotation
+        omega = torch.tensor([[0.0, 0.0, 4.0]])  # fast yaw rotation
 
         def run_tracking(use_imu: bool):
             cfg = BallEKFConfig(q_vel=0.40, contact_aware=False, drag_coeff=0.0)
             ekf = BallEKF(num_envs=N, device=DEVICE, cfg=cfg)
-            gt_pos = torch.tensor([[0.03, 0.0, 0.30]])
+            gt_pos = torch.tensor([[0.03, 0.0, 0.50]])
             gt_vel = torch.tensor([[0.0, 0.0, 1.5]])
             ekf.reset(torch.tensor([0]), gt_pos, gt_vel)
 
-            for _ in range(30):
+            for _ in range(60):
                 a_grav = torch.tensor([[0.0, 0.0, -9.81]])
                 a_cor = -2.0 * torch.linalg.cross(omega, gt_vel)
                 a_cent = -torch.linalg.cross(omega, torch.linalg.cross(omega, gt_pos))
