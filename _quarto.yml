@@ -31,8 +31,6 @@ website:
             text: perception
           - href: agents/policy.qmd
             text: policy
-          - href: agents/c3r-fix-001353.qmd
-            text: c3r-fix-001353
       # AGENT_MENU_END
       - href: experiments.qmd
         text: Experiments
