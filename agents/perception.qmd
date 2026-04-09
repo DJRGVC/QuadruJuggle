@@ -13,18 +13,230 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete** (560 CPU tests, 138 iterations).
+Perception pipeline is **feature-complete** (659 CPU tests, 149 iterations).
 EKF uses a **5-level phase-aware Q schedule** with R² = 0.994 noise-to-gap
 prediction model — validated against real policy data (max error ±0.8pp).
+Drag model configurable: linear (PhysX sim) or quadratic (real hardware).
 
-New: **EKF error decomposition** (iter 138) reveals velocity estimation during
-ascending flight is the dominant error source — vz RMSE 0.6–1.0 m/s, dwarfing
-position error. The Z-axis dominates both pos and vel error; XY is negligible.
-This means future EKF improvements should target drag model accuracy and
-ascending-phase Q tuning, not measurement R.
+**YOLO detector pipeline now complete** (iters 146–149): synthetic depth data
+generator, ONNX inference with TRT/CUDA/CPU fallback, training script with
+depth-appropriate augmentation, and dummy ONNX model builder for integration
+testing. Real-hardware components (D435i camera, calibration, extrinsics)
+from iters 141–143. Only remaining step: ultralytics + onnxruntime install
+for actual model training and live inference.
 
 See [perception gap decomposition](../experiments/perception/2026-04-10_perception_gap_decomposition.qmd) — the "perception gap" is actually a policy gap.
 Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd) and [noise-to-gap prediction](../experiments/perception/2026-04-10_noise_gap_prediction.qmd) (R² = 0.994, validated against policy eval).
+
+---
+
+## Iteration 149 — Dummy ONNX model builder for integration testing {.unnumbered}
+*2026-04-10*
+
+Created `make_dummy_onnx.py` — builds a minimal valid ONNX model that mimics
+the YOLOv8n single-class output format (input: `images` float32 `(1,3,640,640)`,
+output: `output0` float32 `(1,5,8400)`). The model embeds a fixed high-confidence
+detection at the image centre, enabling end-to-end integration testing of the
+`_load_model()` → `_preprocess()` → `_detect_yolo()` → deprojection chain
+*without* needing ultralytics or a trained model.
+
+When `onnxruntime` is available, the test suite additionally validates model
+loading and inference — including a full `BallDetector.detect()` call that
+goes through ONNX session creation, blob preprocessing, output parsing, depth
+lookup, and 3D deprojection. These tests auto-skip on environments without
+`onnxruntime`.
+
+**Test count**: 650 → 659 (+9 tests, +2 conditional skips).
+
+---
+
+## Iteration 148 — YOLO training + ONNX export script {.unnumbered}
+*2026-04-10*
+
+Added `train_yolo_ball.py` wrapping the ultralytics YOLOv8 training pipeline
+for depth-only ball detection. Key design choices for depth data:
+
+- Colour jitter disabled (`hsv_h/s/v=0`) — depth images have no colour channels
+- Mosaic and mixup disabled — depth scale must remain physically consistent
+- `flipud` and `fliplr` enabled — valid geometric augmentations for depth
+- Early stopping with `patience=20` to prevent overfitting on synthetic data
+- Automatic dataset splitting (85/15 train/val) with deterministic seed
+- `depth_png_to_rgb()` converts uint16 depth PNGs to 3-channel uint8
+
+All utility functions fully tested (18 tests); `train()` itself requires
+ultralytics which is not yet installed.
+
+---
+
+## Iteration 147 — YOLO ONNX inference in BallDetector {.unnumbered}
+*2026-04-10*
+
+Implemented `BallDetector._detect_yolo()` — the primary detection path for
+real hardware. Pipeline: uint16 depth → 8-bit normalise → letterbox 640×640 →
+3-channel NCHW float32 blob → ONNX session → parse detections → un-letterbox →
+median depth lookup → deproject to 3D camera frame.
+
+Handles both YOLOv8 output layouts: `(1,5,N)` (standard export) and `(1,N,5)`
+(alternative). Model loading uses TensorRT → CUDA → CPU execution provider
+fallback chain for Jetson/desktop/CI compatibility.
+
+**Verified**: off-centre ball at `(0.05, -0.03, 0.40)m` correctly deprojected
+within 2cm XY / 5cm Z tolerance through the full letterbox→un-letterbox chain.
+
+**Test count**: 609 → 632 (+23 tests using mock ONNX session).
+
+---
+
+## Iteration 146 — Synthetic YOLO training data generator {.unnumbered}
+*2026-04-10*
+
+Created `generate_yolo_data.py` — generates synthetic depth images with
+physically-accurate ball projections for YOLO training. Key features:
+
+- **Ray-sphere intersection**: renders true sphere geometry (not just a disc)
+  into uint16 depth frames, producing realistic edge falloff
+- **D435i noise model**: σ_z = base + quad·z² applied per-pixel, matching
+  the measured D435i depth noise profile from our lit review
+- **Background simulation**: ~30% invalid pixels simulating sky/ceiling as
+  seen by the upward-facing camera
+- **YOLO format output**: `images/` + `labels/` + `dataset.yaml` ready for
+  ultralytics training
+
+Validated: median depth within 25mm of ground truth, ball apparent size
+scales inversely with distance (3.3× larger at close range vs far).
+
+**Test count**: 595 → 609 (+14 tests).
+
+---
+
+## Iteration 145 — Dynamic trajectory integration tests for hardware pipeline {.unnumbered}
+*2026-04-09*
+
+Added 4 integration tests that validate the full MockCamera → HoughDetector →
+RealPerceptionPipeline → EKF chain with dynamic ball trajectories — not just
+static balls. Tests cover: (1) ascending ballistic trajectory tracking with
+lateral drift, (2) ball disappearance and recovery (ball_lost flag), (3)
+Hough detection across the 0.3–1.0m depth range, (4) body-frame transform
+under robot yaw rotation.
+
+**Finding**: Hough circle detector reliably tracks the 40mm ball from 0.3–1.0m
+depth. Beyond ~1.0m the ball subtends <8px radius and Hough becomes unreliable —
+YOLO will be needed for targets >1.0m above the paddle.
+
+**Test count**: 591 → 595 (+4 dynamic trajectory tests).
+
+---
+
+## Iteration 144 — Pipeline latency tracking {.unnumbered}
+*2026-04-09*
+
+Added measurement-age and detection-time tracking to `RealPerceptionPipeline`.
+The acquisition thread now times `detector.detect()` and records wall-clock
+creation time on each measurement. `get_observation()` tracks measurement age
+(time from detection completion to EKF consumption). New `stats` fields:
+`mean_meas_age`, `max_meas_age`, `mean_detect_dt`, `max_detect_dt`.
+
+Expected on real hardware: detect_dt ~2–5ms (Hough), ~1ms (YOLO TRT),
+meas_age ~5–20ms depending on policy rate and queue depth.
+
+**Test count**: 588 → 591 (+3 latency tracking tests).
+
+---
+
+## Iteration 143 — Extrinsics `to_yaml()` round-trip {.unnumbered}
+*2026-04-09*
+
+Added `CameraCalibrator.to_yaml()` — the complement of `from_yaml()`.
+Completes the calibration workflow: `from_checkerboard()` or `from_known_mount()`
+produces extrinsics, `to_yaml()` saves to disk, `from_yaml()` loads at deploy
+time. Three round-trip tests verify identity, arbitrary rotation, and
+`from_known_mount` -> save -> load.
+
+**Test count**: 585 -> 588 (+3 round-trip tests).
+
+---
+
+## Iterations 141–142 — Real hardware: D435i camera + checkerboard calibrator {.unnumbered}
+*2026-04-09*
+
+Implemented the two main real-hardware components while waiting for policy
+Stage G retrain:
+
+**D435iCamera** (iter 141): pyrealsense2 wrapper with `start()`/`get_frame()`/
+`stop()` interface. Configures depth stream at 848x480 @ 90fps, extracts
+intrinsics from stream profile, uses `poll_for_frames()` for non-blocking
+acquisition. 11 mock-based tests verify the contract without hardware.
+
+**CameraCalibrator.from_checkerboard()** (iter 142): captures N depth frames,
+detects checkerboard corners via `cv2.findChessboardCorners`, runs `solvePnP`
+per frame, averages board Z direction to get camera-frame gravity, then solves
+the single-vector Wahba problem (Rodrigues via cross product) to compute
+`R_cam_body`. The helper `_rotation_between_vectors()` handles identity,
+antiparallel, and general cases. 9 tests cover both functions.
+
+**Remaining stub**: `BallDetector._detect_yolo()` (TensorRT FP16). The Hough
+circle fallback is functional for initial testing.
+
+---
+
+## Iteration 140 — Re-validate EKF error decomposition with linear drag {.unnumbered}
+*2026-04-10*
+
+Re-ran the EKF error decomposition (iter 138) with the corrected linear drag model
+on both ground truth and EKF — ensuring the drag model matches PhysX. Updated
+`analyze_ekf_error_decomposition.py` with configurable `--drag-mode` parameter.
+
+| Height | Linear vz RMSE (asc.) | Quadratic vz RMSE (asc.) |
+|--------|----------------------|--------------------------|
+| 0.10m  | 0.613 m/s            | 0.613 m/s                |
+| 0.50m  | 0.887 m/s            | 0.882 m/s                |
+| 1.00m  | 1.158 m/s            | 1.040 m/s                |
+
+When the drag model matches (either linear or quadratic), the error structure is
+similar — **noise dominates**, not drag. The 1m case shows ~11% more vz error
+under linear drag because the ball actually flies higher (1.042m vs 0.952m apex),
+accumulating more noise exposure. The gap prediction model (R²=0.994) remains
+valid because it's analytical and doesn't depend on drag mode.
+
+**Conclusion**: The drag fix from iter 139 matters for **real hardware** deployment
+(where true drag is quadratic) but has minimal impact on the sim-based gap prediction.
+
+---
+
+## Iteration 139 — Drag model mismatch: PhysX linear vs EKF quadratic {.unnumbered}
+*2026-04-09*
+
+Discovered a fundamental physics model mismatch between the EKF and the Isaac Lab
+simulator. The EKF assumed quadratic aerodynamic drag (a = −0.112·|v|·v, correct for
+a real ping-pong ball), while PhysX uses `linear_damping=0.1` (a = −0.1·v).
+
+![Drag model mismatch analysis](../images/perception/drag_mismatch_iter139.png){width=100%}
+
+**Impact scales superlinearly with target height:**
+
+| Target | vz RMSE (asc) | Max |Δvz| | Max |Δz| | Apex error |
+|---|---|---|---|---|
+| 0.20m | 14 mm/s | 17 mm/s | 5.9 mm | −3 mm |
+| 0.50m | 76 mm/s | 90 mm/s | 48 mm | −24 mm |
+| 1.00m | 230 mm/s | 272 mm/s | 198 mm | −102 mm |
+
+At v = 4.4 m/s (1m juggle launch): EKF predicts 2.2 m/s² drag, PhysX applies 0.44 m/s²
+— a 5× mismatch. The crossover speed where both models agree is only 0.89 m/s.
+
+**Fix:** Added `drag_mode` config to `BallEKFConfig` supporting "quadratic" (real hardware)
+and "linear" (PhysX sim). The sim pipeline default (`BallObsNoiseCfg.ekf_cfg`) now uses
+`drag_mode="linear"`. All 565 tests pass.
+
+**Implication:** Previous EKF error decomposition (iter 138) used quadratic drag for both
+ground truth and EKF, so it only measured *noise* error. The drag mismatch was an *additional*
+error source that inflated velocity prediction error during ascending flight — exactly where
+iter 138 found the largest errors. With the fix, EKF predictions should be much more accurate
+during dropout/prediction phases.
+
+**Next:** Re-run the gap prediction model with the corrected EKF to see how much the
+drag fix reduces the predicted perception gap at high heights.
+
+Commits: iter 139
 
 ---
 
