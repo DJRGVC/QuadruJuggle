@@ -30,6 +30,10 @@
   - [x] 8 tests for comparison script (335/335 total)
   - [x] run_comparison.sh — one-command comparison once logs ready
   - [ ] Parse oracle eval results when GPU run completes
+    - [x] Created analyze_eval_trajectory.py — reads trajectory.npz directly (stdout-independent)
+    - [x] Updated run_oracle_eval.sh to tee output to timestamped log file
+    - [x] Updated run_comparison.sh to use npz-based analysis as primary path
+    - [x] 12 tests for trajectory analysis (347/347 total)
   - [ ] Generate oracle vs d435i comparison figure for Quarto experiment
 
 # EKF tuning (lower priority, mostly done)

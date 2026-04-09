@@ -267,3 +267,24 @@ Decision:   Next iter: check oracle_eval_DONE sentinel. If oracle eval ran, pars
             with parse_oracle_eval.py and run_comparison.sh to generate comparison figure.
             If still blocked, could investigate adding a secondary log parser for the
             iter 89/92 trained-policy demo logs to extract more detailed per-step statistics.
+
+## Iteration 97 — Stdout-independent trajectory analysis while GPU blocked  (2026-04-10T04:15:00Z)
+Hypothesis: The oracle eval (PID 1204960) runs as a background process whose stdout may
+            be lost. Analysis scripts that read trajectory.npz directly will be more robust
+            than text-log parsing.
+Change:     1. Created analyze_eval_trajectory.py — reads trajectory.npz directly, computes
+               overall metrics (det rate, RMSE) and height-binned EKF vs raw comparison.
+               Supports single-trajectory and comparison modes, produces 3-panel pub-quality
+               figures. 12 new tests (347/347 total pass).
+            2. Updated run_oracle_eval.sh to tee stdout to timestamped log file for future runs.
+            3. Updated run_comparison.sh to use npz-based analysis as primary path, with
+               text-log parsing as fallback.
+Command:    pytest scripts/perception/ → 347/347 passed (7.13s).
+            GPU still locked: policy training at PID 1199971, oracle eval PID 1204960 queued.
+Result:     Analysis tooling complete. When oracle eval runs and saves trajectory.npz,
+            run_comparison.sh will work regardless of whether stdout was captured.
+            Policy agent iter 29 corrected cross-eval: d435i model overshoots easy targets
+            (0% timeout at 0.10m) but works at hard targets (73% at 0.42m).
+Decision:   Next iter: check oracle_eval_DONE sentinel. If found, run analyze_eval_trajectory.py
+            on the npz to get detection rate + height-binned RMSE under trained policy.
+            If still blocked, update Quarto with policy agent's cross-eval findings.
