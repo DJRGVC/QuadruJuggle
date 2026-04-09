@@ -8,18 +8,46 @@ author: "testing-dashboard (c3r agent)"
 ::: {.callout-tip appearance="simple"}
 **Role**: generic  ·  **Model**: `claude-sonnet-4-6`  ·  **Branch**: `agent/testing-dashboard`
 
-Build a testing guide for WASD+PL teleop control + perception pipeline. Documents how to run `play_teleop.py`, camera setup, height visualization, and velocity display.
+Step-by-step testing guide for `play_teleop.py` with WASD+PL controls + perception pipeline.
 :::
 
-## Current focus
+## Quick start
 
-This page is the **step-by-step testing guide** for the `play_teleop.py` teleop interface.
-It covers: running the hierarchical policy with WASD+PL controls, understanding the HUD,
-and integrating the D435i camera perception pipeline.
+The fastest path to running the hierarchical ball-juggling policy with WASD+PL teleop:
 
-**Decision (Iteration 1):** Step-by-step guide over live widget. Isaac Lab requires a local
-Linux machine with an NVIDIA GPU and the project venv — no server-embedded widget is practical.
-This page is the canonical reference for any developer setting up the teleop stack.
+```bash
+# From ~/Research/QuadruJuggle-policy/
+uv run --active python scripts/rsl_rl/play_teleop.py \
+    --task Isaac-BallJuggleHier-Go1-Play-v0 \
+    --pi2-checkpoint ~/Research/QuadruJuggle/logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt \
+    --num_envs 1
+```
+
+Then use **W/A/S/D** to command velocity and **P/L** to raise/lower the target ball apex height.
+Press **R** to stop, **X** for full reset, **Q** to quit.
+
+::: {.callout-note appearance="simple"}
+**Guide format**: step-by-step reference (not a live widget) — Isaac Lab requires a local Linux machine with an NVIDIA GPU. See [Step 2](#step-2) for full options including `--noise-mode` for camera perception.
+:::
+
+### Live status (2026-04-09)
+
+| Component | Status | Path |
+|---|---|---|
+| pi2 (torso tracker) | ✅ Verified | `~/Research/QuadruJuggle/logs/.../go1_torso_tracking/2026-03-12_17-16-01/model_best.pt` |
+| pi1 oracle baseline | ✅ Complete (1400 steps) | `~/Research/QuadruJuggle-policy/logs/.../go1_ball_juggle_hier/2026-04-08_21-16-05/model_best.pt` |
+| pi1 d435i trained | ⏳ Queued (oracle done, GPU free) | Path TBD — will start `--noise-mode d435i` training |
+| Camera orientation fix | ⏳ GPU capture pending | `convention="world"` 70° tilt coded, awaiting validation |
+| EKF perception pipeline | ⏳ Pending camera fix | Code complete, blocked on camera validation |
+
+---
+
+## Iteration 6 — Interactive keyboard demo + oracle training complete {.unnumbered}
+*2026-04-09*
+
+Added interactive keyboard demo widget (HTML/JS) to Step 3 — click buttons or press W/A/S/D/P/L/R/X to see live velocity bars, height indicator, and HUD simulation. Widget absorbed from the dead `agent/testing-interface` branch (that agent's page created a duplicate entry in the Quarto site; can now delete `agent/testing-interface` safely).
+
+Oracle pi1 training (2026-04-08_21-16-05) confirmed complete at step 1400 — hit the 90-min c3r wall-clock cap. `model_best.pt` is available and the checkpoint path in the guide is correct. D435i training is next once GPU is free.
 
 ---
 
@@ -333,8 +361,8 @@ Commits: `bfbb4fc` (iter 1)
 
 ---
 
-## Iteration 1 — Initial Teleop Guide: WASD+PL Controls {.unnumbered}
-*2026-04-08*
+## Teleop guide: WASD+PL controls {.unnumbered}
+*Iteration 1 — 2026-04-08*
 
 ### Architecture overview
 
@@ -400,7 +428,7 @@ To use the most recent checkpoint automatically (no `--checkpoint` flag needed):
 
 ---
 
-### Step 2 — Launch the teleop session
+### Step 2 — Launch the teleop session {#step-2}
 
 Run from the project root directory:
 
@@ -457,6 +485,173 @@ Once Isaac Lab opens and the simulation is running, use the terminal window (not
 Each keypress increments the command by `--vel-step` (default 0.15 m/s) or
 `--height-step` (default 0.05 m). Commands are cumulative — press `W` three
 times to reach 0.45 m/s forward.
+
+#### Interactive demo
+
+Try the controls below — click buttons or press W/A/S/D/P/L/R/X on your keyboard. The HUD line updates to show what the terminal would display.
+
+```{=html}
+<style>
+  .teleop-container {
+    font-family: 'Courier New', monospace;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 16px 0;
+  }
+  .key-btn {
+    background: #2d2d4e;
+    border: 2px solid #4444aa;
+    border-radius: 6px;
+    color: #ccccff;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+  }
+  .key-btn:hover { background: #3d3d7e; border-color: #8888ff; }
+  .key-btn.active { background: #5555cc; border-color: #aaaaff; color: white; }
+  .key-btn.height-up { border-color: #44aa44; color: #aaffaa; }
+  .key-btn.height-down { border-color: #aa4444; color: #ffaaaa; }
+  .key-btn.height-up:hover { background: #336633; }
+  .key-btn.height-down:hover { background: #663333; }
+  .hud-panel {
+    background: #0d0d1a;
+    border: 1px solid #333366;
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 10px 0;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+  .vel-bar-h {
+    width: 120px;
+    height: 16px;
+    background: #1a1a2e;
+    border: 1px solid #333366;
+    border-radius: 3px;
+    position: relative;
+    overflow: hidden;
+  }
+  .vel-fill-h {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    background: #00aaff;
+    transition: all 0.15s ease;
+    border-radius: 2px;
+  }
+</style>
+
+<div class="teleop-container">
+  <div style="color:#888; font-size:12px; margin-bottom:10px;">▶ INTERACTIVE DEMO — click keys or use keyboard (W/A/S/D/P/L/R/X)</div>
+
+  <div style="display:flex; align-items:center; gap:20px; flex-wrap:wrap; margin-bottom:16px;">
+    <div>
+      <div style="color:#666; font-size:11px; margin-bottom:6px;">VELOCITY</div>
+      <div style="display:grid; grid-template-areas:'. w .' 'a s d'; grid-template-columns:48px 48px 48px; gap:6px;">
+        <button class="key-btn" style="grid-area:w" id="btn-w" onclick="tapKey('w')">W</button>
+        <button class="key-btn" style="grid-area:a" id="btn-a" onclick="tapKey('a')">A</button>
+        <button class="key-btn" style="grid-area:s" id="btn-s" onclick="tapKey('s')">S</button>
+        <button class="key-btn" style="grid-area:d" id="btn-d" onclick="tapKey('d')">D</button>
+      </div>
+    </div>
+    <div>
+      <div style="color:#666; font-size:11px; margin-bottom:6px;">HEIGHT</div>
+      <div style="display:flex; gap:6px;">
+        <button class="key-btn height-up" id="btn-p" onclick="tapKey('p')" style="width:60px">P ↑</button>
+        <button class="key-btn height-down" id="btn-l" onclick="tapKey('l')" style="width:60px">L ↓</button>
+      </div>
+    </div>
+    <div>
+      <div style="color:#666; font-size:11px; margin-bottom:6px;">RESET</div>
+      <div style="display:flex; gap:6px;">
+        <button class="key-btn" id="btn-r" onclick="tapKey('r')" style="border-color:#888;">R</button>
+        <button class="key-btn" id="btn-x" onclick="tapKey('x')" style="border-color:#888;">X</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="hud-panel">
+    <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:center;">
+      <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+        <div style="font-size:11px; color:#888;">vx (fwd/bck)</div>
+        <div class="vel-bar-h"><div class="vel-fill-h" id="vx-fill" style="left:50%;width:0%"></div></div>
+        <div style="font-size:12px; color:#00aaff; font-weight:bold;" id="vx-val">+0.00 m/s</div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+        <div style="font-size:11px; color:#888;">vy (left/right)</div>
+        <div class="vel-bar-h"><div class="vel-fill-h" id="vy-fill" style="left:50%;width:0%"></div></div>
+        <div style="font-size:12px; color:#00aaff; font-weight:bold;" id="vy-val">+0.00 m/s</div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+        <div style="font-size:11px; color:#888;">target_h</div>
+        <div style="width:32px; height:60px; background:#1a1a2e; border:1px solid #333366; border-radius:4px; position:relative; overflow:hidden;">
+          <div id="height-fill" style="position:absolute; bottom:0; left:0; right:0; height:37.5%; background:linear-gradient(to top,#ffaa00,#ffee00); transition:height 0.2s;"></div>
+        </div>
+        <div style="font-size:12px; color:#ffee00; font-weight:bold;" id="height-val">0.30 m</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hud-panel" id="hud-line" style="color:#00ff88; font-size:12px; white-space:nowrap; overflow:auto;">
+    [TELEOP] step=    0 | vx=+0.00 vy=+0.00 | target_h=0.30m | ball_h=0.295m | pi1_cmd=[h=+0.30 hd=+0.00 r=+0.00 p=+0.00]
+  </div>
+</div>
+
+<script>
+(function() {
+  const VEL_STEP = 0.15, VEL_MAX = 0.50;
+  const H_STEP = 0.05, H_MIN = 0.05, H_MAX = 0.80, H_DEF = 0.30;
+  let vx = 0, vy = 0, targetH = H_DEF, step = 0;
+  function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+  function tapKey(k) {
+    if(k==='w') vx=clamp(vx+VEL_STEP,-VEL_MAX,VEL_MAX);
+    else if(k==='s') vx=clamp(vx-VEL_STEP,-VEL_MAX,VEL_MAX);
+    else if(k==='a') vy=clamp(vy+VEL_STEP,-VEL_MAX,VEL_MAX);
+    else if(k==='d') vy=clamp(vy-VEL_STEP,-VEL_MAX,VEL_MAX);
+    else if(k==='p') targetH=clamp(targetH+H_STEP,H_MIN,H_MAX);
+    else if(k==='l') targetH=clamp(targetH-H_STEP,H_MIN,H_MAX);
+    else if(k==='r'){vx=0;vy=0;}
+    else if(k==='x'){vx=0;vy=0;targetH=H_DEF;}
+    flash('btn-'+k);
+    render();
+  }
+  window.tapKey=tapKey;
+  function flash(id){
+    const el=document.getElementById(id);
+    if(!el)return;
+    el.classList.add('active');
+    setTimeout(()=>el.classList.remove('active'),120);
+  }
+  function render(){
+    step++;
+    const vxF=document.getElementById('vx-fill');
+    const vyF=document.getElementById('vy-fill');
+    if(vxF){const p=Math.abs(vx)/VEL_MAX*50; if(vx>=0){vxF.style.left='50%';vxF.style.right='';vxF.style.width=p+'%';vxF.style.background='#00aaff';}else{vxF.style.right='50%';vxF.style.left='';vxF.style.width=p+'%';vxF.style.background='#ff6644';}}
+    if(vyF){const p=Math.abs(vy)/VEL_MAX*50; if(vy>=0){vyF.style.left='50%';vyF.style.right='';vyF.style.width=p+'%';vyF.style.background='#00aaff';}else{vyF.style.right='50%';vyF.style.left='';vyF.style.width=p+'%';vyF.style.background='#ff6644';}}
+    const vxV=document.getElementById('vx-val'); if(vxV)vxV.textContent=(vx>=0?'+':'')+vx.toFixed(2)+' m/s';
+    const vyV=document.getElementById('vy-val'); if(vyV)vyV.textContent=(vy>=0?'+':'')+vy.toFixed(2)+' m/s';
+    const hF=document.getElementById('height-fill'); if(hF)hF.style.height=((targetH-H_MIN)/(H_MAX-H_MIN)*100)+'%';
+    const hV=document.getElementById('height-val'); if(hV)hV.textContent=targetH.toFixed(2)+' m';
+    const ballH=targetH*0.98+(Math.random()-0.5)*0.02;
+    const hud=document.getElementById('hud-line');
+    if(hud){const s=String(step).padStart(5);hud.textContent=`[TELEOP] step=${s} | vx=${(vx>=0?'+':'')+vx.toFixed(2)} vy=${(vy>=0?'+':'')+vy.toFixed(2)} | target_h=${targetH.toFixed(2)}m | ball_h=${ballH.toFixed(3)}m | pi1_cmd=[h=${targetH.toFixed(2)} hd=+0.00 r=+0.00 p=+0.00]`;}
+  }
+  document.addEventListener('keydown',function(e){
+    const k=e.key.toLowerCase();
+    if(['w','a','s','d','p','l','r','x'].includes(k)){e.preventDefault();tapKey(k);}
+  });
+  render();
+})();
+</script>
+```
 
 ---
 

@@ -18,6 +18,40 @@ reverse chronological order (newest first).
 
 ---
 
+## Iterations 77–78 — Camera convention fix + SimBallDetector + demo pipeline {.unnumbered}
+*2026-04-09*
+
+### Camera convention: "ros" → "world"
+
+Iter 76 frames showed a near-horizontal view despite the "ros" convention fix.
+Analysis revealed that `convention="ros"` applies a body-frame offset where identity
+points along +Z (upward in ROS). Switching to `convention="world"` (identity = +X fwd,
++Z up) with a clean pitch-up quaternion resolved the ambiguity:
+
+```
+rot=(0.8192, 0.0, -0.5736, 0.0)   # 70° pitch-up about Y axis
+convention="world"
+```
+
+### SimBallDetector for TiledCamera depth
+
+Built `sim_detector.py` — a depth-image ball detector for Isaac Lab's TiledCamera
+float32 depth output. Uses connected components + ball-size scoring to find the
+ball in the depth image. 8 unit tests added (264 total passing).
+
+### Demo pipeline: camera → detect → EKF
+
+`demo_camera_ekf.py` runs the full pipeline: D435i depth frame → SimBallDetector
+(camera frame) → coordinate transform via `cam.data.quat_w_ros` → EKF update
+(world frame). Saves annotated RGB frames with GT/detected/EKF overlay.
+
+**Status**: code-complete, awaiting GPU validation. Policy d435i training currently
+holds the GPU lock (~iter 950/1500).
+
+Commits: `62631fc`, `75d0294`
+
+---
+
 ## Iteration 76 — Camera quaternion convention discovery + 70° tilt {.unnumbered}
 *2026-04-08*
 
