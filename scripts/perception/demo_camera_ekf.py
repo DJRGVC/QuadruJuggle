@@ -156,15 +156,17 @@ def main():
 
     ball = unwrapped.scene["ball"]
 
-    # Give ball initial upward velocity (only in bounce mode, not with trained policy)
-    if not use_policy:
-        try:
-            ball_vel = ball.data.root_vel_w.clone()
-            ball_vel[:, 2] = 3.0
-            ball.write_root_velocity_to_sim(ball_vel)
-            print("[demo] Applied 3 m/s upward velocity to ball.")
-        except Exception as e:
-            print(f"[demo] WARNING: could not set ball velocity: {e}")
+    # Give ball initial upward velocity to get it into the camera FOV.
+    # Camera FOV covers 41°-99° elevation → ball must be ≥0.2m above paddle.
+    # Even with a trained policy, the ball starts at rest on the paddle (below FOV),
+    # so we always apply a small initial kick to trigger the first juggle cycle.
+    try:
+        ball_vel = ball.data.root_vel_w.clone()
+        ball_vel[:, 2] = 3.0 if not use_policy else 2.0  # lighter kick with policy
+        ball.write_root_velocity_to_sim(ball_vel)
+        print(f"[demo] Applied {ball_vel[0, 2]:.1f} m/s upward velocity to ball.")
+    except Exception as e:
+        print(f"[demo] WARNING: could not set ball velocity: {e}")
 
     # Initialize EKF with GT ball position in world frame
     n_envs = args_cli.num_envs

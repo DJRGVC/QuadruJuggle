@@ -2,6 +2,38 @@
 
 _(older entries auto-archived to RESEARCH_LOG_ARCHIVE.md at 2026-04-09 06:29 UTC)_
 
+## Iteration 92 — Cross-branch eval: camera pipeline with d435i-trained policy  (2026-04-09T20:35:00Z)
+Hypothesis: With env config synced (iter 91: restitution=0.99, perceived obs, ball_low/release_vel
+            rewards), the policy agent's d435i-trained checkpoint should load and run, allowing
+            camera pipeline validation under a trained juggling policy.
+Change:     1. GPU smoke test (10 steps, 2 envs) — policy loads and runs successfully!
+               Env sync from iter 91 confirmed working. Obs dim 40→8 matches.
+            2. Full run (1500 steps = 30s, 4 envs) — policy runs stably but doesn't juggle.
+            3. Modified demo to always apply initial upward kick (2 m/s in policy mode)
+               since ball at rest on paddle is below camera FOV (21° elevation vs 41° FOV floor).
+            4. V2 run (1500 steps): 2 episodes (both ball-off, 0% timeout), 1% detection rate.
+Command:    $C3R_BIN/gpu_lock.sh uv run --active python scripts/perception/demo_camera_ekf.py \
+              --task Isaac-BallJuggleHier-Go1-Play-v0 --num_envs 4 --steps 1500 --headless \
+              --pi1-checkpoint <policy_d435i_best.pt> --pi2-checkpoint <pi2_best.pt>
+Result:     CROSS-BRANCH LOADING WORKS — the env sync is validated.
+            BUT: detection rate catastrophically low (1% at step 1500).
+            Root cause: d435i-trained policy BALANCES ball on paddle, doesn't actively juggle.
+            Camera FOV design (70° tilt, 41°-99° coverage) requires ball ≥0.2m above paddle.
+            Ball at rest on paddle = 21° elevation = below FOV.
+            When ball IS visible (initial kick, steps 0-4): detection RMSE = 15-28mm (excellent).
+            Summary: camera pipeline works perfectly for in-flight balls. The bottleneck is
+            that this policy checkpoint doesn't produce sustained juggling behavior.
+            Policy cross-eval (agent/policy iter 28) showed 70% TO, 111 mean steps — the
+            d435i model juggles aggressively but our run shows 0% TO in 30s. Possible causes:
+            (a) oracle obs mode vs d435i mode, (b) PLAY config target range mismatch,
+            (c) policy needs more episodes to show juggling behavior.
+Decision:   Next iter: investigate why the policy doesn't juggle in our env. Options:
+            1. Switch obs to d435i noise mode (match training conditions)
+            2. Use oracle-trained checkpoint instead (100% TO, stable juggling)
+            3. Run longer (multiple episodes) to catch juggling behavior
+            The oracle checkpoint might be better for camera validation since it juggles
+            stably for 1500 steps. Camera pipeline validation doesn't require d435i obs.
+
 ## Iteration 89 — GPU smoke test: camera pipeline with trained pi1  (2026-04-09T14:50:00Z)
 Hypothesis: Running demo_camera_ekf.py with trained pi1 checkpoint will validate the
             full camera→detect→EKF pipeline under realistic policy-driven ball dynamics.
