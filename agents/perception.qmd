@@ -61,7 +61,7 @@ The perception pipeline is **feature-complete** for sim:
   in separate subprocesses and produces per-mode metrics.
 - **Live evaluation**: `eval_perception_live.py` loads a trained pi1 and
   evaluates EKF accuracy under active juggling.
-- **245 CPU tests** pass across 14 test files.
+- **253 CPU tests** pass across 14 test files.
 
 **Next steps**: low-range q_vel sweep, then handoff tuned defaults to policy agent.
 
