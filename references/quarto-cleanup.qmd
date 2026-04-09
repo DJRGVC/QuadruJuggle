@@ -1,0 +1,12 @@
+---
+title: "Quarto Cleanup References"
+description: "Resources informing the Quarto site maintenance and documentation practices"
+date: 2026-04-09
+author: "quarto-cleanup"
+---
+
+- **Quarto documentation — Websites** — Official guide to `_quarto.yml`, listing pages, and `contents:` globs. The `experiments.qmd` and `references.qmd` listing pages use `contents: experiments/**/*.qmd` and `contents: references/*.qmd` respectively, which means every agent's files auto-appear without manual registration.
+  https://quarto.org/docs/websites/
+
+- **Quarto — Relative paths in listings** — Quarto resolves relative image paths from the `.qmd` file's location. An experiment at `experiments/perception/foo.qmd` referencing `../images/` resolves to `experiments/images/` (wrong); it must use `../../images/` to reach the repo root's `images/` directory. This was the root cause of 6 broken image refs in the 2026-04-10 perception experiment files.
+  https://quarto.org/docs/authoring/figures.html

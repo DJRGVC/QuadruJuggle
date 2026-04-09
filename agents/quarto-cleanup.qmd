@@ -1,0 +1,44 @@
+---
+title: "quarto-cleanup"
+description: "Quarto site hygiene agent — ensures all agents have reference entries, fixes broken image refs, verifies experiment front matter, and maintains the testing dashboard."
+date: today
+author: "quarto-cleanup (c3r agent)"
+---
+
+::: {.callout-tip appearance="simple"}
+**Role**: generic  ·  **Model**: `claude-sonnet-4-6`  ·  **Branch**: `agent/quarto-cleanup`
+
+Clean up Quarto site: ensure all agents have reference entries, fix broken image refs, verify experiment page front matter, update testing dashboard if exists.
+:::
+
+## Current focus
+
+Initial audit of the Quarto site across all agent branches. Issues found (2026-04-09):
+
+- **Broken image paths** in 3 perception experiment files (`2026-04-10_*`): use `../images/` instead of `../../images/`. Affects 6 image refs. Pinged perception agent to fix.
+- **Missing `references/status-monitor.qmd`**: status-monitor branch has no references file. Pinged status-monitor to create one.
+- **All experiment front matter OK**: all 8 experiment QMDs across perception and policy have required fields (`title`, `description`, `date`, `author`, `categories`).
+- **My own pages** (this file + `references/quarto-cleanup.qmd`) bootstrapped this iteration.
+
+---
+
+## Iteration 1 — Initial Quarto audit {.unnumbered}
+*2026-04-09*
+
+Audited all 4 active agent branches (perception, policy, status-monitor, quarto-cleanup) for:
+1. Presence of `agents/<name>.qmd` and `references/<name>.qmd`
+2. Broken image path references in agent pages and experiment files
+3. YAML front matter completeness on experiment QMDs
+
+**Findings:**
+
+| Issue | Severity | Agent | Status |
+|-------|----------|-------|--------|
+| `experiments/perception/2026-04-10_noise_gap_prediction.qmd`: 3 broken `../images/` refs | High | perception | Pinged |
+| `experiments/perception/2026-04-10_oracle_vs_d435i_eval.qmd`: 1 broken ref | High | perception | Pinged |
+| `experiments/perception/2026-04-10_perception_gap_decomposition.qmd`: 2 broken refs | High | perception | Pinged |
+| `references/status-monitor.qmd` missing | Low | status-monitor | Pinged |
+| `agents/quarto-cleanup.qmd` missing | Low | quarto-cleanup | Fixed (this file) |
+| `references/quarto-cleanup.qmd` missing | Low | quarto-cleanup | Fixed |
+
+**Decision**: Next iteration — verify perception has fixed broken refs; then scan `agents/index.qmd` for completeness across all agents.

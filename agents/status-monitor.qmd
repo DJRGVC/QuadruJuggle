@@ -1,0 +1,146 @@
+---
+title: "status-monitor"
+description: "5-minute status updates on all agents' progress and ETA for full pipeline demo."
+date: today
+author: "status-monitor (c3r agent)"
+---
+
+::: {.callout-tip appearance="simple"}
+**Role**: generic · **Model**: `claude-sonnet-4-6` · **Branch**: `agent/status-monitor`
+
+Send Daniel 5-minute status updates on all agents' progress and ETA for full pipeline demo.
+:::
+
+## Current focus
+
+Monitoring the full QuadruJuggle pipeline demo readiness across two sibling agents:
+
+- **perception** (git iter 151, last commit 18:48 UTC): Feature-complete. `inject_ekf_reset_event` fix committed — root cause of policy's EKF 0% failure isolated. 689 tests passing. `DepthFrameVisualizer` ready for teleop UI. YOLO code-complete but untestable (missing ultralytics/onnxruntime deps).
+
+- **policy** (git iter 33, last commit 18:33 UTC): d435i Stage G = 80% timeout at ≤0.30m, 48% at 0.50m. EKF mode = 0% (fix now available). Invocation #23 in-flight (~81% ctx → compaction expected). EKF retrain queued for invocation #24.
+
+**Critical path**: policy invoc #23 compaction → invoc #24 integrates EKF fix + retrains → validate >70% timeout.
+**ETA sim demo**: ~21:30-22:00 UTC (EKF retrain ~60-90min GPU time, starts ~20:04 UTC).
+
+---
+
+## Iteration 9 — Lunch-pause status snapshot {.unnumbered}
+*2026-04-09*
+
+Snapshot taken at 19:18 UTC while Daniel is at lunch (pause until ~19:53 UTC). No new sibling commits since iter 8.
+
+**Perception** (ctx 51%, healthy): Pinged policy with `inject_ekf_reset_event` fix from iter 151. Perception is no longer the bottleneck — waiting on policy to integrate and retrain.
+
+**Policy** (ctx 81%, compacting): `inject_ekf_reset_event` is the key fix needed:
+
+```python
+# In train_juggle_hier.py, after noise injection:
+from go1_ball_balance.perception.ball_obs_spec import inject_ekf_reset_event
+inject_ekf_reset_event(env_cfg)
+```
+
+Without this, EKF state carries across episode resets → diverged observations → 0% timeout.
+
+| Agent | c3r iter | ctx% | Last commit | Status |
+|-------|----------|------|-------------|--------|
+| perception | 137 | 51% | 18:48 UTC | healthy, ready |
+| policy | 22 | 81% | 18:33 UTC | compacting, EKF fix queued |
+
+**ETA chart**:
+- ~20:03 UTC — policy invoc #23 compaction done
+- ~20:04 UTC — invoc #24 starts, integrates EKF fix, launches retrain
+- ~21:00-22:00 UTC — EKF retrain result
+- ~22:00 UTC — full sim demo possible if >70% timeout achieved
+
+---
+
+---
+
+## Iteration 8 — Lunch pause + sibling pings {.unnumbered}
+*2026-04-09*
+
+Daniel left for 45-min lunch (~19:13 UTC). Processed INBOX, pinged both siblings:
+
+- **perception**: asked to spawn Quarto cleanup subagent (fix references, update testing-dashboard, fix broken image refs)
+- **policy**: reminded to stay on EKF retrain critical path + compact if still at 81% ctx
+
+Status at 19:16 UTC: no new commits from either sibling since last check. Both invocations are in-flight. Next status update after ~19:55 UTC.
+
+---
+
+## Iteration 7 — EKF retrain timing analysis {.unnumbered}
+*2026-04-09*
+
+Detailed timing analysis for the EKF retrain critical path:
+
+- **Policy invocation #23** started ~18:33 UTC, ~39min in at time of this entry. At 81% context (rules require compaction when last ctx > 50%), invoc #23 is likely running compaction rather than EKF retrain. Expected commit: ~20:04 UTC.
+- **Policy invocation #24** would then launch ~20:05 UTC. EKF retrain job ~60-90min → result commit by ~21:35-22:04 UTC.
+- **Perception invocation #138** running ~18:48 UTC, ~24min in. Context healthy at 51%. May work on YOLO+DepthFrameVisualizer wiring.
+
+| Agent | c3r iter | ctx% | Last commit | Status |
+|---|---|---|---|---|
+| perception | 137 | 51% | 18:48 UTC | Healthy, invoc #138 in flight |
+| policy | 22 | 81% | 18:33 UTC | Invoc #23 in flight (compaction likely) |
+
+**Key fix available**: `inject_ekf_reset_event(env_cfg)` — one call in policy's `train_juggle_hier.py` after noise injection. This is the difference between 0% and (expected) 70%+ EKF timeout.
+
+---
+
+## Iteration 6 — Quarto bootstrap + pipeline status {.unnumbered}
+*2026-04-09*
+
+Bootstrapped the status-monitor Quarto page. Key project status at time of writing:
+
+**Perception agent** finished all Phase 1-3 pipeline components (iters 1-151):
+- D435i camera wrapper, calibration, extrinsics
+- YOLOv8n ball detector with ONNX inference + synthetic training data
+- 6D EKF with ballistic+drag dynamics, 5-level phase-aware Q schedule
+- `DepthFrameVisualizer` for teleop UI camera feed
+- `inject_ekf_reset_event` helper identifying why policy's EKF mode yields 0% timeout
+
+**Policy agent** completed Stage G training (iters 1-33):
+- Oracle mode: 80-99% timeout across 0.10-0.50m targets ✅
+- D435i mode: 48-81% timeout (gap largest at 0.50m = -18pp) ⚠️
+- EKF mode: 0% timeout — confirmed root cause: stale EKF state across episode resets ❌ → fix available
+
+**Next milestone**: policy EKF retrain completes → sim demo with EKF observations → deploy plan.
+
+**Status for Daniel**: `play_teleop.py` exists on policy branch with WASD + height controls. Oracle teleop is runnable NOW from the policy worktree. EKF teleop requires the retrain to finish. Camera feed (`DepthFrameVisualizer`) is built but not yet wired into `play_teleop.py`.
+
+---
+
+## Iteration 5 — Policy idle detection + EKF urgency ping {.unnumbered}
+*2026-04-09*
+
+Confirmed perception's `inject_ekf_reset_event` fix (iter 151 commit). Detected policy had been idle for ~1.5h after its iter 33 commit and pinged both policy agent and Daniel. Policy's 81% context makes overflow likely on next invocation — compaction recommended.
+
+**Decision**: continue monitoring. If policy commits EKF retrain result, post ✅ Done alert.
+
+---
+
+## Iteration 4 — EKF timeline + hardware sketch for Daniel {.unnumbered}
+*2026-04-09*
+
+Replied to Daniel's questions about timeline and physical setup:
+
+- **Sim demo ETA**: 4-6h from time of writing (EKF retrain + integration)
+- **Physical stack**: Go1 quadruped + 170mm paddle (bolted to back) + D435i upward-facing on back + 40mm ping-pong ball + laptop running pi2/pi1/EKF at 50Hz
+- **Compute**: pi2 (torso tracker) + pi1 (ball planner) + EKF all running on laptop via USB/Ethernet to Go1
+
+---
+
+## Iteration 3 — Teleop readiness snapshot {.unnumbered}
+*2026-04-09*
+
+Full teleop readiness check across all components:
+
+| Component | Status | Notes |
+|---|---|---|
+| play_teleop.py | ✅ Ready | WASD + P/L height, on policy branch |
+| Oracle obs mode | ✅ Ready | model_4100.pt at iter 4100 |
+| D435i obs mode | ⚠️ Degraded | 48-81% timeout, 18pp gap at 0.5m |
+| EKF obs mode | ❌ 0% timeout | Retrain needed |
+| Camera feed in UI | 🔧 Built, not wired | DepthFrameVisualizer ready |
+| YOLO detection view | 🔧 Built, not wired | ONNX pipeline ready |
+
+**Daniel asked**: can I test oracle and EKF back-to-back? Yes — oracle is ready NOW. EKF needs retrain first. Camera + YOLO view integration needs policy agent to wire in DepthFrameVisualizer.
