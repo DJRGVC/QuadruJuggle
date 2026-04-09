@@ -124,6 +124,20 @@ class BallEKFConfig:
     p_max_vel: float = 5.0   # max velocity std (m/s) — 5 m/s covers post-bounce
     p_max_spin: float = 50.0  # max spin std (rad/s) — only used in 9D mode
 
+    # --- Paddle-anchor virtual measurement ---
+    # When the ball sits on the paddle with no camera detections for many steps,
+    # inject a virtual measurement at the known paddle position. This prevents
+    # EKF drift during long contact phases (98%+ of episode at current policy)
+    # and gives pi1 accurate ball observations even without camera data.
+    # The anchor is only active when: (1) steps_since_measurement > threshold,
+    # AND (2) the EKF estimates the ball is in the contact zone.
+    anchor_enabled: bool = True
+    anchor_r_pos: float = 0.005  # anchor measurement noise std (m) — 5mm
+    # Tight noise because paddle position is known kinematically (not camera).
+    # 5mm covers attachment tolerance + small vibration.
+    anchor_min_starve_steps: int = 5  # min predict-only steps before anchoring
+    # At 200Hz, 5 steps = 25ms. Don't anchor if camera just had a detection.
+
     # --- NIS gating (chi-squared outlier rejection) ---
     nis_gate_enabled: bool = True  # if True, reject measurements with NIS > threshold
     nis_gate_threshold: float = 11.345  # chi-squared 3DOF, 99th percentile
@@ -664,6 +678,79 @@ class BallEKF:
         # Track measurement starvation per env
         self._steps_since_measurement += 1
         self._steps_since_measurement[detected] = 0
+
+    def paddle_anchor_update(self, paddle_pos: torch.Tensor) -> int:
+        """Inject virtual measurement for envs where ball is on paddle with no camera data.
+
+        When the ball sits on the paddle and the camera can't see it (ball below
+        camera FOV, or on the paddle surface), the EKF gets no measurements and
+        drifts. This method injects a low-noise position measurement at the known
+        paddle position for environments that satisfy BOTH:
+          1. steps_since_measurement >= anchor_min_starve_steps
+          2. Estimated ball Z < contact_z_threshold (ball in contact zone)
+
+        The measurement uses the anchor's own R matrix (much tighter than camera R)
+        since paddle position is known kinematically. This does NOT reset
+        steps_since_measurement — only real camera measurements do that.
+
+        Args:
+            paddle_pos: Known paddle-frame ball rest position (N, 3). Typically
+                [0, 0, ball_radius] for each env (ball centre when resting on paddle).
+
+        Returns:
+            Number of environments that received an anchor measurement.
+        """
+        if not self.cfg.anchor_enabled:
+            return 0
+
+        # Identify starved contact envs
+        starved = self._steps_since_measurement >= self.cfg.anchor_min_starve_steps
+        in_contact = self._x[:, 2] < self.cfg.contact_z_threshold
+        anchor_mask = starved & in_contact
+
+        if not anchor_mask.any():
+            return 0
+
+        n_anchored = int(anchor_mask.sum().item())
+        D = self._state_dim
+
+        # Anchor measurement noise: small isotropic R
+        r_sq = self.cfg.anchor_r_pos ** 2
+        R_anchor = torch.eye(3, device=self.device) * r_sq
+        R_anchor = R_anchor.unsqueeze(0).expand(self.num_envs, -1, -1)
+
+        # Innovation: y = paddle_pos - predicted_pos
+        y = paddle_pos - self._x[:, :3]
+
+        # Innovation covariance: S = P[:3,:3] + R_anchor
+        S = self._P[:, :3, :3] + R_anchor
+        S += torch.eye(3, device=self.device).unsqueeze(0) * 1e-8
+
+        # Kalman gain: K = P[:, :, :3] @ S^{-1}
+        PH_T = self._P[:, :, :3]
+        K = torch.linalg.solve(
+            S.transpose(-1, -2), PH_T.transpose(-1, -2)
+        ).transpose(-1, -2)
+
+        # State update (only for anchor_mask envs)
+        dx = torch.bmm(K, y.unsqueeze(-1)).squeeze(-1)
+        mask = anchor_mask.unsqueeze(-1).float()
+        self._x += dx * mask
+
+        # Covariance update: P = (I - K @ H) @ P
+        I_D = torch.eye(D, device=self.device).unsqueeze(0)
+        H_expanded = self._H.unsqueeze(0).expand(self.num_envs, -1, -1)
+        IKH = I_D - torch.bmm(K, H_expanded)
+        P_new = torch.bmm(IKH, self._P)
+        self._P = torch.where(anchor_mask.view(-1, 1, 1), P_new, self._P)
+        self._P = 0.5 * (self._P + self._P.transpose(-1, -2))
+        self._P += I_D * 1e-8
+
+        # Also zero the velocity for anchored envs — ball on paddle is stationary
+        vel_mask = anchor_mask.unsqueeze(-1).float()
+        self._x[:, 3:6] *= (1.0 - vel_mask)
+
+        return n_anchored
 
     def reset(
         self,

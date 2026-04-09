@@ -35,6 +35,11 @@
   - p_max_pos=0.25m, p_max_vel=5.0m/s prevents P divergence during long predict-only
   - steps_since_measurement counter for diagnostics
   - 8 new tests (test_p_clamping.py), 362/362 total
+- [x] Paddle-anchor virtual measurement for contact phase (iter 104)
+  - anchor_enabled=True, anchor_r_pos=5mm, min_starve=5 steps
+  - Zeros velocity for anchored envs; reduces P during contact
+  - 9 new tests (test_paddle_anchor.py), 371/371 total
+- [ ] Wire paddle_anchor_update() into demo_camera_ekf.py eval loop
 - [ ] Consider "flight window" detection mode — only run detection during known flight arcs
 
 # EKF tuning (lower priority, mostly done)

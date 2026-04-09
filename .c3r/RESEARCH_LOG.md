@@ -132,3 +132,26 @@ Result:     After 500 predict-only steps, P_pos ≤ 0.0625 (25cm²), P_vel ≤ 2
 Decision:   Next iter: consider "flight window" detection mode (trigger detection only during
             expected flight arcs based on EKF velocity prediction) OR wait for policy agent
             Stage G progress. Could also add paddle-anchor virtual measurement during contact.
+
+## Iteration 104 — Paddle-anchor virtual measurement for contact phase  (2026-04-10T14:30:00Z)
+Hypothesis: Injecting a virtual measurement at the known paddle position during long
+            contact phases (no camera data) will keep the EKF accurate and prevent drift
+            in pi1's ball observations during the 98%+ of time the ball sits on the paddle.
+Change:     Added paddle_anchor_update() method to BallEKF. When steps_since_measurement
+            >= 5 AND ball Z < contact_z_threshold, the method injects a low-noise (5mm)
+            position measurement at the paddle centre and zeros the velocity estimate.
+            New config fields: anchor_enabled, anchor_r_pos, anchor_min_starve_steps.
+            New test file: test_paddle_anchor.py (9 tests).
+Command:    pytest scripts/perception/ → 371/371 passed (7.51s). No GPU needed.
+Result:     All 9 tests pass:
+            - Fires only for starved+contact envs (mixed env test confirms isolation)
+            - Corrects XY position drift toward paddle centre
+            - Zeros velocity for anchored envs (ball is stationary on paddle)
+            - Reduces position covariance trace (injects information)
+            - Does NOT reset steps_since_measurement (only camera does)
+            - Disabled mode returns 0 with no state changes
+Decision:   Next iter: wire paddle_anchor_update() into demo_camera_ekf.py eval loop.
+            The call should happen after step() (predict+camera update), passing the
+            known paddle position from robot state. Then re-run eval to measure improvement
+            in EKF accuracy during contact phases. Still blocked on policy agent for
+            sustained bouncing — this improves contact-phase accuracy in the meantime.
