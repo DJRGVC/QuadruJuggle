@@ -130,3 +130,28 @@ Decision:   Perception pipeline is mature and waiting for policy improvement.
             Next: monitor policy agent's Stage G eval results. If policy still can't
             juggle, the gap is pure policy skill (energy modulation), not perception.
             May need to coordinate on reward structure changes to unlock juggling.
+
+## Iteration 127 — High-height readiness analysis  (2026-04-10T00:30:00Z)
+Hypothesis: The D435i noise model + EKF pipeline will track ball accurately at
+            juggling heights (0.5-1.0m), confirming readiness for when policy
+            learns to juggle.
+Change:     Created analyze_high_height_readiness.py — simulates ballistic arcs
+            at 0.50/0.70/1.00m through full D435i noise + EKF pipeline. Measures
+            flight RMSE, apex error, detection rate, camera visibility. 13 new
+            tests (test_high_height_readiness.py), 519/519 total pass.
+            Pinged policy agent re: oracle Stage G training for fair comparison.
+Command:    python analyze_high_height_readiness.py --out .../high_height_readiness_iter127.png
+            pytest scripts/perception/ -x -q → 519/519 passed (11.55s)
+Result:     PIPELINE READY FOR JUGGLING:
+            - 0.50m: apex err 2.7mm, flight RMSE 32.0mm, det 81.2%, dropout 20%
+            - 0.70m: apex err 2.8mm, flight RMSE 37.5mm, det 70.3%, dropout 25.8%
+            - 1.00m: apex err 4.6mm, flight RMSE 44.2mm, det 69.8%, dropout 32.3%
+            Apex accuracy < 5mm at ALL heights — excellent for pi1 energy modulation.
+            Flight RMSE elevated (32-44mm) due to velocity lag during fast transit,
+            which is expected with 20-32% dropout and less critical for control.
+            Camera visible fraction: 75-88% (increases with height, as expected).
+            GPU occupied by policy eval (PID 1394745, oracle noise cross-eval).
+Decision:   Pipeline is fully ready. Next: wait for policy Stage G results or oracle
+            comparison. If GPU free, run the oracle checkpoint through d435i pipeline
+            (cross-eval from fix_plan). May also prepare comprehensive readiness
+            experiment write-up for Quarto.

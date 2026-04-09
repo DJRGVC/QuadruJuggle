@@ -13,13 +13,42 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete** (506 CPU tests). Stage G d435i training
-early-stopped at 53.6% timeout. Dual trajectory analysis confirms both oracle and
-d435i models are balancing, not juggling — peak ball height capped at ~0.25m above
-paddle regardless of target. Detection rate 1–2% because ball rarely reaches camera
-FOV (>200mm). Bottleneck is policy energy modulation, not perception noise.
+Perception pipeline is **feature-complete** (519 CPU tests). High-height readiness
+analysis confirms EKF tracks ball accurately at juggling heights (0.5–1.0m):
+apex error 2.7–4.6mm, detection rate 70–81%. Pipeline is ready for when
+policy learns to juggle. Bottleneck remains policy energy modulation.
 
 See [full Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd).
+
+---
+
+## Iteration 127 — High-height readiness analysis {.unnumbered}
+*2026-04-09*
+
+Simulated ballistic trajectories at juggling heights (0.50, 0.70, 1.00m apex)
+through the full D435i noise model → EKF pipeline. Goal: confirm the perception
+pipeline is ready for when the policy learns to juggle (ball currently only
+reaches ~0.25m).
+
+![D435i + EKF readiness at 0.50, 0.70, and 1.00m target heights — trajectory tracking (top), accuracy/detection metrics (bottom)](../images/perception/high_height_readiness_iter127.png){width=100%}
+
+| Target | Actual Apex | Det Rate | Camera Vis | Flight RMSE | **Apex Error** | Dropout |
+|--------|-------------|----------|------------|-------------|----------------|---------|
+| 0.50m  | 496mm       | 81.2%    | 75.0%      | 32.0mm      | **2.7mm**      | 20.0%   |
+| 0.70m  | 672mm       | 70.3%    | 83.8%      | 37.5mm      | **2.8mm**      | 25.8%   |
+| 1.00m  | 921mm       | 69.8%    | 88.4%      | 44.2mm      | **4.6mm**      | 32.3%   |
+
+**Key finding**: Apex accuracy is excellent (<5mm at all heights) — this is what
+pi1 needs most for energy modulation. Flight RMSE (32–44mm) is elevated by velocity
+lag during rapid transit, which is expected with 20–32% dropout and is less critical
+for the control loop. Detection rate stays above 69% at all heights.
+
+**Verdict**: Pipeline is **ready for juggling**. No perception-side changes needed —
+the bottleneck is purely policy skill (energy modulation).
+
+13 new tests, 519/519 total pass.
+
+Commits: this iter.
 
 ---
 
