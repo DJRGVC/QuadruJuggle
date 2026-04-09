@@ -44,6 +44,8 @@ parser.add_argument("--out-dir", type=str, default=None,
                     help="Output directory for frames, trajectory.npz, summary.png. Defaults to perception/debug/demo.")
 parser.add_argument("--no-camera-render", action="store_true", dest="no_camera_render",
                     help="Disable camera rendering (for policy-only evaluation without perception).")
+parser.add_argument("--no-anchor", action="store_true", dest="no_anchor",
+                    help="Disable paddle-anchor virtual measurement during contact phases.")
 
 # Strip --pi2-checkpoint
 _pi2_checkpoint_path = None
@@ -183,7 +185,7 @@ def main():
     ekf_cfg = BallEKFConfig(
         contact_aware=True, q_vel=0.40,
         contact_z_threshold=contact_z_world,
-        anchor_enabled=True,
+        anchor_enabled=not getattr(args_cli, "no_anchor", False),
     )
     ekf = BallEKF(num_envs=args_cli.num_envs, device="cpu", cfg=ekf_cfg)
 
@@ -251,7 +253,8 @@ def main():
 
     metrics = {"detected": 0, "missed": 0, "rmse_det": [], "rmse_ekf": [], "anchored": 0}
     # Trajectory tracking for summary visualizations
-    traj = {"gt": [], "ekf": [], "det": [], "det_steps": [], "steps": []}
+    traj = {"gt": [], "ekf": [], "det": [], "det_steps": [], "steps": [],
+            "ball_h": [], "anchored_step": []}
 
     # Periodic impulse parameters for simulating juggling without a trained policy.
     # When the ball falls near the paddle, give it an upward kick.
@@ -378,6 +381,8 @@ def main():
         traj["gt"].append(ball_pos_w.copy())
         traj["ekf"].append(ekf_pos.copy())
         traj["steps"].append(step)
+        traj["ball_h"].append(ball_pos_w[2] - _PADDLE_Z_APPROX)
+        traj["anchored_step"].append(1 if n_anchored > 0 else 0)
 
         # Save annotated frame periodically (env 0 only)
         if cam is not None and step % args_cli.capture_interval == 0 and "rgb" in cam.data.output:
@@ -408,6 +413,15 @@ def main():
         print(f"  Detection RMSE: {np.mean(metrics['rmse_det']):.4f} +/- {np.std(metrics['rmse_det']):.4f} m")
     if metrics["rmse_ekf"]:
         print(f"  EKF RMSE: {np.mean(metrics['rmse_ekf']):.4f} +/- {np.std(metrics['rmse_ekf']):.4f} m")
+        # Phase-aware RMSE breakdown
+        ball_h_arr = np.array(traj["ball_h"])
+        rmse_arr = np.array(metrics["rmse_ekf"])
+        contact_mask = ball_h_arr < 0.03  # within 30mm of paddle = contact
+        flight_mask = ~contact_mask
+        if contact_mask.any():
+            print(f"  EKF RMSE (contact, h<30mm): {np.mean(rmse_arr[contact_mask]):.4f} +/- {np.std(rmse_arr[contact_mask]):.4f} m  ({contact_mask.sum()} steps)")
+        if flight_mask.any():
+            print(f"  EKF RMSE (flight, h>=30mm): {np.mean(rmse_arr[flight_mask]):.4f} +/- {np.std(rmse_arr[flight_mask]):.4f} m  ({flight_mask.sum()} steps)")
     if use_policy:
         print(f"  Episodes: {total_episodes}  |  Timeout: {100*total_timeouts/max(1,total_episodes):.1f}%")
 
@@ -435,6 +449,8 @@ def _save_trajectory_npz(traj, metrics, out_dir, dt):
         det_steps = np.array(traj["det_steps"]) if traj["det_steps"] else np.zeros((0,), dtype=int)
         rmse_ekf = np.array(metrics["rmse_ekf"])
         rmse_det = np.array(metrics["rmse_det"])
+        ball_h = np.array(traj.get("ball_h", []))
+        anchored_step = np.array(traj.get("anchored_step", []))
 
         path = os.path.join(out_dir, "trajectory.npz")
         np.savez_compressed(
@@ -442,6 +458,7 @@ def _save_trajectory_npz(traj, metrics, out_dir, dt):
             gt=gt, ekf=ekf, steps=steps, dt=dt,
             det=det, det_steps=det_steps,
             rmse_ekf=rmse_ekf, rmse_det=rmse_det,
+            ball_h=ball_h, anchored_step=anchored_step,
         )
         print(f"[demo] Trajectory data saved: {path} ({gt.shape[0]} steps, {det.shape[0]} detections)")
     except Exception as e:

@@ -178,3 +178,21 @@ Result:     Paddle anchor wired into eval loop. Also discovered and fixed a late
 Decision:   Next iter: GPU eval to measure EKF accuracy improvement with anchor active.
             Expect RMSE to drop dramatically during contact phases (ball on paddle 98% of
             time). If policy agent has Stage G progress, also test with sustained bouncing.
+
+## Iteration 106 — Anchor ablation tooling + phase-aware RMSE  (2026-04-10T17:30:00Z)
+Hypothesis: Adding --no-anchor flag and per-phase RMSE breakdown enables A/B quantification
+            of paddle anchor improvement when GPU becomes available.
+Change:     1. Added --no-anchor CLI flag to demo_camera_ekf.py (wired into ekf_cfg.anchor_enabled)
+            2. Per-step ball_h and anchored_step tracking in trajectory data
+            3. Phase-aware RMSE summary: contact (h<30mm) vs flight (h>=30mm) breakdown
+            4. Saved ball_h and anchored_step arrays in trajectory.npz
+            5. New run_anchor_ablation.sh: back-to-back anchor ON vs OFF comparison
+            6. Updated Quarto page (agents/perception.qmd) with iters 103-106 summary
+Command:    pytest scripts/perception/ → 372/372 passed (7.49s). No GPU needed.
+            GPU blocked by policy agent Stage G training (12288 envs, started 04:53).
+Result:     All tests pass. Ablation script ready for next GPU slot. Analysis will show:
+            - Overall RMSE with/without anchor
+            - Contact-phase RMSE (h<30mm): expect anchor >> no-anchor (5mm vs drift)
+            - Flight-phase RMSE: expect identical (anchor doesn't fire during flight)
+Decision:   Next iter: run anchor ablation on GPU if available. If still blocked,
+            consider flight-window detection mode or per-step EKF diagnostics plotting.

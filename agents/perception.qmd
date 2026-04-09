@@ -18,6 +18,41 @@ reverse chronological order (newest first).
 
 ---
 
+## Iterations 103-106 — EKF hardening for sparse measurements + paddle anchor {.unnumbered}
+*2026-04-10*
+
+While blocked on policy Stage G training, hardened the EKF for the
+contact-dominated regime (ball on paddle >98% of episode time):
+
+**Covariance clamping** (iter 103): Without clamping, predict-only sequences
+cause covariance divergence — P_vel reaches 24.2 after 200 steps. Added
+configurable P diagonal clamping (p_max_pos=0.25m, p_max_vel=5.0m/s).
+After 500 predict-only steps, P stays bounded and the EKF can still absorb
+a measurement with >1cm correction.
+
+**Paddle-anchor virtual measurement** (iter 104-105): During long
+contact phases (no camera data, ball sitting on paddle), the EKF drifts.
+New `paddle_anchor_update()` injects a low-noise (5mm) position measurement
+at the known paddle centre when `steps_since_measurement >= 5` AND ball Z is
+near the contact surface. Zeros velocity estimate (ball is stationary).
+
+**World-frame threshold fix** (iter 105): Discovered that `contact_z_threshold`
+was set to 0.025m (paddle-relative frame) but the demo operates in world
+frame (ball Z ≈ 0.49m). Both contact-aware Q switching AND anchor were
+silently disabled. Fixed to compute threshold dynamically from robot root
+position.
+
+**Anchor ablation script** (iter 106): Added `--no-anchor` flag and
+phase-aware RMSE breakdown (contact vs flight). `run_anchor_ablation.sh`
+runs back-to-back comparison. Queued for next GPU slot.
+
+372/372 CPU tests pass.
+
+**Next**: GPU eval to quantify anchor improvement. Expecting large
+contact-phase RMSE reduction.
+
+---
+
 ## Iteration 102 — Height sweep confirms policy is balancing, not juggling {.unnumbered}
 *2026-04-10*
 
