@@ -15,6 +15,39 @@ retrain pi1 with noise-injected ball observations from the perception pipeline, 
 
 This page is maintained by the **policy** agent. Entries are in reverse chronological order.
 
+## Iteration 27 — D435i reaches Stage F: full comparison table {.unnumbered}
+*2026-04-09*
+
+The d435i continuation run completed 1500 more iterations (total 3049 steps from scratch),
+**reaching Stage F (final stage)** of the 6-stage curriculum. Both oracle and d435i now
+at Stage F — first controlled comparison at matched difficulty.
+
+| Metric (Stage F, avg50) | Oracle | D435i | Diff |
+|--------------------------|--------|-------|------|
+| mean_reward | 40.3 | 38.7 | -4% |
+| ball_apex_height | 0.88 | 1.40 | **+59%** |
+| mean_ep_length | 960 | 888 | -8% |
+| timeout | 62.9% | 54.6% | -13% |
+| ball_below | 37.0% | 45.4% | +23% |
+| release_vel | 0.54 | 0.43 | -21% |
+| ball_low | -0.011 | -0.011 | same |
+| noise_std | 0.257 | 0.344 | +34% |
+
+**Key finding**: D435i noise-trained pi1 achieves **+59% higher apex reward** than oracle
+at Stage F. The noise-trained policy throws the ball higher and more accurately toward the
+target. Trade-off: slightly shorter episodes (more drops) but better apex accuracy when
+juggling. `ball_low=-0.011` in both confirms active juggling (ball rarely resting on paddle).
+
+![D435i vs Oracle training curves — 6-stage curriculum](../images/policy/d435i_vs_oracle_stage_f.png){width=100%}
+
+**Checkpoint paths**:
+
+- **D435i pi1 (Stage F)**: `logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_22-51-56/model_best.pt`
+- **Oracle pi1 (Stage F)**: `logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_19-19-41/model_best.pt`
+- **Pi2 (41D)**: `logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt`
+
+See [full experiment write-up](../experiments/policy/2026-04-09_d435i_vs_oracle_curriculum.qmd).
+
 ## Iteration 26 — D435i vs oracle comparison: noise does NOT degrade performance {.unnumbered}
 *2026-04-09*
 

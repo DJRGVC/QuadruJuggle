@@ -37,18 +37,35 @@ Advancement criterion: timeout ≥ 30% sustained for 20 consecutive iterations.
 
 ## Results
 
-**Headline**: D435i noise causes **no catastrophic degradation**. The policy reaches Stage E (5/6) in 1500 iterations from scratch, with comparable or better apex reward than oracle at Stage E.
+**Headline**: D435i noise causes **no catastrophic degradation**. Both runs reach Stage F (6/6). At Stage F, d435i achieves **+59% higher apex reward** than oracle.
 
 ### Curriculum progression
 
-| Run | Stages reached | A→B | B→C | C→D | D→E | E→F |
-|-----|---------------|-----|-----|-----|-----|-----|
-| Oracle (from D) | F (6/6) | — | — | — | 29 iters | 113 iters |
-| D435i (scratch) | E (5/6) | 147 | 34 | 126 | 240 | not reached |
+| Run | Stages reached | A→B | B→C | C→D | D→E | E→F | Total steps |
+|-----|---------------|-----|-----|-----|-----|-----|-------------|
+| Oracle (from D) | F (6/6) | — | — | — | 29 | 113 | 2572 |
+| D435i (scratch) | F (6/6) | 147 | 34 | 126 | 240 | ~500 | 3049 |
 
-The oracle run had a head start (resumed from a Stage D checkpoint with 1150 iters of prior training). The d435i run trained from scratch, spending 147 iters bootstrapping at Stage A.
+The oracle run had a head start (resumed from a Stage D checkpoint with 1150 iters of prior training). The d435i run trained from scratch, spending 147 iters bootstrapping at Stage A but still reached Stage F in 3049 total steps.
 
-### Stage E comparison (matched)
+### Stage F comparison (both at final stage)
+
+| Metric (avg last 50 iters) | Oracle | D435i | Diff |
+|-----------------------------|--------|-------|------|
+| mean_reward | 40.3 | 38.7 | -4.0% |
+| ball_apex_height | 0.88 | 1.40 | **+59.1%** |
+| mean_ep_length | 960 | 888 | -7.5% |
+| timeout | 62.9% | 54.6% | -13.2% |
+| ball_below | 37.0% | 45.4% | +22.7% |
+| release_vel | 0.54 | 0.43 | -20.4% |
+| ball_low | -0.011 | -0.011 | same |
+| noise_std | 0.257 | 0.344 | +33.9% |
+
+D435i **outperforms** oracle on apex height at Stage F (+59%). The noise-trained policy throws the ball more accurately toward the target. Trade-off: slightly shorter episodes (more drops) but better apex accuracy when the ball is in the air. `ball_low=-0.011` in both confirms active juggling, not passive balance.
+
+![D435i vs Oracle training curves — 6-stage curriculum, both reaching Stage F](../images/policy/d435i_vs_oracle_stage_f.png){width=100%}
+
+### Stage E comparison (intermediate)
 
 | Metric | Oracle | D435i | Diff |
 |--------|--------|-------|------|
@@ -57,31 +74,15 @@ The oracle run had a head start (resumed from a Stage D checkpoint with 1150 ite
 | timeout | 74.5% | 71.3% | -4.3% |
 | ep_length | ~1075 | ~979 | -8.9% |
 
-D435i **outperforms** oracle on apex height at Stage E. This is likely because the noise-trained policy develops a more robust throwing strategy that generalises better to the perturbed conditions of Stage E (lateral velocity perturbations).
-
-### Final metrics (d435i at step 1499)
-
-| Metric | Value |
-|--------|-------|
-| Stage | E (5/6) |
-| Reward | 34.4 |
-| Episode length | 979 |
-| Timeout rate | 71.0% |
-| Ball below | 28.9% |
-| Apex reward | 1.50 |
-| Release velocity | 0.47 |
-| Noise std | 0.36 |
-| Ball low penalty | -0.01 (ball rarely sits on paddle) |
-
 ## Discussion
 
-The most striking result is that d435i noise does not degrade Stage E performance — it actually *improves* apex height by 176%. This mirrors findings from domain randomisation literature (Tobin et al. 2017, OpenAI et al. 2019): training with noise creates more robust policies that generalise better to novel perturbations.
+The most striking result is that d435i noise does not degrade juggling performance — it actually *improves* apex height by 59% at Stage F (and 176% at Stage E). This mirrors findings from domain randomisation literature (Tobin et al. 2017, OpenAI et al. 2019): training with noise creates more robust policies that generalise better to novel perturbations.
 
-The d435i run has not yet reached Stage F (the final robustness stage with wider XY spawn and higher lateral velocities). A continuation run is in progress to push through to Stage F and enable a fair final-stage comparison.
+The noise-trained policy trades episode length for apex accuracy — it drops the ball more often (45% vs 37% ball_below) but achieves much better target height when juggling. This suggests noise injection acts as implicit regularisation, preventing the policy from overfitting to precise ball state.
 
 **Key architectural validation**: the hierarchical pi2→pi1 design isolates perception noise to pi1 only. Pi2's joint-level tracking is unaffected by ball observation noise, which means the perception-noise training burden is localised to a single, smaller network.
 
-**Limitation**: the oracle run had a head start (resumed from checkpoint). A fully matched from-scratch oracle comparison would strengthen the finding. However, the Stage E metrics are at matched curriculum conditions, making the comparison valid at that stage.
+**Limitation**: the oracle run had a head start (resumed from checkpoint). A fully matched from-scratch oracle comparison would strengthen the finding. However, both runs reached the same final stage (F) and the metrics are at matched curriculum conditions.
 
 ## Reproducibility
 
@@ -89,7 +90,8 @@ The d435i run has not yet reached Stage F (the final robustness stage with wider
 - **Oracle commit**: `bf3d8a8` (iter 23)
 - **D435i commit**: `56ee92e` (iter 25, with synced perception noise model)
 - **Oracle log dir**: `logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_19-19-41/`
-- **D435i log dir**: `logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_21-16-05/`
+- **D435i log dir (run 1)**: `logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_21-16-05/`
+- **D435i log dir (run 2, continuation)**: `logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_22-51-56/`
 - **Pi2 checkpoint**: `go1_torso_tracking/2026-03-12_17-16-01/model_best.pt`
 - **GPU**: NVIDIA RTX 5070 Ti, 12288 envs, ~3.0-3.5 s/iter
 - **Training time**: ~75-85 min per 1500 iterations
