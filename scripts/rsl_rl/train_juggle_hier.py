@@ -118,40 +118,28 @@ torch.backends.cudnn.benchmark = False
 # reward at h=0 (ball sitting on paddle) is > 0.13 — high enough that the policy
 # learns to balance instead of juggle, then stalls when σ eventually tightens.
 #
-# Per-env target randomization: each stage specifies (target_min, target_max).
-# Early stages use fixed targets (min=max) to learn basic bouncing.  Starting
-# at Stage I, the range expands so the policy learns to handle varied heights.
-# By Stage P the full [0.30, 1.00] range is active.  σ = target / sigma_ratio
-# per env, maintaining the target/σ invariant regardless of sampled height.
+# Per-env target: each stage specifies (target_min, target_max).
+# All stages use fixed targets (min=max). σ = target / sigma_ratio per env.
 _BJ_STAGES = [
     # tgt_min  tgt_max  σ_ratio  xy_std  vel_xy_std  noise_scale
-    # σ_ratio=3.5 makes ball-at-rest earn only 0.2% of max apex reward (was 4.4% with 2.5),
-    # forcing active throwing to earn meaningful reward. Root cause of Stage F plateau fixed.
-    (0.05,     0.05,    2.5,     0.020,  0.00,       0.00),  # A  — oracle, bootstrap bounce (wider for initial learning)
-    (0.10,     0.10,    3.0,     0.022,  0.00,       0.00),  # B  — oracle, tighten sigma
-    (0.15,     0.15,    3.5,     0.025,  0.00,       0.00),  # C  — oracle, target sigma ratio
-    (0.20,     0.20,    3.5,     0.028,  0.00,       0.25),  # D  — 25% d435i noise
-    (0.25,     0.25,    3.5,     0.030,  0.00,       0.50),  # E  — 50% d435i noise
-    (0.30,     0.30,    3.5,     0.033,  0.00,       0.75),  # F  — 75% d435i noise
-    (0.36,     0.36,    3.5,     0.036,  0.00,       1.00),  # G  — full d435i noise
-    (0.42,     0.42,    3.5,     0.040,  0.00,       1.00),  # H  — full d435i noise
-    (0.30,     0.48,    3.5,     0.045,  0.02,       1.00),  # I  — range begins + lateral vel
-    (0.30,     0.55,    3.5,     0.050,  0.04,       1.00),  # J
-    (0.30,     0.62,    3.5,     0.055,  0.06,       1.00),  # K
-    (0.30,     0.70,    3.5,     0.060,  0.08,       1.00),  # L
-    (0.30,     0.78,    3.5,     0.068,  0.10,       1.00),  # M
-    (0.30,     0.86,    3.5,     0.075,  0.12,       1.00),  # N
-    (0.30,     0.92,    3.5,     0.082,  0.15,       1.00),  # O
-    (0.30,     1.00,    3.5,     0.090,  0.18,       1.00),  # P  — full range, full noise
+    # Simplified 6-stage curriculum (was 16). Literature uses 3-6 stages (Rudin 4, Zhuang 4,
+    # ROGER 4). Each stage changes ONE thing: height OR noise OR robustness.
+    # σ_ratio=3.5 makes ball-at-rest earn only 0.2% of max apex reward.
+    # Max target 0.50m — within pi2 single-bounce ceiling (0.80m).
+    (0.10,     0.10,    2.5,     0.020,  0.00,       0.00),  # A  — bootstrap bounce, oracle
+    (0.20,     0.20,    3.0,     0.025,  0.00,       0.00),  # B  — stronger bounce, oracle
+    (0.30,     0.30,    3.5,     0.035,  0.00,       0.50),  # C  — introduce 50% d435i noise
+    (0.40,     0.40,    3.5,     0.050,  0.00,       1.00),  # D  — full noise, higher target
+    (0.50,     0.50,    3.5,     0.070,  0.10,       1.00),  # E  — final target + lateral vel
+    (0.50,     0.50,    3.5,     0.100,  0.18,       1.00),  # F  — robustness: wider XY + vel
 ]
-_BJ_THRESHOLD      = 0.30   # lowered from 0.75: active juggling has ~63% timeout (lit-review iter_026)
-_BJ_APEX_THRESHOLD = 0.5     # with sigma_ratio=3.5, ball at rest earns ~0.05/step × 1500 = ~75 total
-                              # so natural bounce (h≈5cm) earns ~0.1/step; threshold=0.5 requires active throwing
-_BJ_SUSTAIN    = 20    # was 15 — require stronger mastery before advancing
-_BJ_TRANSITION = 15    # was 10 — slower parameter blending
+_BJ_THRESHOLD      = 0.30   # lowered from 0.75: active juggling has ~63% timeout
+_BJ_APEX_THRESHOLD = 0.5     # ball at rest earns ~0.05/step; threshold requires active throwing
+_BJ_SUSTAIN    = 20
+_BJ_TRANSITION = 15
 
 # Early stopping
-_ES_PATIENCE = 1500    # 700 was too short — ES fires before policy adapts after curriculum advance
+_ES_PATIENCE = 1500
 _ES_MIN_DELTA = 0.5
 
 
@@ -387,6 +375,15 @@ def _bj_install_curriculum(runner, start_stage: int = 0) -> None:
             f"{suffix}{blend_tag} | "
             f"ES {state['no_improve']}/{_ES_PATIENCE}"
         )
+
+        # ── tensorboard curriculum logging ────────────────────────────────────
+        if hasattr(runner, "writer") and runner.writer is not None:
+            step = locs.get("it", 0)
+            runner.writer.add_scalar("Curriculum/stage", s, step)
+            runner.writer.add_scalar("Curriculum/target_min", cur_tmin, step)
+            runner.writer.add_scalar("Curriculum/target_max", cur_tmax, step)
+            runner.writer.add_scalar("Curriculum/sustain_count", state["above_count"], step)
+            runner.writer.add_scalar("Curriculum/es_no_improve", state["no_improve"], step)
 
         if state["no_improve"] >= _ES_PATIENCE:
             print(

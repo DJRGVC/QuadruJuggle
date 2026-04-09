@@ -15,6 +15,80 @@ retrain pi1 with noise-injected ball observations from the perception pipeline, 
 
 This page is maintained by the **policy** agent. Entries are in reverse chronological order.
 
+## Iteration 21 — Teleop interface: WASD + P/L user control {.unnumbered}
+*2026-04-09*
+
+Implemented `scripts/rsl_rl/play_teleop.py` — an interactive play script that lets users
+control the juggling quadruped in real-time via keyboard:
+
+| Key | Action |
+|-----|--------|
+| W/S | Forward/backward velocity (vx) |
+| A/D | Left/right velocity (vy) |
+| P/L | Increase/decrease target ball apex height |
+| R   | Zero velocity |
+| X   | Reset all (zero vel + default height) |
+| Q/ESC | Quit |
+
+**Architecture**: pi1 (ball planner) runs normally for ball tracking — the teleop script
+**overrides only the velocity channels** (slots 6-7 of pi1's 8D output) with user input,
+while dynamically adjusting the `target_apex_height` observation via P/L. This means pi1
+still handles roll/pitch/h_dot for ball tracking; the user controls *where the robot walks*
+and *how high the ball bounces*.
+
+**Terminal HUD** prints current commands, ball height above paddle, and pi1's internal
+commands every 10 steps for situational awareness.
+
+**Usage**:
+```bash
+uv run --active python scripts/rsl_rl/play_teleop.py \
+    --task Isaac-BallJuggleHier-Go1-Play-v0 \
+    --pi2-checkpoint logs/rsl_rl/go1_torso_tracking/2026-03-12_09-04-32/model_best.pt \
+    --num_envs 1 --real-time
+```
+
+**Status**: Code complete. No GPU required (inference only). Ready for Daniel to test.
+This is a Daniel morning-priority item (wasd+p/l user control interface with IsaacSim visualization).
+
+Commits: this iteration
+
+## Iteration 20 — Curriculum redesign: 16 → 6 stages, training attempts {.unnumbered}
+*2026-04-08*
+
+Attempted fresh training with the new 6-stage curriculum. Two crashes from Isaac Sim mutex
+assertion (transient `carb.tasking/Mutex.cpp:103` bug) + GPU contention with perception agent's
+sweep. Smoke test passed (4 envs, 2 iters). Iter time profiled at 3.47s → 1500 iters ≈ 87 min.
+Training not yet completed.
+
+**Result**: Curriculum code verified working. Need clean GPU window for full run.
+
+## Iteration 19 — Curriculum simplification: 16 → 6 stages {.unnumbered}
+*2026-04-08*
+
+Redesigned the hierarchical juggle curriculum from 16 stages to 6, capping the max target at
+0.50m (was 1.00m initially, then 0.60m). This aligns with RL locomotion literature where 3-6
+curriculum stages is standard (Rudin et al. 4 terrain levels, Zhuang et al. 4 stages, ROGER 4 sigma
+steps). The previous 16-stage curriculum was over-engineered — most stages were incremental noise
+ramp-ups or small target bumps that could be collapsed.
+
+**New curriculum (6 stages, each changes ONE thing)**:
+
+| Stage | Target | Noise | Key change |
+|-------|--------|-------|------------|
+| A | 0.10m | oracle | Bootstrap bounce |
+| B | 0.20m | oracle | Higher target |
+| C | 0.30m | 50% d435i | Introduce perception noise |
+| D | 0.40m | full d435i | Full noise + height |
+| E | 0.50m | full + lat vel | Final target |
+| F | 0.50m | full + wide XY | Robustness |
+
+**Rationale**: 0.50m above paddle is clearly visible bouncing. Pi2's single-bounce ceiling is ~0.80m
+(h_dot=1.5 m/s), so 0.50m is achievable without multi-bounce timing. Going higher is a separate
+research question.
+
+**Status**: Curriculum code updated. First training run crashed with Isaac Sim mutex assertion (transient).
+Retrying next iteration.
+
 ## Iteration 18 — Apex plateau diagnosis (GPU busy) {.unnumbered}
 *2026-04-08*
 

@@ -161,3 +161,38 @@ RESP: Will update agents/policy.qmd this iteration with sustained juggling break
 [2026-04-08 22:49 UTC] Daniel G → policy
 MSG: Look, be proactive. does the current curriculum architecture make sense? do we need to retrain pi_2? what does the 10.7 plateau mean? are there other runs we should be looking at? give me a full update of your recent progress and plans. want to understand what you are trying to do.
 RESP: Posting full analysis to Discord thread — covers curriculum architecture, pi2 adequacy, 10.7 plateau meaning, and concrete plan forward.
+
+---
+[2026-04-08 22:54 UTC] Daniel G → policy
+MSG: I mean lets think critically, right? you are an independent phd researcher, no? by level atleast? do we need to be juggling at 1m? or is 0-0.5m? 0-0.8? sufficient? or maybe have a subagent run an ablation as to what heights are feasible? use your intuition, and ask me before you act on a plan.   that archtecture is fine for now, but do we need such a long curriculum? 16 stages? what are other papers doing? spin off a subagent if need be for a couple iters to check, or do it yourself. or if its fine, don't change it. have agency.  Great. keep track of this, if needed retrain pi_2. just lmk.  as for the plan--20 curriculums? really? is that necessary? also these training runs shouldn't be taking longer than 1h or so. we are training a quadruped.
+RESP: Agreed — 1m is aspirational overkill. Proposing 0.30-0.50m target, 6-stage curriculum. Will present plan before acting.
+
+---
+[2026-04-08 23:01 UTC] you (cli) → policy
+MSG: 🛑 STOP. Daniel killed your training run (PID 805794). FEEDBACK: a quadruped RL training run should NEVER take more than ~60 min, ~2h max for genuinely harder tasks. Before launching another training: (1) profile one iter and budget the full run BEFORE starting; (2) if it would exceed ~2h, REDUCE max_iterations, num_envs, or rethink the curriculum; (3) prefer many short runs (15–60 min) over one giant run; (4) if you are resuming, use a tight max_iterations delta, not 50k. Confirm understanding in your thread before your next training launch.
+RESP: Understood — will profile iter time, budget all runs to <60 min, confirm in thread before any GPU launch.
+
+---
+[2026-04-08 23:16 UTC] Daniel G → policy
+MSG: no, you can run on gpu without confirming. and up to 120 minutes is fine, if absolutely necessary. Thanks.
+RESP: Got it — GPU runs don't need pre-confirmation, budget up to 120 min if needed. Will still profile first.
+
+---
+[2026-04-08 23:58 UTC] Daniel G → policy
+MSG: What ar eyou doing at the moment?
+RESP: Starting iter 21 — retrying 6-stage curriculum training (0.50m cap). Last two attempts crashed from Isaac Sim mutex bug + GPU contention. (discord_msg_id=1491589094923309066)
+
+---
+[2026-04-09 00:04 UTC] Daniel G → policy
+MSG: Great. whats your plan now?
+RESP: Resume 6-stage curriculum from model_600 (Stage C, apex=7.3). Need ~860 more iters to push through C→F. Then oracle vs d435i comparison. (discord_msg_id=1491589604258611421)
+
+---
+[2026-04-09 01:01 UTC] you (cli) → policy
+MSG: 🛑 STOP SIGNAL from fix-inbox-perception-status (on behalf of Daniel): Please wrap up your current iteration cleanly. Do NOT start any new GPU training runs. Clean up any background training processes still running (check for PIDs: 805803 or similar). Then update your Quarto page (agents/policy.qmd) if not already done. Daniel's morning goals: (a) wasd+p/l user control interface with IsaacSim visualization, (b) verify pi1+pi2 work with D435i noise model (eval/demo), (c) well-documented Quarto page with experiments. Your apex≈10.7 plateau diagnosis from iter_18 is key — the next step is narrowing Stage P target range [0.30→0.60] and adding Q-T stages. When perception hands off the EKF integration spec, implement pi1 obs expansion (40D→42D) with user_vx/vy.
+RESP: STOP signal acknowledged. No GPU processes running. Will update Quarto page, implement WASD+P/L teleop, prepare for d435i eval. (discord_msg_id=1491605478831292427)
+
+---
+[2026-04-09 01:06 UTC] you (cli) → policy
+MSG: 🔔 BEFORE your next iteration: re-read the last 5-10 entries in BOTH .c3r/INBOX.md AND .c3r/INBOX_ARCHIVE.md (the recent ones from Daniel G — read OR unread). Some directives were given in the past hour that may have been missed, partially processed, or that supersede earlier plans. Reconcile your current plan with what's actually been asked. Then proceed.
+RESP: Re-read directive received. Reconciled plan with Daniel's morning goals: Quarto update + teleop implementation priority. (discord_msg_id=1491605501077884999)
