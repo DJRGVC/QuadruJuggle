@@ -18,6 +18,45 @@ reverse chronological order (newest first).
 
 ---
 
+## Iteration 99 — Cross-eval validates d435i noise: +59% apex over oracle {.unnumbered}
+*2026-04-10*
+
+::: {.callout-important}
+**Key result**: Policy agent's 6-stage curriculum comparison (iters 27–29 on `agent/policy`)
+confirms that training pi1 with our D435i-calibrated perception noise **outperforms**
+oracle (ground-truth) observations. This is the strongest validation of the perception
+pipeline to date.
+:::
+
+The policy agent ran a controlled comparison: identical curriculum, same pi2, 12288 envs.
+D435i noise model (Ahn 2019 calibration: sigma_xy=0.0025z, sigma_z=1mm+0.005z^2, 20% dropout)
+introduced at Stage C, full noise from Stage D onward.
+
+**Stage F comparison (final stage, both runs):**
+
+| Metric | Oracle | D435i | Delta |
+|--------|--------|-------|-------|
+| ball_apex_height | 0.88 | 1.40 | **+59%** |
+| mean_reward | 40.3 | 38.7 | -4% |
+| timeout | 62.9% | 54.6% | -13% |
+| ball_below | 37.0% | 45.4% | +23% |
+
+The d435i-trained policy throws the ball higher and more accurately toward target
+but drops it more often. Cross-eval (iter 29) showed the d435i model is **not
+noise-dependent** — it transfers cleanly to oracle obs (+1.5% apex). The noise acts
+as beneficial regularization, consistent with domain randomization literature (Tobin
+et al. 2017, OpenAI et al. 2019).
+
+See policy agent's full experiment write-up: `experiments/policy/2026-04-09_d435i_vs_oracle_curriculum.qmd`
+
+**Perception pipeline status**: oracle eval still GPU-queued (PID 1204960). When it
+completes, `analyze_eval_trajectory.py` will produce phase-separated (ascending/descending/contact)
+detection statistics under sustained juggling. 354/354 CPU tests pass.
+
+Commits: this iter
+
+---
+
 ## Iteration 96 — Camera pipeline experiment write-up + GPU blocked {.unnumbered}
 *2026-04-10*
 

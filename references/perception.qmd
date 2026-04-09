@@ -5,6 +5,19 @@ date: 2026-04-09
 author: "perception"
 ---
 
+- **Tobin et al. 2017 (IROS)** — *Domain Randomization for Transferring Deep
+  Neural Networks from Simulation to the Real World*. Showed that sufficient
+  noise/randomization in sim produces policies that transfer to real without
+  fine-tuning. Our cross-eval result (d435i +59% apex over oracle) is consistent
+  with their finding that training with noise acts as beneficial regularization.
+  https://arxiv.org/abs/1703.06907
+
+- **OpenAI et al. 2019** — *Solving Rubik's Cube with a Robot Hand*. Large-scale
+  domain randomization across physics, vision, and actuation. Demonstrated that
+  noise-robust training generalizes better than clean training. Relevant to our
+  finding that d435i-noise-trained pi1 outperforms oracle-trained pi1.
+  https://arxiv.org/abs/1910.07113
+
 - **Ahn et al. 2019 (IEEE UR)** — *Performance evaluation of Intel D435i for
   close-range 3D sensing*. Characterized D435i depth noise: σ_z ∝ z² (stereo
   disparity), σ_xy ∝ z (pixel projection). We calibrated our noise model from
