@@ -37,7 +37,7 @@ import torch
 
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import Articulation, RigidObject
-from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import EventTermCfg as EventTerm, SceneEntityCfg
 
 from .ball_ekf import BallEKF, BallEKFConfig
 from .noise_model import D435iNoiseModel, D435iNoiseModelCfg
@@ -979,4 +979,52 @@ def reset_perception_pipeline(
         vel_b[env_ids],
         robot_quat_w=robot.data.root_quat_w[env_ids],
         robot_pos_w=robot.data.root_pos_w[env_ids],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Auto-injection helper — adds EKF reset event to an env config
+# ---------------------------------------------------------------------------
+
+def inject_ekf_reset_event(
+    env_cfg: "ManagerBasedRLEnvCfg",
+    paddle_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.070),
+) -> None:
+    """Inject the ``reset_perception`` event into *env_cfg* for EKF mode.
+
+    When using ``BallObsNoiseCfg(mode="ekf")``, the EKF must be reset on
+    episode boundaries to avoid stale state corrupting observations.
+    Without this, the EKF carries over position/velocity estimates from
+    the previous episode, producing garbage for the first N steps and
+    causing catastrophic policy failure (0% timeout).
+
+    Call this in the training script after setting ``--noise-mode ekf``
+    on the obs terms::
+
+        from go1_ball_balance.perception.ball_obs_spec import inject_ekf_reset_event
+        inject_ekf_reset_event(env_cfg)
+
+    Safe to call multiple times — skips if the event already exists.
+    Safe to call in oracle/d435i mode — ``reset_perception_pipeline``
+    is a no-op when no pipeline exists.
+
+    Args:
+        env_cfg: The environment configuration to modify in-place.
+        paddle_offset_b: Paddle offset in body frame (must match the
+            offset used in the obs terms).
+    """
+    events = env_cfg.events
+
+    # Skip if already injected
+    if hasattr(events, "reset_perception"):
+        return
+
+    events.reset_perception = EventTerm(
+        func=reset_perception_pipeline,
+        mode="reset",
+        params={
+            "ball_cfg": SceneEntityCfg("ball"),
+            "robot_cfg": SceneEntityCfg("robot"),
+            "paddle_offset_b": paddle_offset_b,
+        },
     )

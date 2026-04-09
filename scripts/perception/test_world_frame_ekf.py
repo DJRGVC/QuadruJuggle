@@ -72,6 +72,7 @@ class _Stub:
 sys.modules["isaaclab.assets"].Articulation = _Stub
 sys.modules["isaaclab.assets"].RigidObject = _Stub
 sys.modules["isaaclab.managers"].SceneEntityCfg = _Stub
+sys.modules["isaaclab.managers"].EventTermCfg = _Stub
 sys.modules["isaaclab.envs"].ManagerBasedRLEnv = _Stub
 
 # Import perception modules directly (avoid go1_ball_balance.__init__ which needs full Isaac Lab)

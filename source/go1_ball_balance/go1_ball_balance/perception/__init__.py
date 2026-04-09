@@ -10,6 +10,7 @@ from .ball_obs_spec import (  # noqa: F401
     PerceptionPipeline,
     ball_pos_perceived,
     ball_vel_perceived,
+    inject_ekf_reset_event,
     reset_perception_pipeline,
     update_perception_noise_scale,
 )

@@ -6,6 +6,7 @@
 # GPU DEMO VALIDATED: camera sees ball, SimBallDetector works, 100% det rate.
 # Camera pipeline integrated into eval (demo_camera_ekf.py), paddle anchor, phase tracker, camera scheduling all working.
 # Noise-to-gap prediction model: R²=0.994, VALIDATED against real policy Stage G data (max error 0.8pp).
+# EKF RESET FIX: inject_ekf_reset_event() helper added — policy agent pinged (iter 151).
 
 ## RE-VALIDATE — Gap prediction with corrected drag model ✅ (iter 140)
 - [x] Re-run EKF error decomposition with linear drag ground truth

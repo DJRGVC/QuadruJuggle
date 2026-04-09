@@ -145,3 +145,28 @@ Decision:   Next: the DepthFrameVisualizer is ready for integration. Daniel's
             convenience function that extracts depth + runs detector + renders
             in one call for the teleop loop. Also check if policy agent has
             new results for gap re-validation.
+
+## Iteration 151 — inject_ekf_reset_event helper for EKF mode training  (2026-04-09T19:15:00Z)
+Hypothesis: Policy agent's 0% timeout with EKF mode is caused by missing
+            reset_perception_pipeline event — EKF carries stale state across
+            episode resets, producing garbage observations on new episodes.
+Change:     (1) Added inject_ekf_reset_event(env_cfg) to ball_obs_spec.py:
+            auto-injects reset_perception EventTerm into env_cfg.events.
+            Idempotent, safe to call in any mode. Import at top-level
+            (EventTermCfg moved from lazy import to module-level).
+            (2) Fixed test_world_frame_ekf.py stub to include EventTermCfg.
+            (3) 10 new tests in test_inject_ekf_reset.py: injection,
+            func reference, mode, params, idempotency, no-overwrite.
+            (4) Pinged policy agent with fix instructions.
+Command:    pytest scripts/perception/ -x -q → 689/689 passed, 2 skipped (18.24s)
+Result:     Test count: 679 → 689 (+10). All pass.
+            Root cause confirmed: policy's train_juggle_hier.py injects
+            BallObsNoiseCfg(mode="ekf") on obs terms but never adds the
+            reset_perception event. On episode reset, EKF keeps old state
+            (pos/vel from prev episode end), ball is at new position →
+            EKF diverges → garbage observations → catastrophic policy failure.
+            Fix: one line after noise injection:
+            inject_ekf_reset_event(env_cfg)
+Decision:   Wait for policy agent to integrate the fix and retrain with
+            --noise-mode ekf. Meanwhile, can work on teleop convenience
+            function or Quarto update.
