@@ -235,3 +235,19 @@ Result:     Quarto page now documents: (1) sweep results showing all NIS < 3.0, 
 Decision:   Next iter: run low-range q_vel sweep (0.01-0.4) when GPU is available. Then update
             BallEKFConfig defaults and communicate handoff to policy. Daniel's (a) EKF→pi1 is
             already wired; (b) oracle-vs-EKF demo needs GPU; (c) docs done this iter.
+
+## Iteration 71 — enhanced apply_sweep_results.py + low-range sweep queued  (2026-04-08T18:20:00Z)
+Hypothesis: Multi-file merge + NIS crossing interpolation will enable automatic optimal q_vel
+            selection once both sweep ranges complete.
+Change:     Rewrote apply_sweep_results.py: load_and_merge() merges multiple JSON files, deduped
+            by q_vel. find_nis_crossing() linear-interpolates on log(q_vel) scale. make_figure()
+            generates pub-quality dual-panel (NIS + RMSE) figure. Updated test_apply_sweep.py to
+            match new output format. Queued low-range sweep (q_vel=0.01-0.40, 512 envs × 600 steps)
+            behind policy training GPU lock (PID 982975, 1200 iters @ 12288 envs, ~62 min remaining).
+Command:    pytest scripts/perception/ — 251/251 pass. No GPU commands (lock held by policy agent).
+Result:     apply_sweep_results.py enhanced and tested. Low-range sweep PID 987574 queued (sleeping
+            on flock). Existing high-range sweep confirmed: all flight NIS < 3.0 (max 1.73 at
+            q_vel=0.4). Generated combined figure from existing data.
+Decision:   Next iter: check if sweep_q_vel_low_range.json exists. If yes, merge with high-range
+            data, find NIS=3.0 crossing, update BallEKFConfig defaults. If sweep crashed, diagnose.
+            Sweep PID: 987574. Output: logs/perception/sweep_q_vel_low_range.json.

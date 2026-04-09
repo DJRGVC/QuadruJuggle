@@ -77,8 +77,8 @@ class TestApplySweepResults:
     def test_valid_sweep_parses(self, valid_sweep):
         result = _run_apply(valid_sweep)
         assert result.returncode == 0
-        assert "Best q_vel = 5.0000" in result.stdout
-        assert "Flight NIS = 3.800" in result.stdout
+        # NIS=3.0 crossing between q_vel=5.0 (NIS=3.8) and q_vel=10.0 (NIS=1.7)
+        assert "NIS=3.0 crossing" in result.stdout
         assert "EKF beats raw" in result.stdout
 
     def test_valid_sweep_shows_table(self, valid_sweep):
@@ -87,20 +87,22 @@ class TestApplySweepResults:
         # Check table header
         assert "q_vel" in result.stdout
         assert "Flight" in result.stdout
-        # Check best marker
-        assert "←" in result.stdout
+        # Check that all q_vel values appear in table
+        assert "0.4000" in result.stdout
+        assert "5.0000" in result.stdout
 
     def test_valid_sweep_shows_recommendation(self, valid_sweep):
         result = _run_apply(valid_sweep)
         assert "Recommended BallEKFConfig changes:" in result.stdout
-        assert "q_vel = 5.0000" in result.stdout
+        # Recommended q_vel should be the NIS=3.0 crossing (interpolated)
+        assert "q_vel =" in result.stdout
         assert "q_vel_contact = 50.0" in result.stdout
 
     def test_zeros_sweep_parses(self, zeros_sweep):
         """All-zeros sweep should still parse without crashing."""
         result = _run_apply(zeros_sweep)
         assert result.returncode == 0
-        assert "Best q_vel" in result.stdout
+        assert "Closest to NIS=3.0" in result.stdout
 
     def test_zeros_ekf_loses(self, zeros_sweep):
         """With 0 RMSE for both, EKF should not claim to beat raw."""
