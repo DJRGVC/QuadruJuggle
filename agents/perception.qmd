@@ -18,6 +18,77 @@ reverse chronological order (newest first).
 
 ---
 
+## Iteration 76 — Camera FOV fix: 45° → 75° tilt {.unnumbered}
+*2026-04-08*
+
+Root cause of blank D435i camera frames identified: at 45° tilt, the camera's VFOV
+(58°) spans 16°–74° above horizontal, but the ball at rest on the paddle is only
+~11° above horizontal from the camera position — literally below the bottom edge of
+the frame.
+
+Updated camera mount: 75° tilt (FOV 46°–104°), position moved from (-0.05, 0, 0.08)
+to (-0.08, 0, 0.06) for better geometry. At 75°, the ball needs to be ≥0.15 m above
+the paddle (i.e. airborne) to appear in frame — correct for a juggling task where we
+track flight, not rest. Debug capture script now applies 2 m/s upward velocity before
+capture to ensure the ball is in the air.
+
+**Status**: GPU blocked by policy training; capture validation queued for next iter.
+
+Commits: iter 76
+
+---
+
+## Iteration 74 — Adaptive R_xy validated: NIS correctly calibrated {.unnumbered}
+*2026-04-08*
+
+### Root cause of over-conservative EKF identified and fixed
+
+The iter 69 sweep showed all flight NIS < 3.0 — the EKF appeared over-conservative.
+**Root cause** (found iter 73): `R_xy` was calibrated for z=0.5m (σ=1.25mm) but the
+D435i noise model has σ_xy = 0.0025·z. At Stage A (z≈0.1m), actual σ_xy=0.25mm → R_xy
+variance was 25× too large → filter over-conservative → NIS artificially suppressed.
+
+**Fix**: made R_xy adaptive — `σ_xy = max(r_xy_per_metre · z, r_xy_floor)` with
+`r_xy_per_metre=0.0025`, `r_xy_floor=0.0005m`. This makes the measurement covariance
+track the actual camera noise at any height.
+
+### Low-range sweep with adaptive R_xy
+
+Re-ran q_vel sweep ∈ {0.01, 0.02, 0.05, 0.10, 0.20, 0.40} at 512 envs × 600 steps.
+
+![Combined q_vel sweep with adaptive R_xy](../images/perception/q_vel_sweep_combined.png){width=100%}
+
+| q_vel | Flight NIS | EKF RMSE (mm) | Raw RMSE (mm) | Improvement |
+|------:|:----------:|:-------------:|:-------------:|:-----------:|
+|  0.01 |    3.775   |      6.24     |      4.43     |   -40.8%    |
+|  0.02 |    3.702   |      6.48     |      4.89     |   -32.6%    |
+|  0.05 |    3.676   |      6.41     |      4.91     |   -30.5%    |
+|  0.10 |    3.665   |      6.44     |      4.91     |   -31.4%    |
+|  0.20 |    3.561   |      6.57     |      4.96     |   -32.3%    |
+|  0.40 |    3.312   |      6.49     |      4.92     |   -32.0%    |
+
+**Key findings**:
+
+1. **NIS now correctly calibrated** — all flight NIS ∈ [3.31, 3.78], close to the
+   ideal 3.0 (for 3D measurements). The adaptive R_xy fix moved NIS from < 1.73
+   to > 3.3, confirming the root cause.
+2. **EKF loses to raw d435i at Stage A** — negative improvement (-30% to -41%).
+   This is expected: at z≈0.1m, d435i noise is σ_xy=0.25mm (extremely precise).
+   The EKF prediction step adds more lag than the measurement noise it removes.
+3. **q_vel=0.40 gives closest to NIS=3.0** (flight NIS=3.31). This is already the
+   default — no config change needed.
+
+**Interpretation**: The EKF's value at Stage A is **not** position smoothing (raw is
+better) but rather **velocity estimation** and **dropout bridging**. At later stages
+(z=0.5-1.0m, σ_xy=1.25-2.5mm), the EKF should beat raw — hypothesis for future sweep.
+
+**Decision**: q_vel=0.40 default is correct. Pipeline is calibrated. Next: validate at
+higher target heights, then hand off to policy agent for noise-injected pi1 retraining.
+
+Commits: `a3243d5` (adaptive R_xy), this iter (sweep analysis).
+
+---
+
 ## Iteration 70 — q_vel sweep results + integration status {.unnumbered}
 *2026-04-09*
 
