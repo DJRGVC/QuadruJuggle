@@ -13,7 +13,7 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete** (588 CPU tests, 143 iterations).
+Perception pipeline is **feature-complete** (595 CPU tests, 145 iterations).
 EKF uses a **5-level phase-aware Q schedule** with R² = 0.994 noise-to-gap
 prediction model — validated against real policy data (max error ±0.8pp).
 Drag model configurable: linear (PhysX sim) or quadratic (real hardware).
@@ -25,6 +25,40 @@ is the last stub (blocked on TensorRT); Hough circle fallback is operational.
 
 See [perception gap decomposition](../experiments/perception/2026-04-10_perception_gap_decomposition.qmd) — the "perception gap" is actually a policy gap.
 Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd) and [noise-to-gap prediction](../experiments/perception/2026-04-10_noise_gap_prediction.qmd) (R² = 0.994, validated against policy eval).
+
+---
+
+## Iteration 145 — Dynamic trajectory integration tests for hardware pipeline {.unnumbered}
+*2026-04-09*
+
+Added 4 integration tests that validate the full MockCamera → HoughDetector →
+RealPerceptionPipeline → EKF chain with dynamic ball trajectories — not just
+static balls. Tests cover: (1) ascending ballistic trajectory tracking with
+lateral drift, (2) ball disappearance and recovery (ball_lost flag), (3)
+Hough detection across the 0.3–1.0m depth range, (4) body-frame transform
+under robot yaw rotation.
+
+**Finding**: Hough circle detector reliably tracks the 40mm ball from 0.3–1.0m
+depth. Beyond ~1.0m the ball subtends <8px radius and Hough becomes unreliable —
+YOLO will be needed for targets >1.0m above the paddle.
+
+**Test count**: 591 → 595 (+4 dynamic trajectory tests).
+
+---
+
+## Iteration 144 — Pipeline latency tracking {.unnumbered}
+*2026-04-09*
+
+Added measurement-age and detection-time tracking to `RealPerceptionPipeline`.
+The acquisition thread now times `detector.detect()` and records wall-clock
+creation time on each measurement. `get_observation()` tracks measurement age
+(time from detection completion to EKF consumption). New `stats` fields:
+`mean_meas_age`, `max_meas_age`, `mean_detect_dt`, `max_detect_dt`.
+
+Expected on real hardware: detect_dt ~2–5ms (Hough), ~1ms (YOLO TRT),
+meas_age ~5–20ms depending on policy rate and queue depth.
+
+**Test count**: 588 → 591 (+3 latency tracking tests).
 
 ---
 

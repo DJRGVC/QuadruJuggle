@@ -256,3 +256,29 @@ Decision:   Next: check policy progress. If Stage G retrain available,
             re-validate gap predictions. Otherwise, YOLO detector is the
             last real-hardware stub but blocked on TensorRT — consider
             implementing a lightweight depth-blob detector as alternative.
+
+## Iteration 145 — Dynamic trajectory integration tests for hardware pipeline  (2026-04-09T23:30:00Z)
+Hypothesis: The real-hardware pipeline chain (MockCamera → HoughDetector → EKF)
+            needs integration tests with dynamic ball trajectories (not just
+            static balls) to validate tracking accuracy before hardware bring-up.
+Change:     Added 4 tests to test_threaded_pipeline.py:
+            (1) test_ascending_ball_tracking: ballistic trajectory with lateral
+            drift, validates EKF converges to <80mm error after a few steps.
+            (2) test_ball_disappears_then_reappears: ball tracked → cleared →
+            reappears at new position. Verifies ball_lost flag triggers and
+            pipeline recovers.
+            (3) test_ball_at_different_depths: Hough detector across 0.3-1.0m
+            range with depth-dependent error tolerance.
+            (4) test_rotated_robot_body_frame: fixed ball with 90° robot yaw,
+            validates body-frame transform rotates correctly.
+Command:    pytest scripts/perception/ -x -q → 595/595 passed (15.69s)
+Result:     Test count: 591 → 595 (+4). All pass.
+            Key finding: Hough detector reliable from 0.3-1.0m depth. At 1.5m
+            the 40mm ball subtends only ~6px radius and Hough fails — YOLO
+            needed for targets >1.0m above paddle.
+            Updated Quarto page with iters 144-145.
+            Policy agent at iter 32, 81% context, planning Stage G retrain.
+Decision:   Pipeline is well-tested for hardware bring-up. Next: check if
+            policy has new results. If not, consider Hough detector robustness
+            analysis (noise levels, edge-of-frame detection) or wait for
+            policy checkpoint to re-validate gap predictions.

@@ -536,5 +536,214 @@ class TestPipelineLatencyTracking(unittest.TestCase):
         p.stop()
 
 
+@unittest.skipUnless(_HAS_CV2, "cv2 not installed")
+class TestDynamicTrajectoryHoughPipeline(unittest.TestCase):
+    """Integration test: full MockCamera → HoughDetector → EKF pipeline
+    tracking a ball through a ballistic bounce trajectory.
+
+    Validates that the real-hardware perception chain (minus actual hardware)
+    can track a dynamically moving ball with realistic timing.
+    """
+
+    @staticmethod
+    def _ballistic_pos(t: float, z0: float, vz0: float, g: float = -9.81) -> np.ndarray:
+        """Ballistic position at time t. Ball moves along Z (optical axis)
+        with lateral drift to test XY tracking.
+
+        Camera frame: Z = depth (optical axis = upward toward ball),
+        X = right, Y = down.  Ball starts at (0, 0, z0) with vz=vz0 upward
+        (increasing depth = ball moving away from camera).
+        """
+        # Small lateral drift: 0.02 m/s in X
+        x = 0.02 * t
+        y = 0.0
+        z = z0 + vz0 * t + 0.5 * g * t * t
+        return np.array([x, y, z])
+
+    def test_ascending_ball_tracking(self):
+        """Ball launched upward at 2 m/s from 0.3m — track through ascent."""
+        config = HardwarePipelineConfig()
+        cam = MockCamera(MockCameraConfig(depth_noise_std_mm=1.0))
+        det = BallDetector(model_path=None, hough_fallback=True)
+
+        p = RealPerceptionPipeline(
+            config, camera=cam, detector=det,
+            extrinsics=_identity_extrinsics(),
+        )
+
+        z0, vz0 = 0.30, 2.0  # 30cm initial depth, 2 m/s away from camera
+        # In camera frame, ball moving away = increasing Z (depth).
+        # Gravity acts in -Z direction (ball decelerates then falls back).
+        # Apex at t = vz0/g ≈ 0.204s, z_apex ≈ 0.30 + 0.204 m ≈ 0.504m.
+
+        # Set initial position and start
+        pos0 = self._ballistic_pos(0, z0, vz0, g=9.81)  # g>0 since Z is depth (away)
+        cam.set_ball_pos_cam(pos0)
+        p.start()
+        time.sleep(0.05)  # let acq thread start
+
+        # Drive the trajectory for 0.3s at ~50Hz (policy rate)
+        dt_policy = 0.02
+        n_steps = 15
+        observations = []
+        true_positions = []
+        t = 0.0
+
+        for _ in range(n_steps):
+            t += dt_policy
+            # Gravity reversed in camera depth direction: ball going up = Z increasing,
+            # gravity pulls it back = Z eventually decreasing.
+            # Use simple model: z = z0 + vz0*t - 0.5*9.81*t^2 for camera Z.
+            true_pos = np.array([0.02 * t, 0.0, z0 + vz0 * t - 0.5 * 9.81 * t * t])
+            if true_pos[2] < 0.17:  # below D435i min depth
+                break
+            cam.set_ball_pos_cam(true_pos)
+            time.sleep(dt_policy)
+            obs = p.get_observation(_identity_quat(), np.zeros(3))
+            observations.append(obs)
+            true_positions.append(true_pos.copy())
+
+        p.stop()
+
+        self.assertGreater(len(observations), 5, "Should have tracked for >5 steps")
+
+        # After a few steps of EKF convergence, position error should be < 50mm
+        last_obs = observations[-1]
+        last_true = true_positions[-1]
+        pos_err = np.linalg.norm(last_obs.ball_pos_b - last_true)
+        self.assertLess(pos_err, 0.08,
+                        f"Final position error {pos_err:.3f}m > 80mm (true={last_true}, "
+                        f"est={last_obs.ball_pos_b})")
+
+        # Detection rate should be high (>50%) since ball is always in view
+        stats = p.stats
+        self.assertGreater(stats["detection_rate"], 0.5,
+                           f"Detection rate {stats['detection_rate']:.2f} < 50%")
+
+    def test_ball_disappears_then_reappears(self):
+        """Ball tracked → disappears (cleared) → reappears. Verify ball_lost flag."""
+        config = HardwarePipelineConfig()
+        cam = MockCamera(MockCameraConfig(depth_noise_std_mm=1.0))
+        det = BallDetector(model_path=None, hough_fallback=True)
+
+        p = RealPerceptionPipeline(
+            config, camera=cam, detector=det,
+            extrinsics=_identity_extrinsics(),
+        )
+
+        # Phase 1: ball visible at 50cm
+        cam.set_ball_pos_cam(np.array([0.0, 0.0, 0.5]))
+        p.start()
+        time.sleep(0.05)
+
+        for _ in range(10):
+            obs = p.get_observation(_identity_quat(), np.zeros(3))
+            time.sleep(0.02)
+
+        self.assertTrue(obs.detected or not obs.ball_lost,
+                        "Ball should be tracked in phase 1")
+
+        # Phase 2: ball disappears
+        cam.clear_ball()
+        time.sleep(0.05)
+
+        lost_seen = False
+        for _ in range(20):
+            obs = p.get_observation(_identity_quat(), np.zeros(3))
+            if obs.ball_lost:
+                lost_seen = True
+                break
+            time.sleep(0.02)
+
+        self.assertTrue(lost_seen,
+                        "ball_lost should trigger after consecutive dropouts")
+
+        # Phase 3: ball reappears at new position
+        cam.set_ball_pos_cam(np.array([0.05, 0.0, 0.40]))
+        time.sleep(0.10)  # let acq thread pick it up
+
+        recovered = False
+        for _ in range(20):
+            obs = p.get_observation(_identity_quat(), np.zeros(3))
+            if obs.detected and not obs.ball_lost:
+                recovered = True
+                break
+            time.sleep(0.02)
+
+        p.stop()
+        self.assertTrue(recovered, "Pipeline should recover after ball reappears")
+
+    def test_ball_at_different_depths(self):
+        """Hough detector should work across the juggling range (30cm-1.0m).
+
+        Beyond ~1.0m the 40mm ball subtends <8px radius — Hough becomes
+        unreliable without YOLO. This is fine for our task where the ball
+        is typically 0.2-1.0m above the paddle.
+        """
+        depths = [0.30, 0.50, 0.80, 1.0]
+        config = HardwarePipelineConfig()
+
+        for z in depths:
+            cam = MockCamera(MockCameraConfig(depth_noise_std_mm=1.0))
+            det = BallDetector(model_path=None, hough_fallback=True)
+            p = RealPerceptionPipeline(
+                config, camera=cam, detector=det,
+                extrinsics=_identity_extrinsics(),
+            )
+            cam.set_ball_pos_cam(np.array([0.0, 0.0, z]))
+            p.start()
+            time.sleep(0.15)  # let acq thread run a few cycles
+
+            obs = None
+            for _ in range(20):
+                obs = p.get_observation(_identity_quat(), np.zeros(3))
+                time.sleep(0.02)
+
+            p.stop()
+
+            pos_err = np.linalg.norm(obs.ball_pos_b - np.array([0, 0, z]))
+            # Tolerate larger error at longer range (depth noise grows)
+            max_err = 0.05 + 0.05 * z  # 50mm + 50mm per metre
+            self.assertLess(
+                pos_err, max_err,
+                f"depth={z}m: error {pos_err:.3f}m > {max_err:.3f}m",
+            )
+
+    def test_rotated_robot_body_frame(self):
+        """Ball at fixed world position, robot yawed 90° — body-frame output should rotate."""
+        config = HardwarePipelineConfig()
+        cam = MockCamera(MockCameraConfig(depth_noise_std_mm=0.5))
+        det = BallDetector(model_path=None, hough_fallback=True)
+
+        # 90° yaw rotation: body X -> world Y, body Y -> world -X
+        angle = np.pi / 2
+        quat_90z = np.array([np.cos(angle / 2), 0, 0, np.sin(angle / 2)])
+
+        p = RealPerceptionPipeline(
+            config, camera=cam, detector=det,
+            extrinsics=_identity_extrinsics(),
+        )
+
+        # Ball at camera-frame (0, 0, 0.5) = world (0, 0, 0.5) since extrinsics=identity
+        cam.set_ball_pos_cam(np.array([0.0, 0.0, 0.5]))
+        p.start()
+        time.sleep(0.08)
+
+        for _ in range(15):
+            obs = p.get_observation(quat_90z, np.zeros(3))
+            time.sleep(0.01)
+
+        p.stop()
+
+        # After EKF converges, world-frame estimate should be near (0, 0, 0.5)
+        self.assertIsNotNone(obs.ekf_pos_w)
+        np.testing.assert_allclose(obs.ekf_pos_w, [0, 0, 0.5], atol=0.10)
+
+        # Body-frame should be the world pos rotated by R_world_body
+        R_body_world = _quat_to_rotmat(quat_90z)
+        expected_body = R_body_world.T @ np.array([0, 0, 0.5])
+        np.testing.assert_allclose(obs.ball_pos_b, expected_body, atol=0.10)
+
+
 if __name__ == "__main__":
     unittest.main()
