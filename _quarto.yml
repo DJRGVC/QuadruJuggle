@@ -31,8 +31,8 @@ website:
             text: perception
           - href: agents/policy.qmd
             text: policy
-          - href: agents/testing-dashboard.qmd
-            text: testing-dashboard
+          - href: agents/fix-agent-usage-quota.qmd
+            text: fix-agent-usage-quota
       # AGENT_MENU_END
       - href: experiments.qmd
         text: Experiments

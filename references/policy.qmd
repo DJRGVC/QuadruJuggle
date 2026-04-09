@@ -1,10 +1,68 @@
 ---
-title: "References — policy"
-description: "Papers and prior work cited by the policy agent"
-date: today
-author: "policy (c3r agent)"
+title: "Policy References"
+description: "Papers and resources informing the pi1 ball planner policy training"
+date: 2026-04-09
+author: "policy"
 ---
 
-Cited by **policy** during work on: *see agents/policy.qmd*. Newest first.
+- **Rudin et al. 2022 (CoRL)** — *Learning to walk in minutes using massively
+  parallel deep RL*. legged_gym / RSL-RL framework. Established survival bonus
+  as standard practice and showed 12k+ parallel envs on a single GPU. Our entire
+  training stack (RSL-RL PPO, 12288 envs) follows this paradigm.
+  https://arxiv.org/abs/2109.11978
 
-<!-- Append new entries above this line -->
+- **Ji et al. 2023 (ICRA)** — *DribbleBot: dynamic legged manipulation in the
+  wild*. Key design patterns we adopted: Gaussian height-gated centering reward,
+  terminal penalty calibration, body-velocity penalty, and feet-off-ground
+  penalty. Their foot contact penalty (-0.5/foot) directly inspired our
+  `feet_off_ground_penalty`.
+  https://arxiv.org/abs/2304.01159
+
+- **Zhuang et al. 2023 (CoRL)** — *Robot parkour learning*. Showed
+  terminal_penalty >> episode_length x alive_rate for safe exploration. Their
+  4-stage terrain curriculum informed our 6-stage approach.
+  https://arxiv.org/abs/2309.05665
+
+- **Portela et al. 2025 (RSS)** — *ROGER: a framework for real-world online
+  growing of robot capabilities*. Sigma curriculum (std 0.5 -> 0.08m as
+  episode_length stabilises) directly inspired our σ_ratio-based Gaussian
+  tightening across curriculum stages.
+  https://arxiv.org/abs/2411.18666
+
+- **Margolis & Agrawal 2022 (RSS)** — *Walk these ways: tuning robot control
+  through rapid RL*. Showed that loose vx/vy tracking std (0.20) generalises
+  across gaits where tight std (0.08) overfits. We adopted std=0.20 for pi2's
+  velocity tracking after validating this.
+  https://arxiv.org/abs/2212.03238
+
+- **Hoeller et al. 2024 (Science Robotics)** — *ANYmal parkour: learning agile
+  navigation for quadrupedal robots*. Binary posture gate on task reward prevents
+  reward hacking through unstable configurations. Informed our base_height
+  penalty design.
+  https://doi.org/10.1126/scirobotics.adi7566
+
+- **Huang et al. 2024 (CoRL Best Paper)** — *SoloParkour: constrained RL for
+  visual locomotion*. Survival + CaT (constraints as terminations) = most stable
+  collapse prevention. Validated our combined alive + early_termination approach.
+  https://arxiv.org/abs/2409.13678
+
+- **Caluwaerts et al. 2024 (IROS)** — *CaT: constraints as terminations for
+  legged locomotion RL*. Probabilistic termination on constraint violation.
+  Foundation for our ball_off and ball_below termination design.
+
+- **Falanga et al. 2020 (Sci. Robotics)** — *Dynamic obstacle avoidance for
+  quadrotors with event cameras*. ETH-style architecture: GT + noise injection
+  for sim training, real sensor for deployment. The foundational perception
+  approach we follow for pi1 noise-injected training.
+  https://doi.org/10.1126/scirobotics.aaz9712
+
+- **Ma et al. 2025 (Science Robotics)** — *Robot badminton: agile return with
+  aerodynamics-aware trajectory prediction*. Trained policy WITH world-frame EKF
+  in the loop — validates noise-injected training. Their contact-aware process
+  noise switching mirrors our curriculum noise scheduling.
+  https://doi.org/10.1126/scirobotics.adu3582
+
+- **Ahn et al. 2019 (IEEE UR)** — *Performance evaluation of Intel D435i for
+  close-range 3D sensing*. Characterised D435i depth noise: σ_z ∝ z² (stereo
+  disparity), σ_xy ∝ z (pixel projection). Our noise model parameters are
+  calibrated from their measurements.

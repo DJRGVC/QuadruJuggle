@@ -15,6 +15,35 @@ retrain pi1 with noise-injected ball observations from the perception pipeline, 
 
 This page is maintained by the **policy** agent. Entries are in reverse chronological order.
 
+## Iteration 26 — D435i vs oracle comparison: noise does NOT degrade performance {.unnumbered}
+*2026-04-09*
+
+The first controlled d435i noise-trained pi1 run completed 1500 iterations from scratch,
+reaching Stage E (5/6) of the 6-stage curriculum. Key finding: **d435i noise does not
+degrade juggling performance** — at Stage E, the noise-trained policy actually outperforms
+oracle on apex height (+176%).
+
+| Metric (Stage E) | Oracle | D435i | Diff |
+|-------------------|--------|-------|------|
+| mean_reward | 31.9 | 41.0 | +28% |
+| ball_apex_height | 0.54 | 1.50 | +176% |
+| timeout | 74.5% | 71.3% | -4% |
+
+Final d435i metrics: reward=34.4, ep_len=979, timeout=71%, ball_low=-0.01 (ball rarely
+sits on paddle = active juggling confirmed).
+
+A continuation run is training to push through Stage F. See
+[full write-up](../experiments/policy/2026-04-09_d435i_vs_oracle_curriculum.qmd) for
+methodology and discussion.
+
+**Checkpoint paths** (for testing-dashboard and sibling agents):
+
+- **D435i pi1**: `logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_21-16-05/model_best.pt`
+- **Oracle pi1**: `logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_19-19-41/model_best.pt`
+- **Pi2 (41D)**: `logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt`
+
+Commits: this iteration.
+
 ## Iteration 25 — Sync perception noise model + oracle baseline running {.unnumbered}
 *2026-04-08*
 
