@@ -47,11 +47,17 @@ D435iNoiseModelCfg = _noise_mod.D435iNoiseModelCfg
 
 
 def simulate_bounce_cycle(target_h: float, dt: float = 0.02, restitution: float = 0.85,
-                          g: float = 9.81, drag: float = 0.112) -> dict:
+                          g: float = 9.81, drag_mode: str = "linear",
+                          drag_coeff: float = 0.112, linear_damping: float = 0.1) -> dict:
     """Generate ground-truth ballistic trajectory for one bounce cycle.
 
     Ball starts at z=0 (paddle surface) with upward velocity to reach target_h.
     Returns arrays of (pos, vel) at each timestep through the full up-down cycle.
+
+    Args:
+        drag_mode: "linear" (PhysX sim) or "quadratic" (real aerodynamic drag)
+        drag_coeff: quadratic drag coefficient (a = -drag_coeff * |v| * v)
+        linear_damping: PhysX linear damping (a = -linear_damping * v)
     """
     # Launch velocity to reach target_h: v0 = sqrt(2*g*h) (ignoring drag for launch)
     # With drag, need slightly more — iterate
@@ -69,10 +75,15 @@ def simulate_bounce_cycle(target_h: float, dt: float = 0.02, restitution: float 
         vel_list.append([vx, vy, vz])
 
         # Ballistic dynamics with drag
-        speed = math.sqrt(vx**2 + vy**2 + vz**2)
-        ax = -drag * speed * vx
-        ay = -drag * speed * vy
-        az = -g - drag * speed * vz
+        if drag_mode == "quadratic":
+            speed = math.sqrt(vx**2 + vy**2 + vz**2)
+            ax = -drag_coeff * speed * vx
+            ay = -drag_coeff * speed * vy
+            az = -g - drag_coeff * speed * vz
+        else:  # linear (PhysX)
+            ax = -linear_damping * vx
+            ay = -linear_damping * vy
+            az = -g - linear_damping * vz
 
         vx += ax * dt
         vy += ay * dt
@@ -97,7 +108,8 @@ def simulate_bounce_cycle(target_h: float, dt: float = 0.02, restitution: float 
     }
 
 
-def run_ekf_with_noise(traj: dict, n_trials: int = 50, seed: int = 42) -> dict:
+def run_ekf_with_noise(traj: dict, n_trials: int = 50, seed: int = 42,
+                       drag_mode: str = "linear") -> dict:
     """Run EKF on trajectory with D435i noise, collect per-step errors.
 
     Runs n_trials independent noise realizations to average out stochastic effects.
@@ -130,7 +142,7 @@ def run_ekf_with_noise(traj: dict, n_trials: int = 50, seed: int = 42) -> dict:
         else:
             phases.append("ascending")
 
-    cfg = BallEKFConfig()
+    cfg = BallEKFConfig(drag_mode=drag_mode)
     noise_cfg = D435iNoiseModelCfg()
 
     noise_model = D435iNoiseModel(num_envs=1, device="cpu", cfg=noise_cfg)
@@ -407,15 +419,18 @@ def main():
                         help="Number of noise trials per height")
     parser.add_argument("--out", type=str, default=None,
                         help="Output figure path (PNG)")
+    parser.add_argument("--drag-mode", type=str, default="linear",
+                        choices=["linear", "quadratic"],
+                        help="Drag model for ground truth and EKF (default: linear = PhysX)")
     args = parser.parse_args()
 
     targets = [float(t.strip()) for t in args.targets.split(",")]
 
     results = []
     for h in targets:
-        print(f"  Simulating {h:.2f}m bounce ({args.n_trials} trials)...")
-        traj = simulate_bounce_cycle(h)
-        r = run_ekf_with_noise(traj, n_trials=args.n_trials)
+        print(f"  Simulating {h:.2f}m bounce ({args.n_trials} trials, drag={args.drag_mode})...")
+        traj = simulate_bounce_cycle(h, drag_mode=args.drag_mode)
+        r = run_ekf_with_noise(traj, n_trials=args.n_trials, drag_mode=args.drag_mode)
         results.append(r)
 
     print_results(results)

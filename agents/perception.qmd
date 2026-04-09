@@ -13,19 +13,42 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete** (565 CPU tests, 139 iterations).
+Perception pipeline is **feature-complete** (565 CPU tests, 140 iterations).
 EKF uses a **5-level phase-aware Q schedule** with R² = 0.994 noise-to-gap
 prediction model — validated against real policy data (max error ±0.8pp).
+Drag model configurable: linear (PhysX sim) or quadratic (real hardware).
 
-New: **Drag model mismatch discovered and fixed** (iter 139). The EKF used
-quadratic aerodynamic drag (a = −0.112·|v|·v) but PhysX sim uses linear damping
-(a = −0.1·v). At launch velocity for 1m juggle (4.4 m/s), the EKF predicted
-5× more drag than the sim applies — causing 230 mm/s vz RMSE and 102mm apex
-position error from drag mismatch alone. Fixed by adding configurable drag mode
-to EKF; sim pipeline now defaults to "linear" to match PhysX.
+**Re-validated** error decomposition with corrected linear drag (iter 140).
+With matched drag models, ascending vz RMSE = 0.61–1.16 m/s — confirming
+noise (not drag) is the dominant error source in sim. Drag mismatch only
+matters for real-hardware deployment (quadratic vs linear).
 
 See [perception gap decomposition](../experiments/perception/2026-04-10_perception_gap_decomposition.qmd) — the "perception gap" is actually a policy gap.
 Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd) and [noise-to-gap prediction](../experiments/perception/2026-04-10_noise_gap_prediction.qmd) (R² = 0.994, validated against policy eval).
+
+---
+
+## Iteration 140 — Re-validate EKF error decomposition with linear drag {.unnumbered}
+*2026-04-10*
+
+Re-ran the EKF error decomposition (iter 138) with the corrected linear drag model
+on both ground truth and EKF — ensuring the drag model matches PhysX. Updated
+`analyze_ekf_error_decomposition.py` with configurable `--drag-mode` parameter.
+
+| Height | Linear vz RMSE (asc.) | Quadratic vz RMSE (asc.) |
+|--------|----------------------|--------------------------|
+| 0.10m  | 0.613 m/s            | 0.613 m/s                |
+| 0.50m  | 0.887 m/s            | 0.882 m/s                |
+| 1.00m  | 1.158 m/s            | 1.040 m/s                |
+
+When the drag model matches (either linear or quadratic), the error structure is
+similar — **noise dominates**, not drag. The 1m case shows ~11% more vz error
+under linear drag because the ball actually flies higher (1.042m vs 0.952m apex),
+accumulating more noise exposure. The gap prediction model (R²=0.994) remains
+valid because it's analytical and doesn't depend on drag mode.
+
+**Conclusion**: The drag fix from iter 139 matters for **real hardware** deployment
+(where true drag is quadratic) but has minimal impact on the sim-based gap prediction.
 
 ---
 

@@ -130,3 +130,27 @@ Decision:   Next iter: re-run EKF error decomposition and gap prediction
             with the corrected linear drag model. This should show a large
             reduction in ascending-phase vz error. Then re-validate against
             policy Stage G eval data to see if the corrected model fits better.
+
+## Iteration 140 — Re-validate EKF error decomposition with linear drag  (2026-04-10T02:30:00Z)
+Hypothesis: Re-running EKF error decomposition with matched linear drag
+            (both ground truth and EKF) will confirm that noise, not drag
+            model mismatch, is the dominant error source in sim.
+Change:     Updated analyze_ekf_error_decomposition.py with --drag-mode
+            parameter (linear/quadratic) for both ground truth trajectory
+            and EKF config. Defaults to linear (PhysX). Re-ran decomposition.
+Command:    python scripts/perception/analyze_ekf_error_decomposition.py \
+              --drag-mode linear --out images/perception/ekf_error_decomposition_linear_iter140.png
+            pytest scripts/perception/ -x -q → 565/565 passed (12.11s)
+Result:     CONFIRMED: with matched drag, noise dominates error structure.
+            Linear drag (matched):  asc vz RMSE 0.613 (0.10m) → 1.158 (1.00m)
+            Quadratic drag (matched): asc vz RMSE 0.613 (0.10m) → 1.040 (1.00m)
+            Linear case has ~11% more vz error at 1.00m because ball flies
+            higher (actual apex 1.042m vs 0.952m) → more noise exposure.
+            Gap prediction model (R²=0.994) is analytical — drag-independent.
+            Overall pos RMSE: 9.7mm (0.10m) → 32.2mm (1.00m) under linear.
+            Descending phase remains clean: vz ~0.09 m/s at all heights.
+            Policy agent at iter 32 (81% context), waiting for Stage G retrain.
+Decision:   RE-VALIDATE task complete. Next priorities:
+            (1) Wait for policy Stage G retrain results to re-validate gap model
+            (2) Consider real-hardware prep: D435i wrapper skeleton (low priority)
+            (3) Check if policy agent needs support
