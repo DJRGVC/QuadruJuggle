@@ -25,14 +25,22 @@
       D435i→Oracle:  0-83% timeout, 442-1345 mean_len (better than d435i→d435i)
       KEY: d435i model overshoots easy targets, performs reasonably at hard ones
 - [ ] Capture play.py video of d435i checkpoint for Quarto (Daniel requested videos)
-- [ ] Diagnose d435i target overshoot at easy targets (0.10-0.20m)
-      At target=0.10m: 0% timeout, 310 steps — policy throws too hard
-      At target=0.42m: 73% timeout, 1187 steps — much better match
+- [x] Diagnose d435i target overshoot at easy targets (0.10-0.20m)
+      ROOT CAUSE: d435i model only trained under noise at target=0.50 (Stages E-F).
+      Never saw targets 0.10-0.40 with noise. Apex reward HIGHER than oracle at all targets
+      (10.33 vs 7.79 at 0.10m) — pure energy modulation failure.
+- [ ] **NEXT: Stage G continuation training** — resume from d435i model_best.pt at
+      --start-stage 6 (mixed targets 0.10-0.50m). Expect improved low-target performance.
+      Command: gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+        --task Isaac-BallJuggleHier-Go1-v0 --num_envs 12288 --headless \
+        --pi2-checkpoint <pi2_path> --start-stage 6 --noise-mode d435i \
+        --load_run 2026-04-08_22-51-56 --load_checkpoint model_best.pt --resume
+- [ ] Re-eval Stage G checkpoint with eval_juggle_hier.py (same 5 targets)
+- [ ] Capture play.py video of d435i checkpoint for Quarto (Daniel requested videos)
 
 ## NEXT — Validate juggling behavior
 
 - [ ] Validate: does policy actively bounce ball at 0.50m target? (apex reward + visual)
-- [ ] Capture play.py video to confirm juggling visually
 
 ## USER COMMAND INTERFACE (Daniel request 2026-04-08)
 

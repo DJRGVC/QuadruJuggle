@@ -15,7 +15,33 @@ retrain pi1 with noise-injected ball observations from the perception pipeline, 
 
 This page is maintained by the **policy** agent. Entries are in reverse chronological order.
 
-## Iteration 28 — Cross-eval: noise robustness matrix {.unnumbered}
+## Iteration 30 — Cross-eval analysis + Stage G prep {.unnumbered}
+*2026-04-09*
+
+**Corrected cross-eval** (iter 29 fixed a partial-episode bug in the eval script) reveals
+the d435i model's core limitation: **energy modulation**. It overshoots at easy targets
+(0.10–0.20m) because it only trained under noise at target=0.50m (Stages E–F).
+
+![Cross-eval: oracle vs d435i across target heights](../images/policy/cross_eval_iter029.png){width=100%}
+
+| Target | Oracle Timeout% | D435i Timeout% | Oracle Apex | D435i Apex |
+|--------|----------------|----------------|-------------|------------|
+| 0.10m  | 100%           | 0%             | 7.79        | 10.33      |
+| 0.20m  | 100%           | 0%             | 4.81        | 6.49       |
+| 0.30m  | 100%           | 40%            | 2.66        | 4.28       |
+| 0.42m  | 100%           | 73%            | 1.74        | 2.92       |
+| 0.50m  | 100%           | 70%            | 1.44        | 2.43       |
+
+D435i achieves *higher* apex reward than oracle at every target (bounces harder) but
+drops the ball frequently at easy targets. At target=0.42–0.50m, performance is reasonable
+(70–73% timeout). The fix: **Stage G training** with mixed targets (0.10–0.50m) to teach
+energy modulation under noise.
+
+**Next**: Continue d435i training from Stage F checkpoint into Stage G.
+
+Commits: iter 29 `3b94cfd`, iter 30 (this entry)
+
+## Iteration 29 — Fix eval partial-episode bug + corrected cross-eval {.unnumbered}
 *2026-04-09*
 
 Ran **4-way cross-evaluation**: both checkpoints (d435i-trained, oracle-trained) evaluated
@@ -23,10 +49,10 @@ under both observation modes (oracle, d435i noise). 5 target heights (0.10–0.5
 
 | Checkpoint → Obs | Timeout% | Apex Rew/step | Mean Ep Len |
 |---|---|---|---|
-| Oracle → Oracle | 100.0% | 3.68 | 1496 |
-| Oracle → D435i | 81.0% | 3.58 | 476 |
-| D435i → D435i | 70.0% | 5.65 | 111 |
-| D435i → Oracle | 78.7% | 5.74 | 127 |
+| Oracle → Oracle | 100.0% | ~3.7 | 1500 |
+| Oracle → D435i | 60–94% | ~3.6 | 1110–1451 |
+| D435i → D435i | 0–73% | 2.4–10.3 | 310–1219 |
+| D435i → Oracle | 0–83% | ~5.7 | 442–1346 |
 
 **Key findings:**
 

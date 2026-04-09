@@ -133,6 +133,7 @@ _BJ_STAGES = [
     (0.40,     0.40,    2.5,     0.050,  0.00,       1.00),  # D  — full noise, higher target
     (0.50,     0.50,    2.5,     0.070,  0.10,       1.00),  # E  — final target + lateral vel
     (0.50,     0.50,    2.5,     0.100,  0.18,       1.00),  # F  — robustness: wider XY + vel
+    (0.10,     0.50,    2.5,     0.100,  0.18,       1.00),  # G  — consolidation: mixed targets
 ]
 _BJ_THRESHOLD      = 0.30   # lowered from 0.75: active juggling has ~63% timeout
 _BJ_APEX_THRESHOLD = 1.3     # ball-at-rest earns ~0.99/step; 1.3 requires bouncing but isn't at performance ceiling (was 1.5, caused Stage E plateau)

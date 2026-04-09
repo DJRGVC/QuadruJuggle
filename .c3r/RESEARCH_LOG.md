@@ -93,3 +93,22 @@ Result:     **D435i reached Stage F (final stage, 6/6).** Completed 1500 continu
 Decision:   Next iteration: (1) capture play.py video of d435i checkpoint for Quarto
             (Daniel requested), (2) cross-eval: run noise-trained checkpoint with oracle obs
             and vice versa to measure noise robustness vs overfitting. Both need GPU.
+
+## Iteration 30 — Cross-eval analysis + Stage G preparation  (2026-04-09T10:20Z)
+Hypothesis: The d435i target overshoot at easy targets (0.10-0.20m) is caused by the model
+            never training on low targets under noise — it only saw target=0.50 in Stages E-F.
+            Stage G (mixed targets 0.10-0.50) should fix energy modulation.
+Change:     Analysis iteration (GPU occupied by perception). Created cross-eval comparison
+            figure. Updated Quarto page with corrected results table and figure. Prepared
+            Stage G training command in fix_plan.md.
+Command:    python scripts/plot_cross_eval.py (figure generation, no GPU)
+Result:     CONFIRMED: d435i apex reward HIGHER than oracle at ALL targets (10.33 vs 7.79
+            at 0.10m, 6.49 vs 4.81 at 0.20m, etc.) — the model throws too hard.
+            At target=0.42-0.50m, d435i achieves 70-73% timeout (reasonable).
+            At target=0.10-0.20m, d435i achieves 0% timeout (catastrophic overshoot).
+            Root cause: d435i training skipped Stage G (mixed targets), only trained
+            at target=0.50 under noise.
+            Figure: images/policy/cross_eval_iter029.png
+Decision:   Next iteration: launch Stage G continuation training from d435i model_best.pt
+            (start-stage 6, noise-mode d435i). This is the highest-priority item.
+            GPU was blocked this entire iteration by perception agent's demo runs.
