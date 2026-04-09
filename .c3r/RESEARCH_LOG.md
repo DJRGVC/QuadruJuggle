@@ -284,3 +284,32 @@ Decision:   Next iter: check if GPU freed. If so, run oracle vs d435i comparison
             pre-Stage-G model). The plateau finding suggests we may need to
             communicate to policy agent about relaxing Stage G curriculum for
             d435i mode (lower threshold, or easier target distribution).
+
+## Iteration 122 — Live training monitoring + TensorBoard plotting tool  (2026-04-09T21:00:00Z)
+Hypothesis: Reading TensorBoard event files directly (vs text log parsing) will
+            enable accurate live monitoring of the policy agent's active training.
+Change:     1. Created plot_training_tb.py — reads TB event files directly, produces
+               5-panel figure (timeout%, ep_length, apex_reward, noise_std, ES counter).
+               Handles missing dirs/tags gracefully. 7 tests (485/485 total pass).
+            2. Generated stage_g_training_progress_iter122.png from the active training run.
+            3. Updated agents/perception.qmd with iter 122 entry + live training figure + table.
+Command:    python plot_training_tb.py --logdir .../2026-04-09_07-38-27/ --out ... (CPU only)
+            pytest scripts/perception/ -x -q → 485/485 passed (10.96s)
+Result:     TRAINING PLATEAU CONFIRMED AND QUANTIFIED:
+            - 776 iterations (steps 2764–3539), timeout 54.1% ± 0.2%
+            - Zero iterations ever reached 80% threshold
+            - ES no-improve counter at 745/1500 (49.7%) — will early stop at ~step 4294
+            - At 3.3s/iter, ~42 min until ES triggers (PID 1348279 running 41 min)
+            - Noise std stable at 0.2140, apex reward 3.618 ± 0.135
+            CHECKPOINTS AVAILABLE for eval:
+            - Oracle: .../2026-04-08_19-19-41/model_best.pt (Stage F oracle)
+            - D435i:  .../2026-04-09_07-38-27/model_best.pt (Stage G d435i, 54% timeout)
+            EVAL COMMAND READY:
+            $C3R_BIN/gpu_lock.sh bash scripts/perception/run_oracle_vs_d435i.sh \
+              --oracle-pi1 /home/daniel-grant/Research/QuadruJuggle-policy/logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_19-19-41/model_best.pt \
+              --d435i-pi1 /home/daniel-grant/Research/QuadruJuggle-policy/logs/rsl_rl/go1_ball_juggle_hier/2026-04-09_07-38-27/model_best.pt \
+              --targets "0.10 0.30 0.50 0.70 1.00" --label stage_g_comparison --steps 1500 --num-envs 4
+Decision:   Next iter: check if GPU freed (ES should trigger by ~step 4294).
+            If free, launch oracle vs d435i comparison using the command above.
+            If still blocked, continue monitoring or analyze perception noise
+            model parameters for potential improvements.

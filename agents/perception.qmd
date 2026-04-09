@@ -20,6 +20,34 @@ See [full Stage G bottleneck analysis](../experiments/perception/2026-04-09_stag
 
 ---
 
+## Iteration 122 — Live training plateau monitoring {.unnumbered}
+*2026-04-09*
+
+Created `plot_training_tb.py` — reads TensorBoard event files directly (unlike
+the text-log parser from iter 121), enabling live monitoring of active training runs.
+Applied it to the policy agent's ongoing Stage G d435i training.
+
+**Training plateau confirmed and deepening.** After 776 iterations (steps 2764–3539),
+timeout is locked at 54.1% ± 0.2% with zero iterations ever reaching 80%. The early
+stopping no-improvement counter is at 745/1500 — the run will early stop at ~step 4294
+(~42 min from now) without reaching the curriculum threshold.
+
+![Stage G training progress (live)](../images/perception/stage_g_training_progress_iter122.png){width=100%}
+
+| Metric | Value |
+|:-------|:-----:|
+| Training iters | 776 (steps 2764–3539) |
+| Timeout (last 20) | 54.1% ± 0.2% |
+| Iters ≥ 80% | 0 / 776 |
+| Apex reward (last 20) | 3.618 ± 0.135 |
+| Noise std | 0.2140 (stable) |
+| ES no-improve | 745 / 1500 (49.7%) |
+
+**Next step**: once training early stops and GPU frees (~42 min), launch oracle
+vs d435i comparison using the best checkpoint from this run.
+
+---
+
 ## Iteration 121 — Stage G training plateau diagnosis {.unnumbered}
 *2026-04-09*
 
