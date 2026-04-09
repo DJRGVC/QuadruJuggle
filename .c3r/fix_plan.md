@@ -2,31 +2,28 @@
 #
 # Active tasks and forward-looking work only. Completed tasks archived.
 
-## ACTIVE — Simplified 6-stage curriculum (0.50m target)
+## ACTIVE — Fix noise mode + oracle vs d435i comparison
 
 - [x] Redesign curriculum: 16 stages → 6 stages (A-F), max target 0.50m.
-      Literature-aligned (Rudin 4, Zhuang 4, ROGER 4). Daniel approved.
-- [x] Run fresh training with new 6-stage curriculum from scratch (Stage A).
-      DONE: iter 22 trained A→D (stuck). iter 23 fixed σ_ratio 3.5→2.5, ALL 6 STAGES REACHED.
-- [x] If Stage A-C reached in first run: continue with resume to push through D-F
-      DONE: D→E→F in 1500 iters (78 min). Checkpoint: 2026-04-08_19-19-41/model_best.pt
+- [x] Run fresh oracle training with 6-stage curriculum (iters 22-23, all stages reached).
+- [x] BUG FIX: iter 22-23 ran with mode="oracle" due to missing --noise-mode d435i flag.
+      Curriculum noise_scale changes were no-ops. Added warning to train script.
+- [ ] **Run fresh training WITH --noise-mode d435i** from scratch (Stage A).
+      This is the corrected noise-curriculum run. Resume from scratch, NOT from oracle checkpoint.
+- [ ] Once d435i run reaches Stage F: compare against oracle baseline (iter_023 checkpoint)
+      using compare_pi1.py with --noise-mode-a oracle --noise-mode-b d435i
+- [ ] Cross-eval: noise-trained checkpoint under oracle obs vs d435i obs
+
+## NEXT — Validate juggling behavior
+
 - [ ] Validate: does policy actively bounce ball at 0.50m target? (apex reward + visual)
-- [ ] Oracle vs d435i comparison once Stage E/F reached
-
-## NEXT — Noise robustness validation
-
-- [ ] Cross-eval: noise-trained vs oracle-trained, tested with both obs types
-- [ ] Full run to Stage F with d435i noise — final result
+- [ ] Capture play.py video to confirm juggling visually
 
 ## USER COMMAND INTERFACE (Daniel request 2026-04-08)
 
 - [x] Implement WASD velocity + P/L height controls in play_teleop.py
 - [ ] Test teleop with Daniel (needs visual verification)
 - [ ] Research: how to compose user height commands with curriculum target during training
-
-## INFRASTRUCTURE
-
-- [ ] Capture play.py video to confirm juggling visually
 
 ## COMPLETED
 # iters 001-003: oracle baseline (41D pi2, 12288 envs, Stage D, timeout=98.9%)
@@ -36,4 +33,6 @@
 # iters 015-016: curriculum threshold 0.75→0.30, training plateau at apex≈10.7
 # iter_017: compaction
 # iter_018: plateau diagnosis, active GPU run analysis
-# iter_019: curriculum redesign 16→6 stages, 0.50m target (Daniel approved)
+# iter_019-020: curriculum redesign 16→6 stages (Daniel approved)
+# iter_021: teleop interface
+# iter_022-023: 6-stage oracle training — all stages reached (but accidentally oracle-only!)

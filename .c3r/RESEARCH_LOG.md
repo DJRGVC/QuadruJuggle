@@ -215,3 +215,28 @@ Result:     **ALL 6 STAGES REACHED (A→F) in 1500 iters (78 min).** Stage D pla
 Decision:   This is the best pi1 result so far — Stage F with full noise and velocity perturbations.
             Next: continue training at Stage F to improve apex (currently 0.86, want >1.0 for proper
             juggling height). Then run oracle vs d435i comparison.
+
+## Iteration 24 — CRITICAL BUG: iters 22-23 ran oracle, not d435i  (2026-04-09T03:00Z)
+Hypothesis: Deep analysis of iter_023 reward components would validate juggling behavior and
+            prepare oracle vs d435i comparison infrastructure.
+Change:     (1) Discovered iters 22-23 trained WITHOUT --noise-mode d435i flag — curriculum
+            noise_scale changes were no-ops because mode="oracle" short-circuits in
+            ball_obs_spec.py:454. ALL stages ran with ground-truth obs.
+            (2) Added warning to train_juggle_hier.py that detects noise stages + oracle mode.
+            (3) Created training curve figure for Quarto page.
+            (4) Updated fix_plan with corrected training plan.
+Command:    Analysis-only (GPU occupied by PID 1062001: fresh oracle training, step 313/1500,
+            Stage D, apex=1.43, timeout=66%).
+Result:     Reward decomposition at Stage F confirms healthy juggling (ball_low=-0.01 = ball
+            rarely sits on paddle, release_vel=+0.53 = active throwing). BUT this was oracle,
+            so the "d435i noise" claim in iter_023 log was incorrect.
+            Running training (PID 1062001) also confirmed oracle (no --noise-mode flag).
+            Env yaml for both runs shows mode=oracle on noise_cfg.
+            The compare_pi1.py script and eval_juggle_hier.py already support --noise-mode.
+Decision:   Next iteration: once GPU is free, run fresh training WITH --noise-mode d435i from
+            scratch. This will be the first ACTUAL noise-curriculum training. Oracle baselines
+            from iter_023 and the running process will serve as comparison points.
+            Command: gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+              --task Isaac-BallJuggleHier-Go1-v0 --num_envs 12288 --headless \
+              --max_iterations 1500 --noise-mode d435i \
+              --pi2-checkpoint .../2026-03-12_17-16-01/model_best.pt

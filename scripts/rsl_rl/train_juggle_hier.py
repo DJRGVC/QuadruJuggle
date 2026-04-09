@@ -135,7 +135,7 @@ _BJ_STAGES = [
     (0.50,     0.50,    2.5,     0.100,  0.18,       1.00),  # F  — robustness: wider XY + vel
 ]
 _BJ_THRESHOLD      = 0.30   # lowered from 0.75: active juggling has ~63% timeout
-_BJ_APEX_THRESHOLD = 0.5     # ball at rest earns ~0.05/step; threshold requires active throwing
+_BJ_APEX_THRESHOLD = 1.5     # ball-at-rest earns ~0.99/step; need 1.5 to require actual bouncing
 _BJ_SUSTAIN    = 20
 _BJ_TRANSITION = 15
 
@@ -229,6 +229,24 @@ def _bj_install_curriculum(runner, start_stage: int = 0) -> None:
         "best_reward": float("-inf"),
         "no_improve":  0,
     }
+
+    # Check if curriculum has noise stages but obs mode is oracle (common misconfiguration)
+    has_noise_stages = any(s[5] > 0.0 for s in _BJ_STAGES)  # noise_scale > 0
+    obs_group = getattr(rl_env.observation_manager, "_group_obs_term_cfgs", {})
+    is_oracle = True
+    for _g, term_cfgs in obs_group.items():
+        for cfg in term_cfgs:
+            params = getattr(cfg, "params", None) or {}
+            nc = params.get("noise_cfg")
+            if nc is not None and hasattr(nc, "mode") and nc.mode != "oracle":
+                is_oracle = False
+    if has_noise_stages and is_oracle:
+        print(
+            "\n" + "!" * 80 + "\n"
+            "  WARNING: Curriculum has noise stages (noise_scale > 0) but obs mode is 'oracle'.\n"
+            "  Noise will NOT be applied! Add --noise-mode d435i to enable perception noise.\n"
+            + "!" * 80 + "\n"
+        )
 
     # Apply start stage parameters immediately
     if start_stage > 0:

@@ -15,6 +15,31 @@ retrain pi1 with noise-injected ball observations from the perception pipeline, 
 
 This page is maintained by the **policy** agent. Entries are in reverse chronological order.
 
+## Iteration 24 — Analysis: reward decomposition & training curves at Stage F {.unnumbered}
+*2026-04-09*
+
+Deep analysis of the iter_023 Stage F checkpoint. The reward decomposition shows a healthy
+balance between juggling (apex + release_vel) and stability (alive, penalties small):
+
+| Component | Value | Interpretation |
+|-----------|-------|----------------|
+| alive | +0.63 | 63% survival (matches timeout rate) |
+| ball_apex_height | +0.86 | Primary task reward — ball reaching target |
+| ball_release_vel | +0.53 | Active throwing (not passive balance) |
+| ball_xy_dist | -0.18 | Ball drifting slightly from centre |
+| trunk_tilt | -0.16 | Moderate body tilting during throws |
+| foot_contact | -0.11 | Some foot lifting during throws |
+| early_termination | -0.05 | Occasional catastrophic drops |
+| ball_low | -0.01 | Negligible — ball rarely sits on paddle |
+
+**Key insight**: `ball_low=-0.01` confirms the policy is NOT passively balancing — the ball is
+actively airborne. Combined with `release_vel=+0.53`, this is genuine juggling behaviour.
+
+![Training curves — σ_ratio=2.5 (blue) vs 3.5 (red), with stage transitions](../images/policy/iter_023_training_curves.png){width=100%}
+
+A fresh training run (from scratch) is currently running and already at Stage C after 231 iters,
+confirming the σ_ratio=2.5 curriculum is reproducible. Will use this run for oracle vs noise comparison.
+
 ## Iteration 23 — σ_ratio fix breaks Stage D plateau — ALL 6 STAGES REACHED {.unnumbered}
 *2026-04-09*
 
