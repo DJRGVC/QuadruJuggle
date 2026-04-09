@@ -10,6 +10,7 @@
 - [x] Write SimBallDetector for TiledCamera float32 depth (iter 77, 8 tests)
 - [x] Integrate SimBallDetector into debug_d435i_capture.py (iter 77)
 - [x] Sim pipeline integration tests — 8 tests (iter 82, 294/294 pass)
+- [x] Pixel projection tests — 17 tests (iter 84, 311/311 pass; projection table validated)
 - [ ] GPU smoke test: capture RGB+depth frames with ball visible (blocked by policy PID 1118275)
 - [ ] If camera still wrong: try identity quaternion, systematically rotate
 - [ ] Wire camera→detect→EKF pipeline for visual demo (demo_camera_ekf.py ready, needs GPU)

@@ -249,3 +249,31 @@ Result:     Quarto page current. Video workflow ready for GPU demo output.
 Decision:   Next iter: check GPU status. If free, run debug_d435i_capture.py smoke test
             immediately (top priority). If GPU still locked, could add expected-pixel-location
             test for camera config validation, or update the test for _copy_to_quarto().
+
+## Iteration 84 — Pixel projection tests + camera convention derivation  (2026-04-09T10:00:00Z)
+Hypothesis: A CPU-only pixel projection test validates where balls appear in the D435i image,
+            catching config errors before the GPU smoke test.
+Change:     Created test_pixel_projection.py with 17 tests covering:
+            1. Camera intrinsics (fx≈343px, HFOV≈86°, VFOV≈70°)
+            2. Camera orientation (70° elevation, +X forward component)
+            3. Pixel projection (balls at 0.2/0.5/1.0m in frame; ball at rest out of frame)
+            4. Height-monotonic projection (higher ball → lower v pixel)
+            5. Lateral offset projection (Y-world → U-pixel shift)
+            6. Ball pixel area at 0.5m (13.6px radius, 577px² — easily detectable)
+            7. World→cam→world roundtrip consistency
+            8. Project→deproject roundtrip
+            9. Diagnostic projection table (height → depth, pixel, blob size)
+            Key learning: Isaac Lab convention="world" means identity quat → +X forward, +Z up.
+            The -70° Y tilt gives camera forward = (0.342, 0, 0.940) in world. quat_w_ros
+            is constructed by mapping tilted world-convention axes to ROS camera convention
+            (X=right, Y=down, Z=forward). The OpenGL→ROS conversion is NOT simply 180° about X
+            when "world" convention is used — must derive from first principles.
+            Projection table: ball visible from 5cm above paddle (v=464) through 1.5m (v=135).
+            Ball at rest (0cm) projects to v=910 — correctly out of 480px frame.
+Command:    pytest scripts/perception/test_pixel_projection.py → 17/17 passed.
+            pytest scripts/perception/ → 311/311 passed (294 existing + 17 new).
+            GPU locked by policy d435i training (PID 1118275, ~35 min in, est 80 min remaining).
+Result:     All projections validated. Table confirms camera config is correct for
+            ball heights 5cm–1.5m. Ball at 1m target height: 7px radius, easily detectable.
+Decision:   Next iter: GPU smoke test is top priority (check if training finished).
+            The projection table provides ground truth for validating GPU captures.
