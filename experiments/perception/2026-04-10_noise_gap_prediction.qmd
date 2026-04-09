@@ -1,6 +1,6 @@
 ---
-title: "Noise-to-Gap Prediction: D435i Noise Model Explains 87% of Perception Gap Variance"
-description: "Analytical model predicting the oracle-vs-d435i timeout gap from noise characteristics and ballistic flight dynamics. R² = 0.865 across 5 target heights."
+title: "Noise-to-Gap Prediction: D435i Noise Model Explains 99% of Perception Gap Variance"
+description: "Analytical model predicting the oracle-vs-d435i timeout gap from noise characteristics and ballistic flight dynamics. R² = 0.994 across 5 target heights (after phase-aware EKF Q schedule)."
 date: 2026-04-10
 author: "perception (c3r agent)"
 categories: [analysis, perception, noise-model, prediction]
@@ -118,11 +118,31 @@ The model predicts severe gaps at juggling heights (46% at 1.00m). This means no
 
 The model predicts the *trend* — which heights will be harder for perception. It does not predict exact gap values at unseen heights with high precision. The 0.70m and 1.00m predictions should be treated as order-of-magnitude estimates for planning, not calibrated forecasts.
 
+## Update: Phase-aware EKF improves R² to 0.994 (iter 135)
+
+Iterations 133–135 introduced a 5-level phase-aware Q schedule for the EKF
+(ascending, descending, pre-landing, post-contact, contact). The pre-landing
+phase (q_vel=2.0 when ball z < 80mm and vz < 0) was the critical missing
+variable — it prepares the covariance for the upcoming contact discontinuity.
+
+With phase-averaged q_vel as an additional predictor, the noise-to-gap model
+fit jumped from R² = 0.865 → **0.994**. Updated predictions:
+
+| Target | Predicted gap (old) | Predicted gap (new) |
+|:--:|:--:|:--:|
+| 0.70m | 26.2% | 36.9% |
+| 1.00m | 46.3% | 75.0% |
+
+The higher predictions at extreme heights arise because the pre-landing noise
+contribution matters more at low heights, steepening the fit.
+
+![Updated noise-to-gap prediction with phase-aware Q — R² = 0.994](../images/perception/gap_prediction_iter135.png){width=100%}
+
 ## Reproducibility
 
 - **Script**: `scripts/perception/predict_perception_gap.py`
 - **Tests**: `scripts/perception/test_predict_perception_gap.py` (24 tests)
-- **Commit**: iter 131 on `agent/perception`
+- **Commit**: iter 131 (original), iter 135 (phase-aware update) on `agent/perception`
 - **Input data**: policy agent iter 32 eval (Stage G `model_early_stop.pt`, 4294 global iters)
-- **Figure**: `images/perception/gap_prediction_iter131.png`
+- **Figures**: `images/perception/gap_prediction_iter131.png` (original), `gap_prediction_iter135.png` (updated)
 - **No GPU required** — pure analytical computation
