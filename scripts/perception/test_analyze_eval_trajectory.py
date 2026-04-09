@@ -8,6 +8,7 @@ import pytest
 from analyze_eval_trajectory import (
     compute_height_binned,
     compute_overall_metrics,
+    compute_phase_metrics,
     load_npz,
 )
 
@@ -150,3 +151,69 @@ class TestPlotting:
                         ["Run A", "Run B"], out)
         assert os.path.isfile(out)
         assert os.path.getsize(out) > 1000
+
+
+class TestPhaseMetrics:
+    """Tests for ascending/descending/contact phase analysis."""
+
+    def test_all_phases_present(self):
+        traj = _make_trajectory()
+        ph = compute_phase_metrics(traj, paddle_z=_PADDLE_Z)
+        assert "ascending" in ph
+        assert "descending" in ph
+        assert "contact" in ph
+
+    def test_phase_counts_sum_to_total(self):
+        traj = _make_trajectory(n_steps=300)
+        ph = compute_phase_metrics(traj, paddle_z=_PADDLE_Z)
+        total = sum(ph[p]["count"] for p in ("ascending", "descending", "contact"))
+        assert total == traj["gt"].shape[0]
+
+    def test_oscillating_ball_has_both_phases(self):
+        """Sinusoidal trajectory should have roughly equal ascending/descending."""
+        traj = _make_trajectory(n_steps=500, n_det=200)
+        ph = compute_phase_metrics(traj, paddle_z=_PADDLE_Z)
+        # Ball oscillates — both phases should have substantial counts
+        assert ph["ascending"]["count"] > 50
+        assert ph["descending"]["count"] > 50
+
+    def test_stationary_ball_all_contact(self):
+        """Ball sitting on paddle should be classified as contact."""
+        n = 100
+        gt = np.column_stack([
+            np.zeros(n), np.zeros(n),
+            np.full(n, _PADDLE_Z + 0.01),  # 10mm above paddle = within contact threshold
+        ])
+        ekf = gt.copy()
+        traj = {
+            "gt": gt, "ekf": ekf,
+            "det": np.zeros((0, 3)), "det_steps": np.zeros(0),
+            "dt": np.array(0.02),
+        }
+        ph = compute_phase_metrics(traj, paddle_z=_PADDLE_Z, contact_threshold=0.025)
+        assert ph["contact"]["count"] == n
+        assert ph["ascending"]["count"] == 0
+        assert ph["descending"]["count"] == 0
+
+    def test_det_rate_bounded(self):
+        traj = _make_trajectory(n_steps=200, n_det=100)
+        ph = compute_phase_metrics(traj, paddle_z=_PADDLE_Z)
+        for name in ("ascending", "descending", "contact"):
+            if ph[name]["count"] > 0:
+                assert 0 <= ph[name]["det_rate_pct"] <= 100
+
+    def test_ekf_rmse_positive(self):
+        traj = _make_trajectory()
+        ph = compute_phase_metrics(traj, paddle_z=_PADDLE_Z)
+        for name in ("ascending", "descending"):
+            if ph[name]["count"] > 0:
+                assert ph[name]["ekf_rmse_mm"] > 0
+
+    def test_perfect_ekf_phase(self):
+        """Perfect EKF should have near-zero RMSE in all phases."""
+        traj = _make_trajectory()
+        traj["ekf"] = traj["gt"].copy()
+        ph = compute_phase_metrics(traj, paddle_z=_PADDLE_Z)
+        for name in ("ascending", "descending", "contact"):
+            if ph[name]["count"] > 0:
+                assert ph[name]["ekf_rmse_mm"] < 0.01

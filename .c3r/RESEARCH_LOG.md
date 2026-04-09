@@ -288,3 +288,23 @@ Result:     Analysis tooling complete. When oracle eval runs and saves trajector
 Decision:   Next iter: check oracle_eval_DONE sentinel. If found, run analyze_eval_trajectory.py
             on the npz to get detection rate + height-binned RMSE under trained policy.
             If still blocked, update Quarto with policy agent's cross-eval findings.
+
+## Iteration 98 — Flight-phase analysis for trajectory evaluation  (2026-04-10T05:15:00Z)
+Hypothesis: Splitting EKF/detection metrics by flight phase (ascending vs descending vs contact)
+            will reveal phase-dependent performance differences — ascending should be predictable
+            (ballistic), while descending near paddle has contact transitions where EKF needs
+            adaptive Q. This insight will inform EKF tuning when oracle eval results arrive.
+Change:     Added compute_phase_metrics() + print_phase_table() to analyze_eval_trajectory.py.
+            Phases: ascending (vz>0, above contact zone), descending (vz≤0, above contact zone),
+            contact (within 25mm of paddle). Velocity estimated via central finite differences.
+            Integrated into both single-trajectory and comparison analysis paths.
+            7 new tests (TestPhaseMetrics): phase sum=total, both-phases-present, stationary-ball,
+            det-rate-bounded, ekf-rmse-positive, perfect-ekf.
+Command:    pytest scripts/perception/ → 354/354 passed (7.15s).
+            GPU status: policy training ETA ~38 min, oracle eval PID 1204960 still queued.
+Result:     Phase analysis ready. When oracle eval trajectory.npz arrives, analyze script
+            will now also output phase-separated table showing whether EKF outperforms raw
+            detections differently during ascent vs descent vs contact phases.
+Decision:   Next iter: check oracle_eval_DONE sentinel. ETA: training ~38min + eval ~15min
+            ≈ 53min total. Should complete before next iteration starts. When it does,
+            run analyze_eval_trajectory.py --npz <path> to get full results with phase analysis.

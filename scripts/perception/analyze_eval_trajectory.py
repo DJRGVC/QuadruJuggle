@@ -131,6 +131,105 @@ def compute_height_binned(
     }
 
 
+def compute_phase_metrics(
+    traj: dict,
+    paddle_z: float = _PADDLE_Z_DEFAULT,
+    contact_threshold: float = 0.025,
+) -> dict:
+    """Compute metrics split by flight phase: ascending, descending, contact.
+
+    Phases:
+        contact:    ball height above paddle < contact_threshold
+        ascending:  vz > 0 and not in contact
+        descending: vz <= 0 and not in contact
+
+    Velocity is estimated via finite differences of GT positions.
+    """
+    gt = traj["gt"]       # (T, 3)
+    ekf = traj["ekf"]     # (T, 3)
+    det = traj["det"]     # (D, 3)
+    det_steps = traj["det_steps"].astype(int)
+    dt = float(traj["dt"]) if "dt" in traj else 0.02
+    T = gt.shape[0]
+
+    # Compute velocity via finite differences (central where possible)
+    vz = np.zeros(T)
+    if T > 2:
+        vz[1:-1] = (gt[2:, 2] - gt[:-2, 2]) / (2 * dt)
+        vz[0] = (gt[1, 2] - gt[0, 2]) / dt
+        vz[-1] = (gt[-1, 2] - gt[-2, 2]) / dt
+    elif T == 2:
+        vz[:] = (gt[1, 2] - gt[0, 2]) / dt
+
+    gt_h = gt[:, 2] - paddle_z
+    in_contact = gt_h < contact_threshold
+    ascending = (~in_contact) & (vz > 0)
+    descending = (~in_contact) & (vz <= 0)
+
+    # Detection mask per step (True if a detection exists at that step)
+    det_at_step = np.zeros(T, dtype=bool)
+    valid_det_steps = det_steps[(det_steps >= 0) & (det_steps < T)]
+    det_at_step[valid_det_steps] = True
+
+    phases = {"ascending": ascending, "descending": descending, "contact": in_contact}
+    result = {}
+
+    for name, mask in phases.items():
+        n = mask.sum()
+        r = {"count": int(n)}
+        if n == 0:
+            r["ekf_rmse_mm"] = float("nan")
+            r["det_rmse_mm"] = float("nan")
+            r["det_rate_pct"] = float("nan")
+            result[name] = r
+            continue
+
+        # EKF RMSE in this phase
+        ekf_err = np.linalg.norm(ekf[mask] - gt[mask], axis=1)
+        r["ekf_rmse_mm"] = float(np.sqrt(np.mean(ekf_err ** 2)) * 1000)
+
+        # Detection rate and RMSE in this phase
+        n_det_in_phase = det_at_step[mask].sum()
+        r["det_rate_pct"] = float(n_det_in_phase / n * 100)
+
+        # Detection RMSE: match detections that fall within this phase
+        phase_det_mask = np.zeros(len(det_steps), dtype=bool)
+        for di, ds in enumerate(det_steps):
+            if 0 <= ds < T and mask[ds]:
+                phase_det_mask[di] = True
+        if phase_det_mask.any():
+            d_err = np.linalg.norm(
+                det[phase_det_mask] - gt[det_steps[phase_det_mask]], axis=1
+            )
+            r["det_rmse_mm"] = float(np.sqrt(np.mean(d_err ** 2)) * 1000)
+        else:
+            r["det_rmse_mm"] = float("nan")
+
+        result[name] = r
+
+    return result
+
+
+def print_phase_table(phase: dict, label: str = "") -> None:
+    """Print phase-separated metrics table."""
+    prefix = f"[{label}] " if label else ""
+    print(f"\n{prefix}Phase          | Count | Det Rate | Det RMSE (mm) | EKF RMSE (mm)")
+    print("-" * 72)
+    for name in ("ascending", "descending", "contact"):
+        p = phase[name]
+        n = p["count"]
+        if n == 0:
+            print(f"  {name:<14s} | {n:5d} |    —     |      —        |      —")
+            continue
+        dr = p["det_rate_pct"]
+        d = p["det_rmse_mm"]
+        e = p["ekf_rmse_mm"]
+        dr_s = f"{dr:5.1f}%" if not np.isnan(dr) else "  —  "
+        d_s = f"{d:7.1f}" if not np.isnan(d) else "    —  "
+        e_s = f"{e:7.1f}" if not np.isnan(e) else "    —  "
+        print(f"  {name:<14s} | {n:5d} | {dr_s}  |   {d_s}     |   {e_s}")
+
+
 def print_summary(metrics: dict, label: str = "") -> None:
     """Print a text summary of overall metrics."""
     prefix = f"[{label}] " if label else ""
@@ -326,11 +425,14 @@ def main():
     m1 = compute_overall_metrics(traj1)
     hb1 = compute_height_binned(traj1, args.paddle_z, args.bin_width, args.max_height)
 
+    ph1 = compute_phase_metrics(traj1, args.paddle_z)
+
     if args.compare:
         # Comparison mode
         traj2 = load_npz(args.compare)
         m2 = compute_overall_metrics(traj2)
         hb2 = compute_height_binned(traj2, args.paddle_z, args.bin_width, args.max_height)
+        ph2 = compute_phase_metrics(traj2, args.paddle_z)
 
         labels = args.labels or ["Run A", "Run B"]
         if len(labels) < 2:
@@ -338,8 +440,10 @@ def main():
 
         print_summary(m1, labels[0])
         print_height_table(hb1, labels[0])
+        print_phase_table(ph1, labels[0])
         print_summary(m2, labels[1])
         print_height_table(hb2, labels[1])
+        print_phase_table(ph2, labels[1])
 
         out = args.out or os.path.join(os.path.dirname(args.npz), "comparison.png")
         plot_comparison([traj1, traj2], [hb1, hb2], [m1, m2], labels, out)
@@ -348,6 +452,7 @@ def main():
         label = args.labels[0] if args.labels else ""
         print_summary(m1, label)
         print_height_table(hb1, label)
+        print_phase_table(ph1, label)
 
         out = args.out or os.path.join(os.path.dirname(args.npz), "eval_analysis.png")
         plot_single(traj1, hb1, m1, out, label)
