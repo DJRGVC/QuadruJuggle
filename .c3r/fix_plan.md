@@ -6,12 +6,12 @@
 # 3-level q_vel implemented (contact=50, post_contact=20, flight=TBD). sweep_q_vel.py ready.
 
 # PRIORITY: EKF Q-tuning for active juggling
-- [x] GPU sweep: coarse q_vel=[0.4-50] — DONE. All flight NIS < 3.0 (max 1.73).
-      EKF over-conservative; RMSE improvement only 1-2% over raw d435i.
-- [ ] GPU sweep: low-range q_vel=[0.01-0.4] to find NIS=3.0 crossing
-- [ ] Read combined sweep results, find optimal q_vel (or accept NIS < 3 if divergence risk)
-- [ ] Re-validate NIS with random actions at new q_vel (ensure not over-conservative)
-- [ ] Update BallEKFConfig defaults with tuned values
+- [x] GPU sweep: coarse q_vel=[0.4-50] — DONE (pre-adaptive R). All flight NIS < 3.0.
+- [x] Root cause: R_xy non-adaptive. Fixed: σ_xy = max(0.0025·z, 0.0005m).
+- [x] GPU sweep: low-range q_vel=[0.01-0.4] with adaptive R — DONE.
+      All flight NIS now 3.3-3.8 (correctly calibrated). q_vel=0.40 closest to NIS=3.0.
+      EKF loses to raw at Stage A (expected at z≈0.1m). Default q_vel=0.40 unchanged.
+- [ ] GPU sweep at higher target heights (0.3-0.5m) to confirm EKF beats raw at distance
 - [ ] Re-run sweep with noise-trained pi1 (from policy agent) once it converges
 
 # Support policy agent

@@ -292,3 +292,19 @@ Decision:   Next iter: check if sweep_q_vel_low_range.json exists. With adaptive
             low z). If NIS > 3 at all tested q_vel, the bisection in sweep_q_vel.py will
             auto-find the crossing. If still < 3 everywhere, consider that the EKF process
             model (ballistic+drag) is genuinely accurate for this task.
+
+## Iteration 74 — Adaptive R_xy sweep validates calibration  (2026-04-09T02:23:00Z)
+Hypothesis: With adaptive R_xy (iter 73 fix), low-range q_vel sweep should show flight NIS ≈ 3.0,
+            confirming the root cause was R_xy calibrated for wrong height.
+Change:     Waited for queued GPU sweep (PID 999147) to complete. Analysed results from
+            sweep_q_vel_low_range.json (6 q_vel points: 0.01-0.40, 512 envs × 600 steps).
+            Generated combined figure. Updated Quarto page + fix_plan.
+Command:    python apply_sweep_results.py logs/perception/sweep_q_vel_low_range.json --plot
+Result:     All flight NIS now 3.31-3.78 (was < 1.73 pre-fix). Root cause confirmed.
+            q_vel=0.40: flight NIS=3.31, EKF RMSE=6.49mm vs raw 4.92mm (-32.0%).
+            EKF loses to raw at Stage A (z≈0.1m) — expected, camera too precise for EKF to help.
+            q_vel=0.40 default unchanged (already correct).
+            256/256 CPU tests pass.
+Decision:   Next iter: run higher-height sweep (target=0.3-0.5m) to confirm EKF beats raw at
+            distance. Then final handoff to policy agent. Alternative: skip higher-height sweep
+            (EKF value proven via velocity estimation, not position) and declare pipeline tuned.

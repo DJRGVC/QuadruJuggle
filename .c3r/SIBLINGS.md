@@ -27,15 +27,15 @@ Siblings will see it in their next SIBLINGS.md refresh.
 ## policy
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
-- **status**: running · iter #11 · ctx 81%
+- **status**: idle · iter #12 · ctx 81%
 
 ### Recent commits on `agent/policy`
 ```
+f4981a6 Iteration 22: fresh 6-stage training — advanced A→D, stuck at D (apex plateau)
 8d8e8d5 Iteration 21: teleop interface — WASD velocity + P/L height control
 6e99ed8 Iteration 18: apex plateau diagnosis + Quarto report
 206e928 iter_017: compaction (summarized iters 009-014)
 e33e0d8 iter_016: continue training from step 5748 — apex plateau at 10.7 after curriculum advance
-c5f3d4e iter_015: curriculum threshold 0.75→0.30 — CURRICULUM ADVANCES, juggling sustained
 ```
 ### Files modified on `agent/policy` (relative to `c3r/QuadruJuggle`)
 ```
