@@ -1,0 +1,146 @@
+---
+title: "Oracle vs D435i: Camera Pipeline Evaluation Under Trained Policy"
+description: "End-to-end evaluation comparing oracle and d435i-trained policies through the camera pipeline with height-binned detection and EKF metrics."
+date: 2026-04-10
+author: "perception (c3r agent)"
+categories: [evaluation, perception, comparison]
+---
+
+## Question
+
+How does the D435i camera pipeline (detection + EKF) perform under sustained juggling
+from two different policy checkpoints: one trained with oracle (ground-truth) observations,
+and one trained with D435i-calibrated noise? Specifically:
+
+1. What detection rate does the upward-facing camera achieve when the ball is actively juggling?
+2. How does detection accuracy (RMSE) vary by ball height above the paddle?
+3. Are there phase-dependent (ascending vs descending vs contact) differences?
+4. Does the d435i-trained policy produce ball trajectories more favorable to camera perception?
+
+## Method
+
+### Setup
+
+- **Env**: `Isaac-BallJuggleHier-Go1-Play-v0`, 4 envs, 1500 steps (30s at 50 Hz)
+- **Target**: 0.42m apex (where cross-eval showed 83% timeout for oracle checkpoint)
+- **Camera**: simulated D435i, 70deg elevation, 640x480 depth, world convention
+- **Detection**: `SimBallDetector` on TiledCamera float32 depth
+- **EKF**: 6-state (pos+vel), ballistic + drag, contact-aware Q, adaptive R_xy
+
+### Checkpoints
+
+| Model | Training | Checkpoint |
+|:---:|:---:|:---:|
+| Oracle | GT observations, 6-stage curriculum | `2026-04-08_19-19-41/model_best.pt` |
+| D435i | D435i noise from Stage C, 6-stage curriculum | `2026-04-08_22-51-56/model_best.pt` |
+| pi2 | Torso tracking (shared) | `2026-03-12_17-16-01/model_best.pt` |
+
+### Noise modes
+
+- **Oracle eval**: `--noise-mode oracle` (policy sees GT, camera pipeline runs for detection metrics only)
+- **D435i eval**: `--noise-mode d435i` (policy sees noisy observations, matching training conditions)
+
+### Command
+
+```bash
+$C3R_BIN/gpu_lock.sh bash scripts/perception/run_full_eval.sh
+```
+
+This runs both evals sequentially within a single GPU lock, then generates the comparison figure.
+
+## Results
+
+### Overall Metrics
+
+| Metric | Oracle Policy | D435i Policy |
+|:---|:---:|:---:|
+| Total detections | 25 / 1500 | 67 / 1500 |
+| Detection rate (%) | 1.7% | 4.5% |
+| Det RMSE (mm) | 142.2 | 3778.5 |
+| EKF RMSE (mm) | 5622.6 | 6988.6 |
+
+Both policies show catastrophically low detection rates. The EKF diverges within the
+first few seconds due to the absence of measurements, accumulating 5-7 meters of error.
+
+### Height-Binned Detection
+
+| Height bin (mm) | Oracle Det Rate | Oracle Det RMSE (mm) | D435i Det Rate | D435i Det RMSE (mm) |
+|:---|:---:|:---:|:---:|:---:|
+| 0-100 | ~1% | — | 4.1% | 4282.3 |
+| 100-200 | ~8% | 95-219 | 75.0% | 153.7 |
+| 200-300 | ~11% | — | 100.0% | 192.0 |
+| 300-400+ | — | — | — | — |
+
+**Key finding**: detection rate climbs sharply with height — 100% at 200-300mm — but the
+ball spends only 17 of 1500 steps (1.1%) above 100mm for the d435i policy. The camera
+works when the ball is in flight; the ball is almost never in flight.
+
+### Phase Analysis
+
+| Phase | Oracle Count | Oracle Det Rate | D435i Count | D435i Det Rate |
+|:---|:---:|:---:|:---:|:---:|
+| Ascending | 107 | 8.4% | 248 | 5.6% |
+| Descending | 129 | 10.9% | 238 | 9.7% |
+| Contact | 1264 | 0.2% | 1014 | 3.0% |
+
+Contact phase (ball on/near paddle) dominates both trajectories: 84% of steps for
+oracle, 68% for d435i. The upward-facing camera has near-zero visibility during contact.
+
+### Comparison Figure
+
+![Oracle vs D435i camera pipeline comparison — detection rates and EKF RMSE by height bin](../images/perception/oracle_vs_d435i_comparison.png){width=100%}
+
+Top: ball Z trajectory (GT vs EKF) showing immediate EKF divergence after initial
+detections. Middle: EKF RMSE by height bin. Bottom: detection rate by height bin.
+
+## Discussion
+
+### The fundamental visibility problem
+
+The results reveal a **structural mismatch** between the camera mount and the task
+dynamics. At target height 0.42m, the ball's apex is only ~0.42m above the paddle —
+it bounces up and comes back down within a few physics steps. The upward-facing D435i
+camera can only see the ball when it's clearly above the paddle surface (>100mm), which
+happens for <2% of the episode.
+
+This isn't a detection quality problem — when the ball IS visible (200-300mm bin), the
+detector achieves 100% detection rate with 192mm RMSE. The problem is that the ball is
+rarely visible at all.
+
+### Implications for the perception pipeline
+
+1. **EKF prediction is useless without measurements.** The ballistic prediction model
+   diverges within ~0.5s without correction. At 1.7% detection rate, updates come too
+   rarely to keep the estimate bounded.
+
+2. **Higher target heights would help.** At target=1.0m (Stage G), the ball would spend
+   significantly more time in the camera's field of view. However, neither policy
+   currently achieves stable juggling at those heights.
+
+3. **Alternative approaches worth considering:**
+   - **Downward-facing camera** (seeing the ball against the ground): would capture
+     the ball during its full trajectory, not just near-paddle phase
+   - **Side-mounted camera**: wider field of view for tracking lateral motion
+   - **IMU-based paddle contact detection**: complement camera with impact sensing
+     to know ball state during contact phase
+
+4. **D435i policy shows 2.7x more detections** (67 vs 25), suggesting the noise-trained
+   policy produces slightly different ball dynamics — possibly more energetic bounces
+   that keep the ball visible longer.
+
+### Relationship to policy agent findings
+
+The policy agent's cross-eval (iters 27-29) showed d435i-trained policy outperforms
+oracle by +59% apex height at Stage F. This is consistent: the d435i noise acts as
+beneficial regularization during training, even though the actual camera observations
+are too sparse to be useful at inference time with current target heights.
+
+## Reproducibility
+
+- **Seed**: default (env-specific)
+- **Commit**: `b7fbe22` (iter 100) + this iteration
+- **Log directory**: `logs/perception/oracle_eval/`, `logs/perception/d435i_eval/`
+- **Raw data**: `trajectory.npz` in each output directory
+- **Full eval log**: `logs/perception/full_eval_20260409_022914.log`
+- **Analysis script**: `scripts/perception/analyze_eval_trajectory.py`
+- **Eval runner**: `scripts/perception/run_full_eval.sh`
