@@ -88,7 +88,7 @@ oracle, 68% for d435i. The upward-facing camera has near-zero visibility during 
 
 ### Comparison Figure
 
-![Oracle vs D435i camera pipeline comparison — detection rates and EKF RMSE by height bin](../images/perception/oracle_vs_d435i_comparison.png){width=100%}
+![Oracle vs D435i camera pipeline comparison — detection rates and EKF RMSE by height bin](../../images/perception/oracle_vs_d435i_comparison.png){width=100%}
 
 Top: ball Z trajectory (GT vs EKF) showing immediate EKF divergence after initial
 detections. Middle: EKF RMSE by height bin. Bottom: detection rate by height bin.

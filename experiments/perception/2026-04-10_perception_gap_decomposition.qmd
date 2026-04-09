@@ -122,9 +122,9 @@ Simulated ballistic arcs at juggling heights through the full D435i noise + EKF 
 
 **Apex error < 5mm at all heights.** This is the critical metric for pi1's energy modulation — it needs to know how high the ball went to decide how hard to launch it next. The pipeline delivers sub-5mm apex accuracy even with 20--32% measurement dropout.
 
-![Perception gap decomposition by ball phase across 5 target heights](../images/perception/perception_gap_decomposition_iter128.png){width=100%}
+![Perception gap decomposition by ball phase across 5 target heights](../../images/perception/perception_gap_decomposition_iter128.png){width=100%}
 
-![High-height readiness: EKF tracks ballistic arcs accurately at 0.50--1.00m](../images/perception/high_height_readiness_iter127.png){width=100%}
+![High-height readiness: EKF tracks ballistic arcs accurately at 0.50--1.00m](../../images/perception/high_height_readiness_iter127.png){width=100%}
 
 ## Discussion
 

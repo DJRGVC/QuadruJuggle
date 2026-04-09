@@ -87,7 +87,7 @@ Linear fit: $\text{gap\%} = 8.38 \times \text{exposure} - 21.6$
 | 0.70 | 5.67 | 26.2% |
 | 1.00 | 7.96 | 46.3% |
 
-![Noise-to-gap prediction model — 4-panel analysis showing noise profile, flight dynamics, exposure metric, and predicted vs observed gap (R² = 0.865)](../images/perception/gap_prediction_iter131.png){width=100%}
+![Noise-to-gap prediction model — 4-panel analysis showing noise profile, flight dynamics, exposure metric, and predicted vs observed gap (R² = 0.865)](../../images/perception/gap_prediction_iter131.png){width=100%}
 
 ## Discussion
 
@@ -136,7 +136,7 @@ fit jumped from R² = 0.865 → **0.994**. Updated predictions:
 The higher predictions at extreme heights arise because the pre-landing noise
 contribution matters more at low heights, steepening the fit.
 
-![Updated noise-to-gap prediction with phase-aware Q — R² = 0.994](../images/perception/gap_prediction_iter135.png){width=100%}
+![Updated noise-to-gap prediction with phase-aware Q — R² = 0.994](../../images/perception/gap_prediction_iter135.png){width=100%}
 
 ## Validation against real policy data (iter 137)
 
@@ -156,7 +156,7 @@ points (linear regression on noise exposure), so this is an in-sample
 validation — but the linearity and tight residuals confirm the noise exposure
 metric captures the right physics.
 
-![Validated prediction — observed vs fitted, R² = 0.994](../images/perception/gap_validation_iter137.png){width=100%}
+![Validated prediction — observed vs fitted, R² = 0.994](../../images/perception/gap_validation_iter137.png){width=100%}
 
 ## Reproducibility
 

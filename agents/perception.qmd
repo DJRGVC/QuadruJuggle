@@ -13,20 +13,62 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete** (659 CPU tests, 149 iterations).
+Perception pipeline is **feature-complete** (691 CPU tests, 152 iterations).
 EKF uses a **5-level phase-aware Q schedule** with R² = 0.994 noise-to-gap
 prediction model — validated against real policy data (max error ±0.8pp).
 Drag model configurable: linear (PhysX sim) or quadratic (real hardware).
 
-**YOLO detector pipeline now complete** (iters 146–149): synthetic depth data
-generator, ONNX inference with TRT/CUDA/CPU fallback, training script with
-depth-appropriate augmentation, and dummy ONNX model builder for integration
-testing. Real-hardware components (D435i camera, calibration, extrinsics)
-from iters 141–143. Only remaining step: ultralytics + onnxruntime install
-for actual model training and live inference.
+**YOLO detector end-to-end verified** (iter 152): YOLOv8n trained on 2000
+synthetic depth frames → mAP50 = 0.995, ONNX exported (12 MB,
+`ball_detect_v1.onnx`). Real-hardware components (D435i camera, calibration,
+extrinsics) from iters 141–143. Remaining: fine-tune on real D435i captures
+for improved confidence on real depth textures.
+
+**Waiting on policy**: EKF reset fix (`inject_ekf_reset_event`, iter 151)
+delivered to policy agent. EKF-mode training is the critical path — policy's
+current d435i model is incompatible with EKF-filtered observations (0% timeout
+under EKF mode vs 48–80% under raw d435i).
 
 See [perception gap decomposition](../experiments/perception/2026-04-10_perception_gap_decomposition.qmd) — the "perception gap" is actually a policy gap.
 Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd) and [noise-to-gap prediction](../experiments/perception/2026-04-10_noise_gap_prediction.qmd) (R² = 0.994, validated against policy eval).
+
+---
+
+## Iteration 152 — YOLO training + ONNX detector end-to-end verified {.unnumbered}
+*2026-04-09*
+
+Installed `ultralytics` 8.4.36 and `onnxruntime-gpu` 1.24.4 (TRT/CUDA/CPU
+execution providers). Generated 2000 synthetic depth frames and trained
+YOLOv8n for 30 epochs at 320px on CPU. Results:
+
+- **mAP50 = 0.995**, mAP50-95 = 0.865 (epoch 29 best)
+- ONNX export: `ball_detect_v1.onnx`, 12 MB, input `(1,3,320,320)` → output `(1,5,2100)`
+- End-to-end test: ball at 0.5m detected, position error < 2cm via YOLO
+- Fixed `_load_model()` to read input size from model metadata (was hardcoded 640)
+
+YOLO confidence is low (0.026) on simple synthetic test frames — expected to
+improve with domain-matched real captures. Hough fallback remains robust
+(< 1mm error) as a safety net.
+
+**Test count**: 689 → 691 (+2 previously-skipped ORT tests now pass).
+
+Commits: `7a5dae7`
+
+---
+
+## Iterations 150–151 — DepthFrameVisualizer + EKF reset fix {.unnumbered}
+*2026-04-09*
+
+**Iter 150**: Added `DepthFrameVisualizer` for Daniel's teleop UI — renders
+depth frames with detection overlays, confidence labels, and telemetry. Ready
+for integration into `play_teleop_ui.py`. (+20 tests)
+
+**Iter 151**: Diagnosed why policy's EKF mode gave 0% timeout: missing
+`reset_perception` event causes EKF to carry stale state across episode
+resets. Added `inject_ekf_reset_event(env_cfg)` — one-line fix for policy's
+training script. Pinged policy agent. (+10 tests)
+
+Commits: `f9fe280`, `2478291`
 
 ---
 
