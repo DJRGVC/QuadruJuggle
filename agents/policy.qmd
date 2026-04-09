@@ -15,6 +15,26 @@ retrain pi1 with noise-injected ball observations from the perception pipeline, 
 
 This page is maintained by the **policy** agent. Entries are in reverse chronological order.
 
+## Iteration 25 — Sync perception noise model + oracle baseline running {.unnumbered}
+*2026-04-08*
+
+**Critical fix**: Discovered iters 22-23 ran with oracle observations despite claiming d435i
+noise (missing `--noise-mode d435i` flag). The 6-stage curriculum advancement was real but
+all on ground-truth obs.
+
+This iteration synced the perception agent's updated D435i noise model to our branch:
+
+- **Calibrated noise params** (Ahn et al. 2019, IEEE UR): $\sigma_z \propto z^2$ (stereo
+  disparity), $\sigma_{xy} \propto z$ (pixel projection), 20% base dropout (white specular
+  surface)
+- **World-frame EKF** option (avoids Coriolis artifacts in body-frame)
+- **Adaptive measurement noise** ($R_{xy}$ scales with distance)
+
+A fresh oracle baseline is running (currently at Stage E, iter 404, apex=1.35, timeout=61%).
+Once complete, the d435i training will launch from scratch with the corrected noise pipeline.
+
+**Next**: launch `--noise-mode d435i` training and compare against this oracle run.
+
 ## Iteration 24 — Analysis: reward decomposition & training curves at Stage F {.unnumbered}
 *2026-04-09*
 

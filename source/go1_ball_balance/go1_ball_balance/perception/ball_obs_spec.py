@@ -54,17 +54,21 @@ if TYPE_CHECKING:
 class D435iNoiseParams:
     """D435i depth-camera noise model parameters.
 
-    Defaults from Intel D435i datasheet + empirical measurements:
-    - Depth accuracy ~2% of distance at 1m (structured IR stereo)
-    - XY accuracy ~1-2mm at 1m (640×480, ~60° HFOV)
-    - Dropout probability increases at close range / specular surfaces
+    Calibrated from Ahn et al. 2019 (IEEE UR), Intel BKM whitepaper,
+    and lit-review iter_023 D435i noise characterisation.
+    - σ_z ∝ z² (stereo disparity error)
+    - σ_xy ∝ z (pixel projection)
+    - Dropout: 20% baseline (white ball specular surface) + distance rise
     """
 
-    sigma_xy_base: float = 0.002       # 2mm base XY noise std (metres)
-    sigma_z_base: float = 0.003        # 3mm base depth noise std
-    sigma_z_per_metre: float = 0.002   # +2mm per metre of distance
-    dropout_prob: float = 0.02         # 2% chance of missed detection per step
-    latency_steps: int = 1             # observation delay in policy steps
+    sigma_xy_per_metre: float = 0.0025  # σ_xy = 0.0025·z (linear; Ahn 2019)
+    sigma_xy_floor: float = 0.001       # 1mm floor at close range
+    sigma_z_base: float = 0.001         # 1mm constant floor
+    sigma_z_quadratic: float = 0.005    # 0.005·z² (Ahn 2019 + ball-geometry margin)
+    dropout_base: float = 0.20          # 20% baseline (curved white surface)
+    dropout_range: float = 0.30         # additional 30% rising with distance
+    dropout_scale: float = 0.80         # exponential scale (metres)
+    latency_steps: int = 1              # observation delay in policy steps
 
 
 @dataclass
@@ -81,9 +85,9 @@ class BallObsNoiseCfg:
     noise_scale: float = 1.0
     """Multiplier for noise amplitudes (0.0 = oracle-equivalent, 1.0 = full noise).
 
-    Scales sigma_xy_base, sigma_z_base, sigma_z_per_metre, and dropout_prob
-    in both d435i and ekf modes. Useful for gradual noise introduction across
-    curriculum stages (e.g. 0.25 → 0.50 → 0.75 → 1.0).
+    Scales noise amplitudes (sigma_xy, sigma_z, dropout) in both d435i and
+    ekf modes. Useful for gradual noise introduction across curriculum stages
+    (e.g. 0.25 → 0.50 → 0.75 → 1.0).
     """
 
     d435i: D435iNoiseParams = field(default_factory=D435iNoiseParams)
@@ -97,6 +101,36 @@ class BallObsNoiseCfg:
 
     policy_dt: float = 0.02
     """Policy step period in seconds (50Hz default). Used by EKF predict step."""
+
+    world_frame: bool = False
+    """Run EKF in world frame instead of body frame.
+
+    When True, body-frame measurements are transformed to world frame before
+    EKF update, and EKF outputs are transformed back to body frame for the
+    policy. This avoids pseudo-force artifacts (Coriolis, centrifugal, Euler)
+    that make body-frame EKF diverge (NIS=966 in iter_021/022b).
+
+    Requires robot pose (quat_w, pos_w) to be passed through the pipeline.
+    On real hardware, this comes from the IMU — natural architecture.
+    """
+
+    enable_imu: bool = True
+    """Pass robot angular velocity to EKF for Coriolis + centrifugal corrections.
+
+    When True (default), ``robot.data.root_ang_vel_b`` is forwarded to the
+    EKF predict step, enabling IMU-aided pseudo-force compensation in
+    body-frame mode. Set to False for ablation / comparison studies.
+    Ignored when ``world_frame=True`` (world-frame EKF doesn't need it).
+    """
+
+    enable_spin: bool = False
+    """Enable 9D EKF with spin estimation (Magnus effect).
+
+    When True, the EKF state expands to [pos, vel, spin] (9D) and models
+    Magnus force (a_M = Cm * spin × vel) plus viscous spin decay. Spin is
+    estimated from trajectory curvature — no direct spin sensor needed.
+    Useful for Stage F/G where high-energy bounces impart significant spin.
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -130,14 +164,39 @@ class PerceptionPipeline:
             device=device,
             cfg=noise_cfg.noise_model_cfg,
         )
+
+        # Propagate enable_spin from high-level cfg to EKF config
+        ekf_cfg = noise_cfg.ekf_cfg
+        if noise_cfg.enable_spin and not ekf_cfg.enable_spin:
+            ekf_cfg = BallEKFConfig(
+                **{k: getattr(ekf_cfg, k) for k in ekf_cfg.__dataclass_fields__}
+            )
+            ekf_cfg.enable_spin = True
+
         self.ekf = BallEKF(
             num_envs=num_envs,
             device=device,
-            cfg=noise_cfg.ekf_cfg,
+            cfg=ekf_cfg,
         )
 
         # Track which step we're on (for deduplication within a single step)
         self._last_step_count = -1
+
+        # World-frame mode: store latest robot pose for output transform
+        self._world_frame = noise_cfg.world_frame
+        if self._world_frame:
+            self._robot_quat_w = torch.tensor(
+                [[1.0, 0.0, 0.0, 0.0]], device=self.device
+            ).expand(num_envs, -1).clone()
+            self._robot_pos_w = torch.zeros(num_envs, 3, device=self.device)
+            self._paddle_offset_b = torch.zeros(3, device=self.device)
+            # World-frame gravity — no body-frame projection needed
+            self._gravity_world = torch.tensor(
+                [0.0, 0.0, -9.81], device=self.device
+            ).unsqueeze(0)
+
+        # Robot acceleration estimation via finite differences (body-frame mode only)
+        self._prev_robot_vel_b: torch.Tensor | None = None
 
         # Diagnostics: running error accumulators
         self._diagnostics_enabled = enable_diagnostics
@@ -152,6 +211,11 @@ class PerceptionPipeline:
         env_step_count: int,
         gt_vel_b: torch.Tensor | None = None,
         gravity_b: torch.Tensor | None = None,
+        robot_vel_b: torch.Tensor | None = None,
+        robot_ang_vel_b: torch.Tensor | None = None,
+        robot_quat_w: torch.Tensor | None = None,
+        robot_pos_w: torch.Tensor | None = None,
+        paddle_offset_b: torch.Tensor | None = None,
     ) -> None:
         """Run one noise→EKF cycle. Idempotent within a single env step.
 
@@ -166,48 +230,201 @@ class PerceptionPipeline:
             gravity_b: Gravity vector in body frame (N, 3). If provided,
                 the EKF uses the actual gravity direction accounting for
                 trunk tilt. Otherwise defaults to [0, 0, -9.81].
+                Ignored when world_frame=True.
+            robot_vel_b: Robot body-frame linear velocity (N, 3). Used to
+                compute body-frame acceleration via finite differences for
+                pseudo-force compensation in EKF predict.
+                Ignored when world_frame=True.
+            robot_ang_vel_b: Robot body-frame angular velocity (N, 3), rad/s.
+                If provided, EKF applies Coriolis + centrifugal corrections.
+                Ignored when world_frame=True. On real hardware, from IMU gyro.
+            robot_quat_w: Robot orientation in world frame (N, 4), wxyz.
+                Required when world_frame=True.
+            robot_pos_w: Robot root position in world frame (N, 3).
+                Required when world_frame=True.
+            paddle_offset_b: Paddle offset in body frame (3,).
+                Required when world_frame=True (first call sets it).
         """
         if env_step_count == self._last_step_count:
             return  # already ran this step (pos called before vel)
 
         self._last_step_count = env_step_count
 
-        # Generate noisy measurement
-        noisy_pos, detected = self.noise_model.sample(gt_pos_b)
+        # Generate noisy measurement in body frame
+        noisy_pos_b, detected = self.noise_model.sample(gt_pos_b)
 
-        # EKF predict + update (with body-frame gravity if available)
-        self.ekf.step(noisy_pos, detected, dt=self.cfg.policy_dt, gravity_b=gravity_b)
+        if self._world_frame:
+            # --- World-frame EKF path ---
+            # Store robot pose for output transform (body→world→body)
+            if robot_quat_w is not None:
+                self._robot_quat_w = robot_quat_w.clone()
+            if robot_pos_w is not None:
+                self._robot_pos_w = robot_pos_w.clone()
+            if paddle_offset_b is not None:
+                self._paddle_offset_b = paddle_offset_b.clone()
 
-        # Diagnostics
-        if self._diag is not None:
-            self._diag.record(
-                gt_pos=gt_pos_b,
-                gt_vel=gt_vel_b,
-                noisy_pos=noisy_pos,
-                ekf_pos=self.ekf.pos,
-                ekf_vel=self.ekf.vel,
-                detected=detected,
+            # Transform noisy body-frame measurement → world frame
+            # paddle_pos_w = robot_pos_w + quat_apply(robot_quat_w, paddle_offset_b)
+            # ball_pos_w = paddle_pos_w + quat_apply(robot_quat_w, noisy_pos_b)
+            offset_b = self._paddle_offset_b.unsqueeze(0).expand(self.num_envs, -1)
+            paddle_pos_w = self._robot_pos_w + math_utils.quat_apply(
+                self._robot_quat_w, offset_b
             )
+            noisy_pos_w = paddle_pos_w + math_utils.quat_apply(
+                self._robot_quat_w, noisy_pos_b
+            )
+
+            # EKF predict + update in world frame (simple ballistic dynamics)
+            self.ekf.step(
+                noisy_pos_w, detected, dt=self.cfg.policy_dt,
+                gravity_b=self._gravity_world,  # [0, 0, -9.81] world gravity
+                robot_acc_b=None,  # no pseudo-force compensation needed
+            )
+
+            # Diagnostics: compare against GT in body frame
+            if self._diag is not None:
+                # Transform EKF world-frame estimate back to body frame
+                ekf_pos_b = self._world_to_body_pos(self.ekf.pos)
+                ekf_vel_b = self._world_to_body_vel(self.ekf.vel)
+                self._diag.record(
+                    gt_pos=gt_pos_b,
+                    gt_vel=gt_vel_b,
+                    noisy_pos=noisy_pos_b,
+                    ekf_pos=ekf_pos_b,
+                    ekf_vel=ekf_vel_b,
+                    detected=detected,
+                )
+        else:
+            # --- Body-frame EKF path (original) ---
+            # Compute robot body-frame acceleration via finite differences
+            robot_acc_b = None
+            if robot_vel_b is not None:
+                if self._prev_robot_vel_b is not None:
+                    dt = self.cfg.policy_dt
+                    robot_acc_b = (robot_vel_b - self._prev_robot_vel_b) / dt
+                    robot_acc_b = robot_acc_b.clamp(-50.0, 50.0)
+                self._prev_robot_vel_b = robot_vel_b.clone()
+
+            # EKF predict + update in body frame
+            self.ekf.step(
+                noisy_pos_b, detected, dt=self.cfg.policy_dt,
+                gravity_b=gravity_b, robot_acc_b=robot_acc_b,
+                robot_ang_vel_b=robot_ang_vel_b,
+            )
+
+            # Diagnostics
+            if self._diag is not None:
+                self._diag.record(
+                    gt_pos=gt_pos_b,
+                    gt_vel=gt_vel_b,
+                    noisy_pos=noisy_pos_b,
+                    ekf_pos=self.ekf.pos,
+                    ekf_vel=self.ekf.vel,
+                    detected=detected,
+                )
+
+    def _world_to_body_pos(self, pos_w: torch.Tensor) -> torch.Tensor:
+        """Transform world-frame position to paddle (body) frame."""
+        offset_b = self._paddle_offset_b.unsqueeze(0).expand(self.num_envs, -1)
+        paddle_pos_w = self._robot_pos_w + math_utils.quat_apply(
+            self._robot_quat_w, offset_b
+        )
+        diff_w = pos_w - paddle_pos_w
+        return math_utils.quat_apply_inverse(self._robot_quat_w, diff_w)
+
+    def _world_to_body_vel(self, vel_w: torch.Tensor) -> torch.Tensor:
+        """Transform world-frame velocity to body frame (rotation only)."""
+        return math_utils.quat_apply_inverse(self._robot_quat_w, vel_w)
+
+    def _body_to_world_pos(
+        self, pos_b: torch.Tensor, env_ids: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Transform body-frame position to world frame (for EKF reset)."""
+        if env_ids is not None:
+            quat = self._robot_quat_w[env_ids]
+            rpos = self._robot_pos_w[env_ids]
+        else:
+            quat = self._robot_quat_w
+            rpos = self._robot_pos_w
+        n = pos_b.shape[0]
+        offset_b = self._paddle_offset_b.unsqueeze(0).expand(n, -1)
+        paddle_pos_w = rpos + math_utils.quat_apply(quat, offset_b)
+        return paddle_pos_w + math_utils.quat_apply(quat, pos_b)
+
+    def _body_to_world_vel(
+        self, vel_b: torch.Tensor, env_ids: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Transform body-frame velocity to world frame (rotation only)."""
+        if env_ids is not None:
+            quat = self._robot_quat_w[env_ids]
+        else:
+            quat = self._robot_quat_w
+        return math_utils.quat_apply(quat, vel_b)
 
     def reset(
         self,
         env_ids: torch.Tensor,
         init_pos: torch.Tensor,
         init_vel: torch.Tensor | None = None,
+        robot_quat_w: torch.Tensor | None = None,
+        robot_pos_w: torch.Tensor | None = None,
     ) -> None:
-        """Reset noise model and EKF for specified environments."""
+        """Reset noise model and EKF for specified environments.
+
+        Args:
+            env_ids: Indices of envs to reset (M,).
+            init_pos: Initial ball position in body frame (M, 3).
+            init_vel: Initial ball velocity in body frame (M, 3).
+            robot_quat_w: Current robot orientation (M, 4) wxyz. Required for
+                world_frame=True to correctly transform init pos to world.
+            robot_pos_w: Current robot position (M, 3). Required for world_frame=True.
+        """
         self.noise_model.reset(env_ids, init_pos)
-        self.ekf.reset(env_ids, init_pos, init_vel)
+
+        if self._world_frame:
+            # Update stored robot pose for the reset envs BEFORE transform
+            if robot_quat_w is not None:
+                self._robot_quat_w[env_ids] = robot_quat_w
+            if robot_pos_w is not None:
+                self._robot_pos_w[env_ids] = robot_pos_w
+
+            # Transform body-frame init pos/vel to world frame for EKF
+            init_pos_w = self._body_to_world_pos(init_pos, env_ids)
+            init_vel_w = (
+                self._body_to_world_vel(init_vel, env_ids)
+                if init_vel is not None else None
+            )
+            self.ekf.reset(env_ids, init_pos_w, init_vel_w)
+        else:
+            self.ekf.reset(env_ids, init_pos, init_vel)
+            # Clear robot velocity buffer for reset envs so we don't compute
+            # a spurious acceleration spike on the first post-reset step
+            if self._prev_robot_vel_b is not None:
+                self._prev_robot_vel_b[env_ids] = 0.0
 
     @property
     def pos(self) -> torch.Tensor:
-        """EKF-filtered ball position estimate (N, 3)."""
+        """EKF-filtered ball position estimate in body frame (N, 3)."""
+        if self._world_frame:
+            return self._world_to_body_pos(self.ekf.pos)
         return self.ekf.pos
 
     @property
     def vel(self) -> torch.Tensor:
-        """EKF-filtered ball velocity estimate (N, 3)."""
+        """EKF-filtered ball velocity estimate in body frame (N, 3)."""
+        if self._world_frame:
+            return self._world_to_body_vel(self.ekf.vel)
         return self.ekf.vel
+
+    @property
+    def spin(self) -> torch.Tensor | None:
+        """EKF-estimated ball spin in body frame (N, 3), or None if spin disabled."""
+        if not self.ekf._spin_enabled:
+            return None
+        spin_val = self.ekf.spin
+        if self._world_frame:
+            return self._world_to_body_vel(spin_val)  # rotation-only transform
+        return spin_val
 
     def update_noise_scale(self, scale: float) -> None:
         """Update noise amplitudes in the live noise model (for curriculum).
@@ -224,10 +441,13 @@ class PerceptionPipeline:
             old_scale = self.cfg.noise_scale
             if old_scale > 0:
                 self._base_noise_model_cfg = D435iNoiseModelCfg(
-                    sigma_xy_base=base.sigma_xy_base / old_scale,
+                    sigma_xy_per_metre=base.sigma_xy_per_metre / old_scale,
+                    sigma_xy_floor=base.sigma_xy_floor / old_scale,
                     sigma_z_base=base.sigma_z_base / old_scale,
-                    sigma_z_per_metre=base.sigma_z_per_metre / old_scale,
-                    dropout_prob=base.dropout_prob / old_scale,
+                    sigma_z_quadratic=base.sigma_z_quadratic / old_scale,
+                    dropout_base=base.dropout_base / old_scale,
+                    dropout_range=base.dropout_range / old_scale,
+                    dropout_scale=base.dropout_scale,
                     latency_steps=base.latency_steps,
                     camera_hz=base.camera_hz,
                 )
@@ -235,10 +455,12 @@ class PerceptionPipeline:
                 self._base_noise_model_cfg = D435iNoiseModelCfg()
 
         bm = self._base_noise_model_cfg
-        self.noise_model.cfg.sigma_xy_base = bm.sigma_xy_base * scale
+        self.noise_model.cfg.sigma_xy_per_metre = bm.sigma_xy_per_metre * scale
+        self.noise_model.cfg.sigma_xy_floor = bm.sigma_xy_floor * scale
         self.noise_model.cfg.sigma_z_base = bm.sigma_z_base * scale
-        self.noise_model.cfg.sigma_z_per_metre = bm.sigma_z_per_metre * scale
-        self.noise_model.cfg.dropout_prob = bm.dropout_prob * scale
+        self.noise_model.cfg.sigma_z_quadratic = bm.sigma_z_quadratic * scale
+        self.noise_model.cfg.dropout_base = bm.dropout_base * scale
+        self.noise_model.cfg.dropout_range = bm.dropout_range * scale
         self.cfg.noise_scale = scale
 
     @property
@@ -252,8 +474,18 @@ class PerceptionPipeline:
         if self._diag is None:
             return None
         result = self._diag.summary_and_reset()
-        # Add EKF ANEES diagnostic (resets accumulator)
+        # Phase-separated NIS (read before reset clears them)
+        result["mean_nis_flight"] = round(self.ekf.mean_nis_flight, 3)
+        result["mean_nis_contact"] = round(self.ekf.mean_nis_contact, 3)
+        result["nis_count_flight"] = self.ekf._nis_count_flight
+        result["nis_count_contact"] = self.ekf._nis_count_contact
+        # Add EKF ANEES diagnostic (resets all NIS accumulators including phase)
         result["mean_nis"] = round(self.ekf.reset_nis(), 3)
+        # Add NIS gate rejection stats (resets counters)
+        rejected, total = self.ekf.reset_gate_stats()
+        result["gate_rejected"] = rejected
+        result["gate_total"] = total
+        result["gate_rejection_rate"] = round(rejected / total, 4) if total > 0 else 0.0
         return result
 
 
@@ -335,10 +567,13 @@ def _scaled_d435i_params(
     if scale == 1.0:
         return params
     return D435iNoiseParams(
-        sigma_xy_base=params.sigma_xy_base * scale,
+        sigma_xy_per_metre=params.sigma_xy_per_metre * scale,
+        sigma_xy_floor=params.sigma_xy_floor * scale,
         sigma_z_base=params.sigma_z_base * scale,
-        sigma_z_per_metre=params.sigma_z_per_metre * scale,
-        dropout_prob=params.dropout_prob * scale,
+        sigma_z_quadratic=params.sigma_z_quadratic * scale,
+        dropout_base=params.dropout_base * scale,
+        dropout_range=params.dropout_range * scale,
+        dropout_scale=params.dropout_scale,  # scale length not scaled
         latency_steps=params.latency_steps,  # latency is not scaled
     )
 
@@ -350,10 +585,13 @@ def _scaled_noise_model_cfg(
     if scale == 1.0:
         return cfg
     return D435iNoiseModelCfg(
-        sigma_xy_base=cfg.sigma_xy_base * scale,
+        sigma_xy_per_metre=cfg.sigma_xy_per_metre * scale,
+        sigma_xy_floor=cfg.sigma_xy_floor * scale,
         sigma_z_base=cfg.sigma_z_base * scale,
-        sigma_z_per_metre=cfg.sigma_z_per_metre * scale,
-        dropout_prob=cfg.dropout_prob * scale,
+        sigma_z_quadratic=cfg.sigma_z_quadratic * scale,
+        dropout_base=cfg.dropout_base * scale,
+        dropout_range=cfg.dropout_range * scale,
+        dropout_scale=cfg.dropout_scale,  # scale length not scaled
         latency_steps=cfg.latency_steps,  # latency is not scaled
         camera_hz=cfg.camera_hz,
     )
@@ -365,6 +603,16 @@ def _get_or_create_pipeline(
 ) -> PerceptionPipeline:
     """Get or lazily create the PerceptionPipeline on the env object."""
     if not hasattr(env, "_perception_pipeline") or env._perception_pipeline is None:
+        # Propagate enable_spin from BallObsNoiseCfg to BallEKFConfig
+        ekf_cfg = noise_cfg.ekf_cfg
+        if noise_cfg.enable_spin and not ekf_cfg.enable_spin:
+            # Copy the config and enable spin so the caller doesn't need
+            # to set it in two places
+            ekf_cfg = BallEKFConfig(
+                **{k: getattr(ekf_cfg, k) for k in ekf_cfg.__dataclass_fields__}
+            )
+            ekf_cfg.enable_spin = True
+
         # Apply noise_scale to the noise model config before creating pipeline
         scaled_cfg = BallObsNoiseCfg(
             mode=noise_cfg.mode,
@@ -373,8 +621,9 @@ def _get_or_create_pipeline(
             noise_model_cfg=_scaled_noise_model_cfg(
                 noise_cfg.noise_model_cfg, noise_cfg.noise_scale
             ),
-            ekf_cfg=noise_cfg.ekf_cfg,
+            ekf_cfg=ekf_cfg,
             policy_dt=noise_cfg.policy_dt,
+            enable_spin=noise_cfg.enable_spin,
         )
         # Enable diagnostics if env has the flag (set by test scripts)
         enable_diag = getattr(env, "_perception_diagnostics_enabled", False)
@@ -460,10 +709,30 @@ def ball_pos_perceived(
 
     if noise_cfg.mode == "ekf":
         pipeline = _get_or_create_pipeline(env, noise_cfg)
-        # Pass body-frame gravity so EKF accounts for trunk tilt
         robot: Articulation = env.scene[robot_cfg.name]
-        gravity_b = robot.data.projected_gravity_b * 9.81  # (N, 3)
-        pipeline.step(pos_b, env.common_step_counter, gravity_b=gravity_b)
+
+        if noise_cfg.world_frame:
+            # World-frame EKF: pass robot pose for body↔world transforms
+            paddle_offset_t = torch.tensor(
+                paddle_offset_b, device=env.device
+            )
+            pipeline.step(
+                pos_b, env.common_step_counter,
+                robot_quat_w=robot.data.root_quat_w,
+                robot_pos_w=robot.data.root_pos_w,
+                paddle_offset_b=paddle_offset_t,
+            )
+        else:
+            # Body-frame EKF: pass gravity + velocity for pseudo-force comp
+            gravity_b_vec = robot.data.projected_gravity_b * 9.81  # (N, 3)
+            robot_vel_b = robot.data.root_lin_vel_b  # (N, 3)
+            ang_vel = robot.data.root_ang_vel_b if noise_cfg.enable_imu else None
+            pipeline.step(
+                pos_b, env.common_step_counter,
+                gravity_b=gravity_b_vec, robot_vel_b=robot_vel_b,
+                robot_ang_vel_b=ang_vel,
+            )
+
         out = pipeline.pos.clone()
         # Guard against EKF divergence — NaN/Inf would corrupt PPO gradients
         out = torch.nan_to_num(out, nan=0.0, posinf=1.0, neginf=-1.0)
@@ -476,6 +745,7 @@ def ball_vel_perceived(
     env: ManagerBasedRLEnv,
     ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    paddle_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.070),
     noise_cfg: BallObsNoiseCfg | None = None,
 ) -> torch.Tensor:
     """Ball velocity in trunk frame, optionally with perception noise.
@@ -499,15 +769,35 @@ def ball_vel_perceived(
 
     if noise_cfg.mode == "ekf":
         pipeline = _get_or_create_pipeline(env, noise_cfg)
-        # step() is idempotent — if pos was called first, this is a no-op
         robot: Articulation = env.scene[robot_cfg.name]
-        gravity_b = robot.data.projected_gravity_b * 9.81  # (N, 3)
-        pipeline.step(
-            _ball_pos_paddle_frame_gt(env, ball_cfg, robot_cfg, (0.0, 0.0, 0.070)),
-            env.common_step_counter,
-            gt_vel_b=vel_b if pipeline._diagnostics_enabled else None,
-            gravity_b=gravity_b,
-        )
+
+        if noise_cfg.world_frame:
+            # World-frame EKF: pass robot pose (step is idempotent)
+            paddle_offset_t = torch.tensor(
+                paddle_offset_b, device=env.device
+            )
+            pipeline.step(
+                _ball_pos_paddle_frame_gt(env, ball_cfg, robot_cfg, paddle_offset_b),
+                env.common_step_counter,
+                gt_vel_b=vel_b if pipeline._diagnostics_enabled else None,
+                robot_quat_w=robot.data.root_quat_w,
+                robot_pos_w=robot.data.root_pos_w,
+                paddle_offset_b=paddle_offset_t,
+            )
+        else:
+            # Body-frame EKF: pass gravity + velocity + angular velocity
+            gravity_b_vec = robot.data.projected_gravity_b * 9.81  # (N, 3)
+            robot_vel_b_lin = robot.data.root_lin_vel_b  # (N, 3)
+            ang_vel = robot.data.root_ang_vel_b if noise_cfg.enable_imu else None
+            pipeline.step(
+                _ball_pos_paddle_frame_gt(env, ball_cfg, robot_cfg, paddle_offset_b),
+                env.common_step_counter,
+                gt_vel_b=vel_b if pipeline._diagnostics_enabled else None,
+                gravity_b=gravity_b_vec,
+                robot_vel_b=robot_vel_b_lin,
+                robot_ang_vel_b=ang_vel,
+            )
+
         out = pipeline.vel.clone()
         out = torch.nan_to_num(out, nan=0.0, posinf=5.0, neginf=-5.0)
         return out.clamp(-10.0, 10.0)
@@ -525,31 +815,33 @@ def _apply_d435i_pos_noise(
 ) -> torch.Tensor:
     """Apply D435i-style structured noise to ball position in paddle frame.
 
-    Noise model:
-    - XY noise: Gaussian with std = sigma_xy_base (lateral pixel noise)
-    - Z noise: Gaussian with std = sigma_z_base + sigma_z_per_metre * |z|
-      (depth accuracy degrades with distance — D435i stereo baseline effect)
-    - Dropout: with probability dropout_prob, return last known position
-      (simulated as zeroing the update — full dropout buffer added with EKF)
+    Noise model (calibrated from Ahn et al. 2019, Intel BKM whitepaper):
+    - XY noise: σ_xy = max(floor, 0.0025·z) — linear in depth
+    - Z noise: σ_z = base + 0.005·z² — quadratic (stereo disparity)
+    - Dropout: distance-dependent (20% base + 30% range for white ball)
     """
     device = pos_b.device
     N = pos_b.shape[0]
+    z_dist = pos_b[:, 2].abs()
 
-    # XY noise (lateral, from pixel quantisation + IR pattern matching)
-    xy_noise = torch.randn(N, 2, device=device) * params.sigma_xy_base
+    # XY noise: linear in z with floor
+    sigma_xy = torch.clamp(params.sigma_xy_per_metre * z_dist, min=params.sigma_xy_floor)
+    xy_noise = torch.randn(N, 2, device=device) * sigma_xy.unsqueeze(-1)
 
-    # Z noise (depth, distance-dependent)
-    z_dist = pos_b[:, 2].abs()  # distance along z in paddle frame
-    sigma_z = params.sigma_z_base + params.sigma_z_per_metre * z_dist
+    # Z noise: quadratic in z
+    sigma_z = params.sigma_z_base + params.sigma_z_quadratic * z_dist * z_dist
     z_noise = torch.randn(N, device=device) * sigma_z
 
     noise = torch.stack([xy_noise[:, 0], xy_noise[:, 1], z_noise], dim=-1)
 
-    # Dropout: zero the noise for dropped frames (position freezes at GT
-    # for now; proper hold-last-value requires EKF state buffer)
-    if params.dropout_prob > 0:
+    # Distance-dependent dropout
+    z_excess = torch.clamp(z_dist - 0.5, min=0.0)
+    p_dropout = params.dropout_base + params.dropout_range * (
+        1.0 - torch.exp(-z_excess / params.dropout_scale)
+    )
+    if params.dropout_base > 0 or params.dropout_range > 0:
         dropout_mask = (
-            torch.rand(N, device=device) < params.dropout_prob
+            torch.rand(N, device=device) < p_dropout
         ).unsqueeze(-1)
         # On dropout, return GT (no noise) — conservative stub.
         # Full pipeline will hold last EKF estimate instead.
@@ -569,25 +861,29 @@ def _apply_d435i_vel_noise(
     Gaussian noise scaled by the position noise parameters and a typical
     frame-to-frame dt (~33ms at 30Hz).
 
-    The velocity noise std is approximately sigma_pos / dt, which at
-    30Hz gives ~3x amplification of position noise.
+    Velocity noise std ≈ sqrt(2) * sigma_pos / dt.
+    Uses nominal z=0.5m for the distance-dependent noise parameters.
     """
     device = vel_b.device
     N = vel_b.shape[0]
 
-    # Approximate velocity noise from finite-differenced position noise
-    # at 30Hz camera rate: sigma_vel ≈ sqrt(2) * sigma_pos / dt
+    # Use nominal z=0.5m for velocity noise estimate (mid-range)
+    z_nominal = 0.5
     dt_camera = 1.0 / 30.0  # 30Hz D435i frame rate
-    sigma_vel_xy = (2 ** 0.5) * params.sigma_xy_base / dt_camera
-    sigma_vel_z = (2 ** 0.5) * params.sigma_z_base / dt_camera
+    sigma_xy_nominal = max(params.sigma_xy_floor, params.sigma_xy_per_metre * z_nominal)
+    sigma_z_nominal = params.sigma_z_base + params.sigma_z_quadratic * z_nominal * z_nominal
+    sigma_vel_xy = (2 ** 0.5) * sigma_xy_nominal / dt_camera
+    sigma_vel_z = (2 ** 0.5) * sigma_z_nominal / dt_camera
 
     noise = torch.zeros_like(vel_b)
     noise[:, :2] = torch.randn(N, 2, device=device) * sigma_vel_xy
     noise[:, 2] = torch.randn(N, device=device) * sigma_vel_z
 
-    if params.dropout_prob > 0:
+    # Dropout at nominal distance
+    p_dropout_nominal = params.dropout_base
+    if p_dropout_nominal > 0:
         dropout_mask = (
-            torch.rand(N, device=device) < params.dropout_prob
+            torch.rand(N, device=device) < p_dropout_nominal
         ).unsqueeze(-1)
         noise = noise * (~dropout_mask).float()
 
@@ -645,4 +941,13 @@ def reset_perception_pipeline(
     pos_b = _ball_pos_paddle_frame_gt(env, ball_cfg, robot_cfg, paddle_offset_b)
     vel_b = _ball_vel_paddle_frame_gt(env, ball_cfg, robot_cfg)
 
-    pipeline.reset(env_ids, pos_b[env_ids], vel_b[env_ids])
+    # For world-frame EKF, pass current robot pose so the body→world
+    # transform uses the post-reset position (not stale pre-reset pose)
+    robot: Articulation = env.scene[robot_cfg.name]
+    pipeline.reset(
+        env_ids,
+        pos_b[env_ids],
+        vel_b[env_ids],
+        robot_quat_w=robot.data.root_quat_w[env_ids],
+        robot_pos_w=robot.data.root_pos_w[env_ids],
+    )

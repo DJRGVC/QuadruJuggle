@@ -240,3 +240,27 @@ Decision:   Next iteration: once GPU is free, run fresh training WITH --noise-mo
               --task Isaac-BallJuggleHier-Go1-v0 --num_envs 12288 --headless \
               --max_iterations 1500 --noise-mode d435i \
               --pi2-checkpoint .../2026-03-12_17-16-01/model_best.pt
+
+## Iteration 25 — Sync perception noise model + prepare d435i training  (2026-04-08T21:10Z)
+Hypothesis: The perception agent's updated D435i noise model (Ahn et al. 2019 calibration,
+            σ_z∝z², 20% dropout, world-frame EKF) should be synced before d435i training to
+            ensure we train against the most realistic noise distribution.
+Change:     Synced 3 perception core files from agent/perception branch:
+            ball_obs_spec.py, ball_ekf.py, noise_model.py (664+705+81 line diffs).
+            Key changes: D435iNoiseParams recalibrated (σ_xy∝z linear, σ_z∝z² quadratic,
+            20% base dropout + 30% range-dependent), world-frame EKF option, adaptive R_xy,
+            IMU integration, 9D spin state (Magnus effect).
+            Did NOT sync env_cfg or action_term changes (perception reverted rewards/obs
+            functions that we need for noise injection).
+Command:    No GPU (occupied by oracle training PID 1062001, step ~404, Stage E).
+            Oracle run metrics at step 404: reward=30.1, apex=1.35, timeout=61%,
+            ball_below=39%, stage=4 (E). Progressing well — will serve as oracle baseline.
+Result:     Perception files synced and import-tested (pxr dependency prevents standalone
+            import but training script path validated). Quarto page updated.
+            Oracle training estimated to complete in ~60 min (step 404/1500 at 3.8s/iter).
+Decision:   Next iteration: launch d435i training from scratch once GPU is free.
+            Exact command: $C3R_BIN/gpu_lock.sh uv run --active python \
+              scripts/rsl_rl/train_juggle_hier.py --task Isaac-BallJuggleHier-Go1-v0 \
+              --num_envs 12288 --headless --max_iterations 1500 --noise-mode d435i \
+              --pi2-checkpoint /home/daniel-grant/Research/QuadruJuggle/logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt
+            Oracle baseline checkpoint will be at: logs/.../2026-04-08_20-44-18/model_best.pt

@@ -29,24 +29,30 @@ import torch
 class D435iNoiseModelCfg:
     """D435i noise model configuration.
 
-    Defaults from Intel D435i datasheet + empirical measurements.
+    Defaults calibrated from Ahn et al. 2019 (IEEE UR), Intel BKM whitepaper,
+    and lit-review iter_023 D435i noise characterisation.
     Matches D435iNoiseParams in ball_obs_spec.py but designed for
     stateful use with latency and proper dropout.
     """
 
-    # Position noise
-    sigma_xy_base: float = 0.002       # 2mm base XY noise std (metres)
-    sigma_z_base: float = 0.003        # 3mm base depth noise std
-    sigma_z_per_metre: float = 0.002   # +2mm per metre of distance
+    # Position noise — XY (lateral, pixel quantisation + IR pattern matching)
+    sigma_xy_per_metre: float = 0.0025  # σ_xy = 0.0025·z (linear in z; Ahn 2019)
+    sigma_xy_floor: float = 0.001       # 1mm floor at close range
 
-    # Dropout
-    dropout_prob: float = 0.02         # 2% chance of missed detection per step
+    # Position noise — Z (depth, quadratic in z: stereo disparity ε_d/(f·B)·z²)
+    sigma_z_base: float = 0.001         # 1mm constant floor (sensor quantisation)
+    sigma_z_quadratic: float = 0.005    # 0.005·z² (Ahn 2019 + 25% ball-geometry margin)
+
+    # Dropout — distance-dependent (white ball specular + small apparent size)
+    dropout_base: float = 0.20          # 20% baseline (curved white surface; lit-review §9.3)
+    dropout_range: float = 0.30         # additional 30% rising with distance
+    dropout_scale: float = 0.80         # exponential scale (metres)
 
     # Latency
-    latency_steps: int = 1             # observation delay in policy steps
+    latency_steps: int = 1              # observation delay in policy steps
 
     # Camera frame rate (for velocity noise estimation)
-    camera_hz: float = 30.0            # D435i depth frame rate
+    camera_hz: float = 30.0             # D435i depth frame rate
 
 
 class D435iNoiseModel:
@@ -101,12 +107,14 @@ class D435iNoiseModel:
         cfg = self.cfg
 
         # --- Apply position noise ---
-        # XY noise (lateral, pixel quantisation + IR pattern matching)
-        xy_noise = torch.randn(N, 2, device=device) * cfg.sigma_xy_base
-
-        # Z noise (depth, distance-dependent: stereo baseline effect)
         z_dist = gt_pos_b[:, 2].abs()
-        sigma_z = cfg.sigma_z_base + cfg.sigma_z_per_metre * z_dist
+
+        # XY noise: σ_xy = max(floor, 0.0025·z) — linear in depth (Ahn 2019)
+        sigma_xy = torch.clamp(cfg.sigma_xy_per_metre * z_dist, min=cfg.sigma_xy_floor)
+        xy_noise = torch.randn(N, 2, device=device) * sigma_xy.unsqueeze(-1)
+
+        # Z noise: σ_z = base + quadratic·z² — stereo disparity error ∝ z²
+        sigma_z = cfg.sigma_z_base + cfg.sigma_z_quadratic * z_dist * z_dist
         z_noise = torch.randn(N, device=device) * sigma_z
 
         noisy_pos = gt_pos_b.clone()
@@ -114,8 +122,14 @@ class D435iNoiseModel:
         noisy_pos[:, 1] += xy_noise[:, 1]
         noisy_pos[:, 2] += z_noise
 
-        # --- Dropout ---
-        detected = torch.rand(N, device=device) >= cfg.dropout_prob  # True = valid
+        # --- Distance-dependent dropout ---
+        # p = base + range·(1 - exp(-max(0, z-0.5)/scale))
+        # 20% at z≤0.5m, rising to ~50% at z=1.5m (white ball specular + small apparent size)
+        z_excess = torch.clamp(z_dist - 0.5, min=0.0)
+        p_dropout = cfg.dropout_base + cfg.dropout_range * (
+            1.0 - torch.exp(-z_excess / cfg.dropout_scale)
+        )
+        detected = torch.rand(N, device=device) >= p_dropout  # True = valid
 
         # Hold last valid measurement on dropout
         output_pos = torch.where(
