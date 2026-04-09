@@ -29,13 +29,14 @@
       ROOT CAUSE: d435i model only trained under noise at target=0.50 (Stages E-F).
       Never saw targets 0.10-0.40 with noise. Apex reward HIGHER than oracle at all targets
       (10.33 vs 7.79 at 0.10m) — pure energy modulation failure.
-- [ ] **NEXT: Stage G continuation training** — resume from d435i model_best.pt at
-      --start-stage 6 (mixed targets 0.10-0.50m). Expect improved low-target performance.
-      Command: gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
-        --task Isaac-BallJuggleHier-Go1-v0 --num_envs 12288 --headless \
-        --pi2-checkpoint <pi2_path> --start-stage 6 --noise-mode d435i \
-        --load_run 2026-04-08_22-51-56 --load_checkpoint model_best.pt --resume
-- [ ] Re-eval Stage G checkpoint with eval_juggle_hier.py (same 5 targets)
+- [x] Stage G continuation training — completed (early-stopped at 1531 stage iters)
+- [x] Re-eval Stage G checkpoint — model_early_stop.pt: 80% timeout at 0.10-0.30m, 48-63% at 0.40-0.50m
+- [x] **BUG FIX: ES metric used total episode return** — non-monotonic for multi-target
+      training (easy targets → short episodes → low total return). Fixed to per-step reward.
+      Updated _ES_MIN_DELTA from 0.5 → 0.002.
+- [ ] **NEXT: Retrain Stage G with fixed ES metric** — resume from Stage F checkpoint
+      (model_best.pt from 2026-04-08_22-51-56). Should converge further now that ES
+      won't kill training prematurely. Target: improve 0.40-0.50m while maintaining 0.10-0.30m.
 - [ ] Capture play.py video of d435i checkpoint for Quarto (Daniel requested videos)
 
 ## NEXT — Validate juggling behavior

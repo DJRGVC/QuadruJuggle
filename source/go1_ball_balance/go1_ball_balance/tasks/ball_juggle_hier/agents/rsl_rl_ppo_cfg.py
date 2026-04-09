@@ -30,8 +30,10 @@ class BallJuggleHierPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
-        entropy_coef=0.005,
-        # 0.01→0.005: same entropy explosion fix as pi2 (noise_std grew unbounded)
+        entropy_coef=0.001,
+        # 0.01→0.005→0.001: Stage G entropy explosion (noise_std 0.34→0.98 over 1500
+        # iters at 0.005). Mixed-target variance amplifies entropy term. 0.001 proven
+        # stable in balance task.
         num_learning_epochs=5,
         num_mini_batches=4,
         learning_rate=1.0e-3,

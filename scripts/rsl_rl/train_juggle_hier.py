@@ -140,9 +140,10 @@ _BJ_APEX_THRESHOLD = 1.3     # ball-at-rest earns ~0.99/step; 1.3 requires bounc
 _BJ_SUSTAIN    = 20
 _BJ_TRANSITION = 15
 
-# Early stopping
+# Early stopping — uses per-step reward (total_return / ep_len) as ES metric.
+# Per-step reward is ~0.05-0.15, so delta is proportionally small.
 _ES_PATIENCE = 1500
-_ES_MIN_DELTA = 0.5
+_ES_MIN_DELTA = 0.002
 
 
 class EarlyStopException(Exception):
@@ -339,7 +340,16 @@ def _bj_install_curriculum(runner, start_stage: int = 0) -> None:
         # RSL-RL stores episode returns in locs["rewbuffer"] (list), not "mean_reward"
         blending = state["old_stage"] is not None
         rew_buf = locs.get("rewbuffer", [])
-        if rew_buf:
+        len_buf = locs.get("lenbuffer", [])
+        if rew_buf and len_buf and len(rew_buf) == len(len_buf):
+            # Use per-step reward (total_return / ep_len) for ES metric.
+            # Raw episode returns are non-monotonic in multi-target stages:
+            # easy targets → short episodes → low total return even when
+            # per-step performance is excellent. Per-step reward normalizes.
+            import statistics
+            per_step = [r / max(l, 1) for r, l in zip(rew_buf, len_buf)]
+            mean_reward = statistics.mean(per_step)
+        elif rew_buf:
             import statistics
             mean_reward = statistics.mean(rew_buf)
         else:

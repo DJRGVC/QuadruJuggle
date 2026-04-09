@@ -143,3 +143,38 @@ Result:     CONFIRMED: d435i apex reward HIGHER than oracle at ALL targets (10.3
 Decision:   Next iteration: launch Stage G continuation training from d435i model_best.pt
             (start-stage 6, noise-mode d435i). This is the highest-priority item.
             GPU was blocked this entire iteration by perception agent's demo runs.
+
+## Iteration 32 — ES metric bug fix + Stage G eval  (2026-04-09T16:30Z)
+Hypothesis: Stage G training (mixed targets 0.10-0.50m, d435i noise) early-stopped
+            prematurely due to a bug in the ES metric — episode return is non-monotonic
+            in multi-target training because easy targets produce shorter episodes.
+Change:     (1) Fixed ES metric: switched from total episode return to per-step reward
+            (total_return / ep_len). This normalizes for episode length differences
+            across target heights. Updated _ES_MIN_DELTA from 0.5 to 0.002 accordingly.
+            (2) Added ES debug logging for future diagnosis.
+Command:    eval_juggle_hier.py on model_early_stop.pt (Stage G, 1531 iters in stage)
+            under both d435i and oracle obs modes, 5 targets, 30 episodes each.
+Result:     STAGE G EVAL RESULTS (model_early_stop.pt from 2026-04-09_07-38-27):
+            
+            Target  D435i%  Oracle%  Gap
+            0.10    80.6%   80.9%    -0.3%
+            0.20    80.0%   80.0%     0.0%
+            0.30    81.4%   85.0%    -3.6%
+            0.40    63.3%   73.3%   -10.0%
+            0.50    48.4%   66.7%   -18.3%
+            
+            ENERGY MODULATION FIXED: 0.10-0.20m targets went from 0% → 80% timeout.
+            PERCEPTION GAP: <4% at ≤0.30m, grows to 18% at 0.50m.
+            
+            ES BUG ROOT CAUSE: best_reward was set to 191.15 at stage iter 31
+            (when the deque was dominated by easy-target episodes from Stage F
+            adaptation). As the model learned to handle all targets, the mean
+            episode return DECREASED (shorter episodes for easy targets) despite
+            per-step performance improving. ES never found a new "best".
+            
+            Checkpoint: logs/.../2026-04-09_07-38-27/model_early_stop.pt (4294 global iters)
+            Experiments: experiments/iter_032_es_fix/
+Decision:   Next: retrain Stage G from the same Stage F checkpoint with the fixed ES
+            metric. The current model trained for 1531 Stage G iters before the broken
+            ES killed it — with the fix it should converge further and improve 0.40-0.50m
+            targets. The 0.50m regression (73% → 48%) may recover with more training.
