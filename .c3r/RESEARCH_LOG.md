@@ -207,3 +207,28 @@ Decision:   Next iter: check GPU status. If cleared, run demo_camera_ekf.py smok
             (1 env, 50 steps, headless) to validate camera sees ball. If GPU still locked,
             consider adding XY trajectory panel to summary plot, or pre-compute expected
             ball pixel location for detector tuning.
+
+## Iteration 82 — Sim pipeline integration tests (8 new)  (2026-04-08T17:30:00Z)
+Hypothesis: The sim camera pipeline (SimBallDetector → cam_detection_to_world → EKF) needs
+            integration tests validating the exact wiring used in demo_camera_ekf.py.
+Change:     Created test_sim_pipeline.py with 8 tests covering:
+            1. Identity camera (cam = world frame)
+            2. Translated camera (offset in X)
+            3. 90° Y-axis rotation (cam Z → world +X)
+            4. Moderate tilt (30° about Y) — validates in-frame projection check
+            5. Full detect→transform→EKF convergence (stationary ball, 30mm tolerance for gravity)
+            6. Ballistic trajectory tracking (30 steps, <30mm mean error)
+            7. 50% dropout resilience (<80mm bound)
+            8. Rotated + translated camera chain (20° Y tilt at cam_pos=[1,0,0])
+            Key learnings:
+            - EKF gravity model causes ~22mm systematic drift for "stationary" balls
+            - 70° camera tilt causes ball to project outside 640x480 image for nearby objects
+            - R_y(90°) maps [0,0,1] → [1,0,0] (not [-1,0,0] — sin, not -sin)
+Command:    pytest scripts/perception/test_sim_pipeline.py -v → 8/8 passed.
+            pytest scripts/perception/ → 294/294 passed (286 + 8 new).
+            GPU locked by policy d435i training (PID 1118275, 8 min in, ~75 min remaining).
+Result:     Full sim pipeline chain validated CPU-only. No regressions.
+            Testing-dashboard child still running (c3r kill failed — worktree path issue).
+Decision:   Next iter: check GPU status. If free, run debug_d435i_capture.py smoke test
+            to validate camera sees ball in Isaac Lab. If still locked, consider adding
+            XY trajectory panel to summary plot or updating Quarto page.
