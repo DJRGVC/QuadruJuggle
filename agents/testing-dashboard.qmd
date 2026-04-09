@@ -23,6 +23,227 @@ This page is the canonical reference for any developer setting up the teleop sta
 
 ---
 
+## Iteration 4 — Startup Walkthrough, Verified Paths, Noise-Mode in Step 2 {.unnumbered}
+*2026-04-09*
+
+This section adds: (1) a full annotated startup log so developers know what "working" looks
+like, (2) verified absolute checkpoint paths, and (3) `--noise-mode` added to the Step 2 flag
+table so the oracle/d435i/ekf modes are discoverable at launch time, not just in the perception
+section.
+
+### Verified checkpoint paths
+
+Smoke test (2026-04-09): confirmed both files exist on disk.
+
+```bash
+# pi2 (torso tracker) — in the main project logs
+PI2=/home/daniel-grant/Research/QuadruJuggle/logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt
+
+# pi1 oracle baseline — in the policy worktree (latest Stage F run)
+PI1=/home/daniel-grant/Research/QuadruJuggle-policy/logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_21-16-05/model_best.pt
+```
+
+From within the project root (`/home/daniel-grant/Research/QuadruJuggle/` or
+`/home/daniel-grant/Research/QuadruJuggle-policy/`), use relative paths as in the guide below.
+
+### Annotated startup log
+
+When `play_teleop.py` launches successfully, you will see output like this in the terminal:
+
+```
+[INFO] [0.000] [carb] Logging to file: ...
+[INFO] [0.000] [carb] Simulation App Starting
+...
+[INFO] pi2 checkpoint: /abs/path/to/go1_torso_tracking/.../model_best.pt
+...
+[INFO] Playing checkpoint: /abs/path/to/go1_ball_juggle_hier/.../model_best.pt
+[INFO] Num envs: 1
+
+========================================================================
+  TELEOP CONTROLS — Hierarchical Ball Juggling (pi1 + pi2)
+========================================================================
+  W/S     — forward/backward velocity (vx)
+  A/D     — left/right velocity (vy)
+  P/L     — increase/decrease target ball apex height
+  R       — zero velocity (stop moving)
+  X       — reset all (zero vel + default height 0.30m)
+  Q/ESC   — quit
+========================================================================
+
+[TELEOP] step=   10 | vx=+0.00 vy=+0.00 | target_h=0.30m | ball_h=0.003m | pi1_cmd=[h=+0.23 hd=+0.04 r=-0.01 p=+0.02]
+[TELEOP] step=   20 | vx=+0.00 vy=+0.00 | target_h=0.30m | ball_h=0.187m | pi1_cmd=[h=+0.47 hd=+0.31 r=+0.00 p=-0.01]
+[TELEOP] step=   30 | vx=+0.00 vy=+0.00 | target_h=0.30m | ball_h=0.298m | pi1_cmd=[h=+0.52 hd=-0.08 r=+0.01 p=+0.00]
+```
+
+**Startup sequence**: Isaac Lab carb logs → simulator init (~30-60s) → pi2 checkpoint loaded →
+controls banner → HUD updates every 10 steps (0.2s real-time at 50Hz).
+
+**Healthy juggling signature**: `ball_h` oscillates 0 → `target_h` → 0 with period ≈ 0.5s.
+`pi1_cmd[h]` (first number in brackets) tracks `target_h/0.5` in normalised units.
+
+**Ball on paddle (not juggling)**: `ball_h ≈ 0.0` stays flat. Press `P` three times to raise
+target to 0.45m and encourage a throw.
+
+**Velocity command example** (press W three times):
+
+```
+[TELEOP] step=  240 | vx=+0.45 vy=+0.00 | target_h=0.30m | ball_h=0.241m | pi1_cmd=[h=+0.51 hd=-0.15 r=+0.02 p=+0.09]
+```
+
+The robot moves forward at 0.45 m/s; `pi1_cmd[p]` (pitch) goes positive as pi2 leans forward.
+
+### Added: `--noise-mode` to launch command (Step 2)
+
+The Step 2 flag table below has been updated to include `--noise-mode`. This flag is the
+primary switch between oracle and perception-pipeline modes — see [Iteration 3](#iteration-3)
+for full details on each mode.
+
+---
+
+## Iteration 3 — Perception Pipeline: D435i → EKF Integration {.unnumbered}
+*2026-04-09*
+
+This section documents the full perception pipeline that allows the policy to
+run on real (or simulated) camera data instead of oracle ground-truth ball state.
+
+### Overview
+
+The perception stack has three stages:
+
+```
+D435i depth camera (upward-facing on robot back)
+        │  float32 depth frames @ 30Hz
+        ▼
+SimBallDetector / RealBallDetector
+        │  3D ball position in camera frame (X, Y, Z) metres
+        ▼
+D435iNoiseModel  (stateful: latency buffer + dropout)
+        │  noisy ball position (N_envs × 3) + detected mask
+        ▼
+BallEKF  (6D state: [x, y, z, vx, vy, vz], contact-aware)
+        │  filtered ball position + velocity estimate
+        ▼
+pi1 observation vector  (replaces oracle ball_pos/vel slots)
+```
+
+### `--noise-mode` flag (train and play)
+
+Both `train_juggle_hier.py` and `play_teleop.py` accept `--noise-mode`:
+
+| Mode | Ball observation source | When to use |
+|---|---|---|
+| `oracle` | Ground-truth from sim (default) | Baseline / initial training |
+| `d435i` | D435i structured noise model (stateless) | Sim noise curriculum |
+| `ekf` | D435i noise → EKF filter | Full perception pipeline |
+
+::: {.callout-warning appearance="simple"}
+**Common misconfiguration**: the curriculum has noise stages starting at Stage C
+(`noise_scale=0.50`). If you run with `--noise-mode oracle` (the default), noise is
+never applied and the curriculum "noise column" does nothing. Always pass
+`--noise-mode d435i` or `--noise-mode ekf` when training with noise stages.
+:::
+
+### D435i noise model parameters
+
+The noise model is calibrated from **Ahn et al. 2019 (IEEE UR)** measurements:
+
+| Parameter | Value | Physical meaning |
+|---|---|---|
+| `sigma_xy_per_metre` | 0.0025 | σ_xy = 0.0025·z (lateral noise linear in depth) |
+| `sigma_xy_floor` | 0.001 m | 1mm floor at close range |
+| `sigma_z_base` | 0.001 m | 1mm constant quantisation floor |
+| `sigma_z_quadratic` | 0.005 | σ_z = 0.001 + 0.005·z² (stereo disparity error) |
+| `dropout_base` | 0.20 | 20% baseline dropout (curved white ball surface) |
+| `dropout_range` | 0.30 | +30% rising with distance (exponential, scale=0.8m) |
+| `latency_steps` | 1 | 1 policy-step delay (≈20ms at 50Hz) |
+
+Example: at z = 0.50 m (ball at 50 cm height), σ_xy ≈ **1.25 mm**, σ_z ≈ **2.25 mm**,
+dropout ≈ **38%** (ball sometimes invisible due to specular reflection / IR interference).
+
+### BallEKF configuration
+
+State vector: `[x, y, z, vx, vy, vz]` (6D, paddle frame).
+
+| Parameter | Value | Why |
+|---|---|---|
+| `q_pos` | 0.003 m/√s | Position process noise (CWNA) |
+| `q_vel` (flight) | 0.40 m/s/√s | Ballistic flight — calibrated to ~0.5m apex |
+| `q_vel` (contact) | 50.0 m/s/√s | During paddle contact (contact detection adaptive Q) |
+| `q_vel` (post-contact) | 20.0 m/s/√s | 10-step window after bounce |
+| `contact_z_threshold` | 0.025 m | Ball at Z < 25mm → contact phase |
+| `r_xy` | 0.00125 m | Adaptive: r_xy_per_metre × ball height |
+| `r_z` | 0.00225 m | Adaptive: 0.001 + 0.005·z² |
+| `drag_coeff` | 0.112 | Quadratic drag (Cd≈0.4 for 40mm ball) |
+| `nis_gate_threshold` | 11.345 | χ² 3DOF 99th pct — rejects detector glitches |
+
+The contact-aware mode (iter 74 validation) was critical for fixing NIS=970 during
+paddle contact (ball velocity changes abruptly). The EKF inflates `q_vel` 125× during
+contact to trust measurements over the (wrong) ballistic prediction.
+
+### Camera geometry
+
+The D435i is mounted upward-facing on the Go1's back:
+
+```
+Position  (body frame): (-0.08, 0.0, 0.06) m
+Convention: "world"  (identity = +X forward, +Z up)
+Orientation: q = (0.8192, 0.0, -0.5736, 0.0)  — 70° pitch-up elevation
+FOV coverage: 41° – 99° above horizontal (ball typically at ~21–75° elevation)
+```
+
+::: {.callout-note appearance="simple"}
+**Convention note**: `convention="world"` identity quaternion points along +X (forward)
+with +Z up. The 70° pitch-up quaternion rotates around Y-axis by −35°...actually the
+rotation `q=(0.8192, 0, -0.5736, 0)` gives cos(θ/2)=0.8192 → θ≈70° rotation around
+-Y-axis, pointing the camera 70° above horizontal (validated in perception agent iter 77
+after discovering `convention="ros"` has a non-obvious zenith-pointing default).
+:::
+
+### SimBallDetector algorithm
+
+For sim validation, `SimBallDetector` uses Isaac Lab's `TiledCamera` float32 depth:
+
+1. Threshold depth to `[0.05, 2.0]` m
+2. Find connected components in the valid-depth mask
+3. Score each component by its proximity to expected ball pixel size
+   (expected area ≈ π · (f · r_ball / z)² pixels at distance z)
+4. Deproject winning blob centroid using camera intrinsics
+5. Transform camera-frame → paddle frame
+
+### Running with EKF perception
+
+```bash
+# Oracle baseline (default — ground truth ball state)
+uv run --active python scripts/rsl_rl/play_teleop.py \
+    --task Isaac-BallJuggleHier-Go1-Play-v0 \
+    --pi2-checkpoint logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt \
+    --num_envs 1
+
+# With D435i structured noise (no EKF)
+uv run --active python scripts/rsl_rl/play_teleop.py \
+    --task Isaac-BallJuggleHier-Go1-Play-v0 \
+    --pi2-checkpoint logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt \
+    --noise-mode d435i --num_envs 1
+
+# Full pipeline: D435i noise → EKF filter
+uv run --active python scripts/rsl_rl/play_teleop.py \
+    --task Isaac-BallJuggleHier-Go1-Play-v0 \
+    --pi2-checkpoint logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt \
+    --noise-mode ekf --num_envs 1
+```
+
+::: {.callout-note appearance="simple"}
+**Status (2026-04-09)**: Camera orientation GPU validation is in progress (perception
+agent iter 77). The `convention="world"` 70° tilt fix has passed unit tests (264/264)
+but awaits a live GPU capture to confirm the ball is actually in frame. The oracle and
+`--noise-mode d435i` paths are stable; `--noise-mode ekf` is ready pending the camera
+fix being merged.
+:::
+
+Commits: `473cb76` (iter 2 data sourced from perception/policy branches)
+
+---
+
 ## Iteration 2 — 8D Interface Reference + Architecture Deep-Dive {.unnumbered}
 *2026-04-09*
 
@@ -158,18 +379,18 @@ juggling height (P/L). pi1 translates these into torso pose commands; pi2 execut
 You need two checkpoints: **pi2** (torso tracker) and **pi1** (ball planner).
 
 **pi2 checkpoint** (torso tracker — trained once, frozen):
-```
-logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt
+```bash
+# Verified ✓ (2026-04-09)
+~/Research/QuadruJuggle/logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt
 ```
 
 **pi1 checkpoint** (ball planner — pick the latest oracle or d435i run):
 ```bash
-# Latest oracle baseline (oracle ball state — for reference/comparison)
-logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_20-44-18/model_best.pt
+# Latest oracle baseline (Stage F, ground-truth obs) — verified ✓
+~/Research/QuadruJuggle-policy/logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_21-16-05/model_best.pt
 
-# d435i noise-trained (realistic camera noise — use this for perception testing)
-# Check the latest run:
-ls -lt logs/rsl_rl/go1_ball_juggle_hier/ | head -5
+# d435i noise-trained (realistic camera noise — use once training completes)
+ls -lt ~/Research/QuadruJuggle-policy/logs/rsl_rl/go1_ball_juggle_hier/ | head -5
 ```
 
 To use the most recent checkpoint automatically (no `--checkpoint` flag needed):
@@ -184,9 +405,10 @@ To use the most recent checkpoint automatically (no `--checkpoint` flag needed):
 Run from the project root directory:
 
 ```bash
+# Run from: ~/Research/QuadruJuggle-policy/
 uv run --active python scripts/rsl_rl/play_teleop.py \
     --task Isaac-BallJuggleHier-Go1-Play-v0 \
-    --pi2-checkpoint logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt \
+    --pi2-checkpoint ~/Research/QuadruJuggle/logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt \
     --num_envs 1
 ```
 
@@ -194,8 +416,8 @@ uv run --active python scripts/rsl_rl/play_teleop.py \
 ```bash
 uv run --active python scripts/rsl_rl/play_teleop.py \
     --task Isaac-BallJuggleHier-Go1-Play-v0 \
-    --pi2-checkpoint logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt \
-    --checkpoint logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_20-44-18/model_best.pt \
+    --pi2-checkpoint ~/Research/QuadruJuggle/logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt \
+    --checkpoint ~/Research/QuadruJuggle-policy/logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_21-16-05/model_best.pt \
     --num_envs 1
 ```
 
@@ -210,6 +432,7 @@ uv run --active python scripts/rsl_rl/play_teleop.py \
 | `--height-default` | `0.30` | Initial target apex height (m) |
 | `--vel-max` | `0.50` | Maximum velocity command (m/s) |
 | `--real-time` | off | Sleep between steps to match wall-clock speed |
+| `--noise-mode` | `oracle` | Ball obs source: `oracle` / `d435i` / `ekf` (see [Iteration 3](#iteration-3)) |
 
 ---
 
@@ -380,17 +603,17 @@ export DISPLAY=:0  # or check $DISPLAY
 
 ### Key model paths (reference)
 
-| Checkpoint | Path | Notes |
+| Checkpoint | Absolute path | Notes |
 |---|---|---|
-| pi2 (torso tracker) | `logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt` | Frozen, use this always |
-| pi1 oracle baseline | `logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_20-44-18/model_best.pt` | Ground-truth obs, reference |
-| pi1 d435i trained | `logs/rsl_rl/go1_ball_juggle_hier/<latest-d435i-run>/model_best.pt` | Noise-robust, in training |
+| pi2 (torso tracker) | `~/Research/QuadruJuggle/logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt` | Frozen, use this always; verified ✓ |
+| pi1 oracle baseline | `~/Research/QuadruJuggle-policy/logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_21-16-05/model_best.pt` | Ground-truth obs, Stage F; verified ✓ |
+| pi1 d435i trained | `~/Research/QuadruJuggle-policy/logs/rsl_rl/go1_ball_juggle_hier/<latest-d435i-run>/model_best.pt` | Noise-robust; in training (iter 25+) |
 
-To find the latest d435i run:
+To find the latest d435i run (once training completes):
 ```bash
-ls -lt logs/rsl_rl/go1_ball_juggle_hier/ | head -10
-# Look for a run with "--noise-mode d435i" in its training config
-cat logs/rsl_rl/go1_ball_juggle_hier/<run-dir>/params/agent.yaml | grep noise
+ls -lt ~/Research/QuadruJuggle-policy/logs/rsl_rl/go1_ball_juggle_hier/ | head -10
+# Confirm noise mode in training config:
+cat ~/Research/QuadruJuggle-policy/logs/rsl_rl/go1_ball_juggle_hier/<run-dir>/params/agent.yaml | grep noise
 ```
 
 Commits: `be94b7c` (iter 2 worktree recovery + page created)
