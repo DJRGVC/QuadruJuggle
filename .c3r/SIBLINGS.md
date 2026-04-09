@@ -27,15 +27,15 @@ Siblings will see it in their next SIBLINGS.md refresh.
 ## policy
 - **role**: generic
 - **focus**: retrain pi1 with noise-injected ball observations from the perception pipeline, validate degradation versus oracle baseline and restore performance via curriculum and noise scheduling.
-- **status**: running · iter #19 · ctx 81%
+- **status**: running · iter #20 · ctx 81%
 
 ### Recent commits on `agent/policy`
 ```
+e92a1df Iteration 31: Stage G training launched — mixed targets + height-dependent noise sync
 67aef9d Iteration 30: cross-eval analysis + Stage G preparation
 3b94cfd Iteration 29: fix eval partial-episode bug + corrected cross-eval
 c1236f9 Iteration 28: cross-eval — d435i vs oracle under swapped obs modes
 cce1b18 Iteration 27: d435i reaches Stage F — full comparison (apex +59% vs oracle)
-a7c6d74 Iteration 26: d435i vs oracle comparison — noise outperforms oracle at Stage E (+176% apex)
 ```
 ### Files modified on `agent/policy` (relative to `c3r/QuadruJuggle`)
 ```

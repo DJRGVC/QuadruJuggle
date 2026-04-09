@@ -125,3 +125,46 @@ Result:     Code ready. GPU eval needed to verify detection rate improvement.
 Decision:   Next iter: run Stage G eval with starve_limit=10 when GPU free. Compare
             detection rates vs iter 114 (limit=50). If GPU still blocked, consider
             preparing the anchor ablation analysis or Quarto experiment page.
+
+## Iteration 116 — Stage G starvation eval + pi2 default fix  (2026-04-09T14:30:00Z)
+Hypothesis: Reducing SCHED_STARVE_LIMIT from 50→10 (iter 115) will break the camera
+            scheduling death spiral, raising detection rate from ~1% to >30%.
+Change:     1. Fixed pi2 default in run_perception_eval.sh: 09-04-32 → 17-16-01
+               (matching the checkpoint the policy agent uses for Stage G training).
+            2. Ran full Stage G d435i eval: 5 targets (0.10-1.00), 1500 steps, 4 envs,
+               anchor=ON, camera-scheduling=ON, starve_limit=10.
+            3. Attempted oracle comparison but GPU blocked by policy training.
+Command:    gpu_lock.sh bash run_perception_eval.sh --pi1 .../2026-04-09_07-19-27/model_best.pt
+            --targets "0.10 0.30 0.50 0.70 1.00" --anchor --camera-scheduling
+            --starve-limit 10 --label stage_g_starve10 --steps 1500 --num-envs 4
+Result:     STARVATION FIX: MARGINAL IMPACT. Detection rates still 1.0-2.0% (vs 1.1%
+            in iter 114 with limit=50). Root cause is NOT starvation — it's that the
+            ball rarely enters flight.
+
+            | Target | Det% | EKF_RMSE | TO%  | Bounces | Flight% | Peak   |
+            |--------|------|----------|------|---------|---------|--------|
+            | 0.10   | 1.0% | 0.145m   | 75%  | 0.0     | 0.0%    | 0.000m |
+            | 0.30   | 1.1% | 0.146m   | 50%  | 0.5     | 2.0%    | 0.662m |
+            | 0.50   | 1.0% | 0.142m   | 50%  | 0.2     | 0.9%    | 0.485m |
+            | 0.70   | 1.7% | 0.444m   | 0%   | 1.2     | 6.2%    | 0.503m |
+            | 1.00   | 2.0% | 0.436m   | 0%   | 2.2     | 23.2%   | 0.701m |
+
+            KEY FINDINGS:
+            - Low targets (0.10-0.50): Policy BALANCES (50-75% TO), never bounces.
+              EKF RMSE ~0.14m from anchor updates alone. Detection useless.
+            - High targets (0.70-1.00): Policy ATTEMPTS juggling but drops ball fast
+              (0% TO, 8-19 episodes). Ball reaches 0.5-0.7m (not target). Some detections
+              but huge detection RMSE (1.8-2.2m = false positives at distance).
+            - Anchor dominates: 87-98% anchor rate. EKF tracks via paddle position.
+            - Flight-conditional det rate: at target=1.00, 30 det / ~180 flight steps
+              ≈ 17% per flight-step — reasonable for the camera FOV.
+            - Core bottleneck is POLICY, not perception. The d435i Stage G checkpoint
+              can balance but can't juggle reliably.
+            - Policy agent currently training new Stage G run (nohup, PID 1348279,
+              from 2026-04-08_22-51-56 checkpoint).
+Decision:   Next iter: (1) run oracle comparison when GPU frees to confirm perception
+            vs policy split, (2) update Quarto with these findings. The perception
+            pipeline is essentially feature-complete — further progress depends on the
+            policy agent producing a better juggling policy. Consider running the
+            oracle-trained checkpoint (2026-04-08_19-19-41) through our pipeline to see
+            if it juggles better (it was oracle-trained Stage F, should balance well).

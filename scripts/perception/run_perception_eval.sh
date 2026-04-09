@@ -27,7 +27,7 @@ cd "$(dirname "$0")/../.."
 
 # ── Defaults ──
 PI1=""
-PI2="/home/daniel-grant/Research/QuadruJuggle/logs/rsl_rl/go1_torso_tracking/2026-03-12_09-04-32/model_best.pt"
+PI2="/home/daniel-grant/Research/QuadruJuggle/logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt"
 TARGETS="0.10 0.30 0.50"
 NOISE_MODE="d435i"
 LABEL=""

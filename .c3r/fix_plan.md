@@ -32,8 +32,9 @@
 - [x] ROOT CAUSE: policy is balancing (Stage F), not juggling. Camera works fine during flight.
 - [~] UNBLOCKING: policy agent training Stage G now (d435i noise, mixed targets 0.10-0.50m)
   - [x] Created parameterized run_perception_eval.sh (iter 112) — replaces hardcoded scripts
-  - [ ] Run Stage G eval: `run_perception_eval.sh --pi1 <stage_g_best.pt> --targets "0.10 0.30 0.50 0.70 1.00" --anchor --camera-scheduling --label stage_g`
-  - [ ] Compare Stage G vs Stage F: anchor ON vs OFF, camera scheduling impact
+  - [x] Run Stage G eval (iter 116): det 1-2%, EKF RMSE 0.14-0.44m. Policy balances, doesn't juggle.
+  - [ ] Run oracle comparison when GPU free (confirm policy vs perception split)
+  - [ ] Run oracle-trained checkpoint through d435i pipeline (does it balance better?)
 - [x] EKF covariance clamping for sparse-measurement regime (iter 103)
   - p_max_pos=0.25m, p_max_vel=5.0m/s prevents P divergence during long predict-only
   - steps_since_measurement counter for diagnostics
