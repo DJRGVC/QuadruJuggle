@@ -264,3 +264,32 @@ Decision:   Next iteration: launch d435i training from scratch once GPU is free.
               --num_envs 12288 --headless --max_iterations 1500 --noise-mode d435i \
               --pi2-checkpoint /home/daniel-grant/Research/QuadruJuggle/logs/rsl_rl/go1_torso_tracking/2026-03-12_17-16-01/model_best.pt
             Oracle baseline checkpoint will be at: logs/.../2026-04-08_20-44-18/model_best.pt
+
+## Iteration 26 — D435i vs oracle comparison + Quarto docs  (2026-04-09T05:40Z)
+Hypothesis: The completed d435i training (1500 iters from scratch) provides meaningful
+            comparison against oracle baseline at matched curriculum stages.
+Change:     Analysis iteration. Created references/policy.qmd (11 citations),
+            experiments/policy/2026-04-09_d435i_vs_oracle_curriculum.qmd (full write-up),
+            updated agents/policy.qmd. Launched continuation d435i training (1500 more iters
+            from model_1499.pt, start-stage 4). Processed 7 INBOX messages.
+Command:    TensorBoard analysis of both runs. Continuation run:
+            gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+              --task Isaac-BallJuggleHier-Go1-v0 --num_envs 12288 --headless \
+              --max_iterations 1500 --noise-mode d435i \
+              --pi2-checkpoint .../2026-03-12_17-16-01/model_best.pt \
+              --resume --load_run 2026-04-08_21-16-05 --checkpoint model_1499.pt --start-stage 4
+            Log dir: logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_22-43-18/
+Result:     D435i (1500 iters from scratch) reached Stage E (5/6):
+            - Stage transitions: A(147)→B(34)→C(126)→D(240)→E(953 iters, still at E)
+            - Final: reward=34.4, ep_len=979, timeout=71%, ball_below=29%, apex=1.50
+            - D435i OUTPERFORMS oracle at Stage E: apex 1.50 vs 0.54 (+176%), reward 41.0 vs 31.9
+            - ball_low=-0.01 confirms active juggling (ball rarely resting on paddle)
+            Oracle baseline (iter_023, from checkpoint): reached Stage F, apex=0.86 at Stage F
+            Continuation run in progress: step ~32/1500, ETA 85 min
+            Key checkpoints:
+            - D435i: logs/.../2026-04-08_21-16-05/model_best.pt (Stage E)
+            - Oracle: logs/.../2026-04-08_19-19-41/model_best.pt (Stage F)
+            - Pi2: .../2026-03-12_17-16-01/model_best.pt
+Decision:   Next iteration: check continuation run progress. If Stage F reached, run
+            formal eval with eval_juggle_hier.py for publication-quality comparison table.
+            Also need to update fix_plan.md to mark d435i training as done.

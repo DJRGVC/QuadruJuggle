@@ -8,8 +8,10 @@
 - [x] Run fresh oracle training with 6-stage curriculum (iters 22-23, all stages reached).
 - [x] BUG FIX: iter 22-23 ran with mode="oracle" due to missing --noise-mode d435i flag.
       Curriculum noise_scale changes were no-ops. Added warning to train script.
-- [ ] **Run fresh training WITH --noise-mode d435i** from scratch (Stage A).
-      This is the corrected noise-curriculum run. Resume from scratch, NOT from oracle checkpoint.
+- [x] **Run fresh training WITH --noise-mode d435i** from scratch (Stage A).
+      DONE: reached Stage E (5/6), apex=1.50, outperforms oracle at Stage E.
+      Checkpoint: logs/.../2026-04-08_21-16-05/model_best.pt
+- [ ] Continue d435i training to Stage F (continuation run in progress, log dir 2026-04-08_22-43-18)
 - [ ] Once d435i run reaches Stage F: compare against oracle baseline (iter_023 checkpoint)
       using compare_pi1.py with --noise-mode-a oracle --noise-mode-b d435i
 - [ ] Cross-eval: noise-trained checkpoint under oracle obs vs d435i obs
