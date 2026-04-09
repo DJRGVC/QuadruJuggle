@@ -168,3 +168,27 @@ Result:     Curriculum code updated and smoke-tested. Training not completed due
             Also processed INBOX: Daniel confirmed GPU runs don't need pre-confirmation, 120 min cap.
 Decision:   Next iteration: retry fresh training with 6-stage curriculum once GPU is free.
             Start from scratch (Stage A) since old checkpoints trained on different stage definitions.
+
+## Iteration 22 — Fresh 6-stage training from scratch  (2026-04-09T01:12Z)
+Hypothesis: 6-stage curriculum (A-F, 0.50m cap) will train pi1 from scratch, advancing through
+            oracle stages quickly and handling noise introduction at Stage C/D.
+Change:     No code changes. Launched fresh training with 6-stage curriculum (committed in iter 20).
+            pi2 checkpoint: 2026-03-12_17-16-01/model_best.pt.
+Command:    gpu_lock.sh uv run --active python scripts/rsl_rl/train_juggle_hier.py \
+              --task Isaac-BallJuggleHier-Go1-v0 --num_envs 12288 --headless \
+              --max_iterations 1200 --pi2-checkpoint .../2026-03-12_17-16-01/model_best.pt
+Result:     Training completed in 62 min (3.01s/iter). Advanced A→B→C→D (3 transitions):
+            - Stage A (oracle, target=0.10m): 112 iters. apex=8.7, timeout=48%.
+            - Stage B (oracle, target=0.20m): 34 iters. apex=8.7, timeout=53%.
+            - Stage C (50% noise, target=0.30m): 34 iters. apex=2.1→0.55, timeout=56%.
+            - Stage D (full noise, target=0.40m): 1020 iters. STUCK.
+              apex decayed 0.55→0.04 over 1000 iters. timeout=92%. ball_release_vel=0.42.
+            Policy found local optimum: survive (alive=0.91) + throw occasionally
+            (release_vel=0.42) but ball never reaches 0.40m target height.
+            Root cause: σ_ratio=3.5 at target=0.40m → σ=0.114m (very narrow Gaussian).
+            Ball must be within ±11cm of 0.40m to earn >60% reward — too tight with noisy obs.
+            Log dir: logs/rsl_rl/go1_ball_juggle_hier/2026-04-08_18-12-53/
+            Checkpoint: model_best.pt (best from Stage D), model_950.pt (step 1150).
+Decision:   Next iteration: lower σ_ratio from 3.5 to 2.0 for Stages C-F. This widens the
+            Gaussian (σ=0.20m at 0.40m target) giving much more gradient for near-miss heights.
+            Resume from model_best.pt at start-stage 3 (Stage D).
