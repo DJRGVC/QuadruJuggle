@@ -55,6 +55,7 @@ echo ""
 # ── 3. Comparison ──
 echo "=== Comparison ==="
 if [ -f "${ANCHOR_ON_OUT}/trajectory.npz" ] && [ -f "${ANCHOR_OFF_OUT}/trajectory.npz" ]; then
+    # General comparison (height-binned)
     uv run --active python scripts/perception/analyze_eval_trajectory.py \
         --npz "${ANCHOR_ON_OUT}/trajectory.npz" \
         --compare "${ANCHOR_OFF_OUT}/trajectory.npz" \
@@ -62,6 +63,14 @@ if [ -f "${ANCHOR_ON_OUT}/trajectory.npz" ] && [ -f "${ANCHOR_OFF_OUT}/trajector
         --out "images/perception/anchor_ablation.png" \
         2>&1
     echo "Figure: images/perception/anchor_ablation.png"
+
+    # Detailed anchor-specific analysis (phase RMSE, cumulative divergence)
+    uv run --active python scripts/perception/analyze_anchor_ablation.py \
+        --on "${ANCHOR_ON_OUT}/trajectory.npz" \
+        --off "${ANCHOR_OFF_OUT}/trajectory.npz" \
+        --out "images/perception/anchor_ablation_detail.png" \
+        2>&1
+    echo "Figure: images/perception/anchor_ablation_detail.png"
 fi
 
 echo ""

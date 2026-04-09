@@ -196,3 +196,21 @@ Result:     All tests pass. Ablation script ready for next GPU slot. Analysis wi
             - Flight-phase RMSE: expect identical (anchor doesn't fire during flight)
 Decision:   Next iter: run anchor ablation on GPU if available. If still blocked,
             consider flight-window detection mode or per-step EKF diagnostics plotting.
+
+## Iteration 107 — Anchor ablation analysis tooling  (2026-04-10T19:00:00Z)
+Hypothesis: Dedicated ablation analysis script will produce publication-quality 4-panel
+            figure for anchor ON vs OFF comparison, ready for GPU eval next iteration.
+Change:     Created analyze_anchor_ablation.py with:
+            1. Per-step error computation, phase masking (contact vs flight), phase RMSE
+            2. Cumulative RMSE divergence tracking
+            3. 4-panel figure: (a) error over time with contact shading, (b) phase RMSE
+               bar chart, (c) ball height + anchor fire markers, (d) cumulative RMSE
+            4. Text summary table comparing ON vs OFF across phases
+            5. Updated run_anchor_ablation.sh to call both general + detailed analysis
+            6. 16 new tests (test_analyze_anchor_ablation.py), all passing
+Command:    pytest scripts/perception/ → 388/388 passed (8.10s). No GPU needed.
+Result:     Tooling ready. Script tested with synthetic data. Produces clear figures
+            showing contact-phase vs flight-phase improvement from anchor. GPU still
+            occupied by policy agent.
+Decision:   Next iter: run anchor ablation on GPU if available. If still blocked,
+            consider flight-window detection mode OR Quarto update with recent progress.
