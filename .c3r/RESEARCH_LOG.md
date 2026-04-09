@@ -251,3 +251,19 @@ Result:     apply_sweep_results.py enhanced and tested. Low-range sweep PID 9875
 Decision:   Next iter: check if sweep_q_vel_low_range.json exists. If yes, merge with high-range
             data, find NIS=3.0 crossing, update BallEKFConfig defaults. If sweep crashed, diagnose.
             Sweep PID: 987574. Output: logs/perception/sweep_q_vel_low_range.json.
+
+## Iteration 72 — apply_sweep_results --apply + low-range sweep status  (2026-04-09T01:45:00Z)
+Hypothesis: Adding --apply flag to apply_sweep_results.py enables automatic BallEKFConfig patching
+            once the combined sweep data is available.
+Change:     Added apply_to_config() function + --apply CLI flag to apply_sweep_results.py. Uses regex
+            to patch q_vel in ball_ekf.py. Added 2 unit tests (test_patches_q_vel, test_no_match).
+            Processed 2 INBOX messages from Daniel (accuracy Q + respond Q). Low-range sweep
+            (PID 987574, q_vel=0.01-0.40) still queued behind policy GPU lock (PID 982975, ~10min in).
+Command:    pytest scripts/perception/ — 253/253 pass. No GPU commands.
+Result:     apply_sweep_results.py now supports: --plot (figure), --apply (auto-patch config), and
+            multi-file merge. Ready to run `python apply_sweep_results.py --plot --apply` once
+            sweep_q_vel_low_range.json exists. Replied to Daniel with full accuracy report:
+            EKF RMSE ≈ 11.5mm, pipeline feature-complete in sim, real hardware blocked on Go1 access.
+Decision:   Next iter: check if sweep_q_vel_low_range.json exists. If yes, run apply_sweep_results.py
+            --plot --apply to find NIS=3.0 crossing and auto-patch BallEKFConfig. If sweep still
+            queued, check GPU status. Sweep PID: 987574.

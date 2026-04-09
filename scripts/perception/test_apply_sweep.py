@@ -116,3 +116,27 @@ class TestApplySweepResults:
             capture_output=True, text=True, timeout=10,
         )
         assert result.returncode != 0
+
+
+class TestApplyToConfig:
+    def test_patches_q_vel(self, tmp_path):
+        """apply_to_config should update q_vel in a config file."""
+        fake_config = tmp_path / "ball_ekf.py"
+        fake_config.write_text(
+            "    q_vel: float = 0.40     # velocity process noise std, FREE-FLIGHT (m/s) per sqrt(s)\n"
+        )
+        from apply_sweep_results import apply_to_config
+        ok = apply_to_config(0.1234, config_path=str(fake_config))
+        assert ok
+        content = fake_config.read_text()
+        assert "0.1234" in content
+        assert "0.40" not in content
+        assert "FREE-FLIGHT" in content
+
+    def test_no_match_returns_false(self, tmp_path):
+        """apply_to_config should return False if pattern not found."""
+        fake_config = tmp_path / "ball_ekf.py"
+        fake_config.write_text("# no q_vel here\n")
+        from apply_sweep_results import apply_to_config
+        ok = apply_to_config(0.1234, config_path=str(fake_config))
+        assert not ok

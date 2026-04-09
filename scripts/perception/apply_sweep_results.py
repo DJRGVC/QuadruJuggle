@@ -109,9 +109,36 @@ def make_figure(results, output_path, crossing_q_vel=None):
     plt.close(fig)
 
 
+def apply_to_config(q_vel_value, config_path=None):
+    """Patch BallEKFConfig.q_vel in ball_ekf.py with the recommended value."""
+    import re
+    if config_path is None:
+        config_path = os.path.join(
+            os.path.dirname(__file__), "..", "..",
+            "source/go1_ball_balance/go1_ball_balance/perception/ball_ekf.py"
+        )
+        config_path = os.path.normpath(config_path)
+
+    with open(config_path) as f:
+        content = f.read()
+
+    pattern = r"(q_vel:\s*float\s*=\s*)[\d.]+(\s*#.*FREE-FLIGHT)"
+    new_val = f"{q_vel_value:.4f}"
+    new_content, n = re.subn(pattern, rf"\g<1>{new_val}\2", content)
+    if n == 0:
+        print(f"WARNING: Could not find q_vel pattern in {config_path}")
+        return False
+
+    with open(config_path, "w") as f:
+        f.write(new_content)
+    print(f"Updated {config_path}: q_vel = {new_val}")
+    return True
+
+
 def main():
     do_plot = "--plot" in sys.argv
-    args = [a for a in sys.argv[1:] if a != "--plot"]
+    do_apply = "--apply" in sys.argv
+    args = [a for a in sys.argv[1:] if a not in ("--plot", "--apply")]
 
     if not args:
         files = sorted(glob.glob("logs/perception/sweep_q_vel_*.json"))
@@ -169,6 +196,14 @@ def main():
         fig_path = "images/perception/q_vel_sweep_combined.png"
         os.makedirs(os.path.dirname(fig_path), exist_ok=True)
         make_figure(results, fig_path, crossing_q_vel=crossing)
+
+    if do_apply:
+        print(f"\nApplying q_vel = {recommended_q_vel:.4f} to BallEKFConfig...")
+        ok = apply_to_config(recommended_q_vel)
+        if ok:
+            print("Done. Run tests to verify: pytest scripts/perception/ -q")
+        else:
+            print("Failed to apply. Update ball_ekf.py manually.")
 
 
 if __name__ == "__main__":

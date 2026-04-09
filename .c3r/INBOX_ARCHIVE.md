@@ -149,3 +149,13 @@ RESP: Acknowledged stop signal. No GPU jobs running. Focusing on Quarto + integr
 [2026-04-09 01:06 UTC] you (cli) → perception
 MSG: 🔔 Re-read INBOX + ARCHIVE, reconcile plan with recent directives.
 RESP: Re-read all messages. Focusing on Daniel's morning goals. Low-range sweep deferred. (discord_msg_id=1491605521768120321)
+
+---
+[2026-04-09 01:13 UTC] Daniel G → perception
+MSG: great. how accurate is our ball measurement now? will it translate to the real world? how close are we to the full pipeline with perception and keyboard control and nice ui?
+RESP: Replied with full accuracy stats (RMSE ≈ 11.5mm) and pipeline status — sim feature-complete, 2-3 iters from done, real hardware blocked on Go1+D435i access. (discord_msg_id=1491609127473119294)
+
+---
+[2026-04-09 01:21 UTC] Daniel G → perception
+MSG: respond when you can
+RESP: Acknowledged, responded with status above. (discord_msg_id=1491609143096643766)
