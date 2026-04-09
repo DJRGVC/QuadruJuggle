@@ -21,6 +21,21 @@ Also: [Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g
 
 ---
 
+## Iteration 131 — Noise-to-gap prediction model {.unnumbered}
+*2026-04-09*
+
+Created `predict_perception_gap.py` — analytical model that predicts the perception gap (oracle vs d435i timeout %) from D435i noise model first principles. For each target height, computes noise characteristics (σ_xy, σ_z, dropout), ballistic flight dynamics, and an effective noise exposure metric (noise × √flight_time).
+
+**Key finding**: noise exposure explains **87% of the gap variance** (R² = 0.865). The 18.3% gap at 0.50m is consistent with noise model predictions — not a pipeline bug. The model predicts the gap will grow to ~26% at 0.70m and ~46% at 1.00m if the current noise model holds.
+
+![Noise-to-gap prediction — R² = 0.865](../images/perception/gap_prediction_iter131.png){width=80%}
+
+**Implication**: improving the gap at high targets requires either (a) noise curriculum training (policy agent's Stage G retrain), or (b) reducing D435i noise (better hardware or tighter EKF). The pipeline itself is working as expected.
+
+24 new tests, 558/558 total pass.
+
+---
+
 ## Iteration 130 — Perception gap decomposition experiment write-up {.unnumbered}
 *2026-04-10*
 

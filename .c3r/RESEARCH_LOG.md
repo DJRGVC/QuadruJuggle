@@ -218,3 +218,28 @@ Result:     Published experiment covering:
 Decision:   Next iter: check if policy Stage G retrain has completed. If checkpoint
             available, run cross-eval (oracle checkpoint through d435i pipeline).
             If GPU still busy, may clean up fix_plan or write references page.
+
+## Iteration 131 — Noise-to-gap prediction model  (2026-04-09T16:45:00Z)
+Hypothesis: The height-dependent perception gap (0.3% at 0.10m → 18.3% at 0.50m from
+            policy iter 32) can be predicted from D435i noise model first principles:
+            noise × flight duration should correlate with the observed gap.
+Change:     Created predict_perception_gap.py — analytical model that computes per-target:
+            (1) D435i noise at height (σ_xy, σ_z, dropout), (2) ballistic flight fraction,
+            (3) EKF prediction drift during dropout, (4) effective noise exposure metric.
+            24 new tests (test_predict_perception_gap.py), 558/558 total pass.
+Command:    python predict_perception_gap.py --observed '{"0.10":0.3,"0.20":0.0,"0.30":3.6,"0.40":10.0,"0.50":18.3}' --out images/perception/gap_prediction_iter131.png
+            pytest scripts/perception/ -x -q → 558/558 passed (12.02s)
+Result:     NOISE EXPOSURE EXPLAINS 87% OF GAP VARIANCE (R² = 0.865):
+            Linear fit: gap% = 8.38 × noise_exposure - 21.6
+            Predictions: 0.70m → 26.2% gap, 1.00m → 46.3% gap.
+            Noise exposure metric = effective_noise_mm × √(flight_time_s).
+            At 0.50m: 5.5mm effective noise, 639ms flight, 3.5mm EKF drift → exposure 4.42.
+            The gap is a natural consequence of noise×flight_time, not a pipeline defect.
+            IMPLICATION: reducing gap requires either (a) noise-robust training (policy Stage G),
+            or (b) lower D435i noise (hardware/EKF improvements).
+            GPU still occupied by policy Stage G retrain (PID 1400066, step ~2700/3000).
+            Figure: images/perception/gap_prediction_iter131.png
+Decision:   Next iter: GPU should be free (policy training ~15 min from finishing).
+            Run perception eval with the new Stage G checkpoint (model_best.pt from
+            2026-04-09_09-32-21). Compare against iter 32 baseline: does the ES-fixed
+            training narrow the 18.3% gap at 0.50m?
