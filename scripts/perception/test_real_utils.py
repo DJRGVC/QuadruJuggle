@@ -249,6 +249,280 @@ def test_from_known_mount_rotation_is_orthogonal():
     np.testing.assert_allclose(np.linalg.det(R), 1.0, atol=1e-10)
 
 
+# ── _rotation_between_vectors ─────────────────────────────────────────
+
+_rotation_between_vectors = _calibration_mod._rotation_between_vectors
+
+
+def test_rotation_between_vectors_identity():
+    """Rotating a vector to itself gives identity."""
+    v = np.array([0.0, 0.0, 1.0])
+    R = _rotation_between_vectors(v, v)
+    np.testing.assert_allclose(R, np.eye(3), atol=1e-10)
+
+
+def test_rotation_between_vectors_orthogonal():
+    """Rotating X to Y gives 90-degree rotation about Z."""
+    a = np.array([1.0, 0.0, 0.0])
+    b = np.array([0.0, 1.0, 0.0])
+    R = _rotation_between_vectors(a, b)
+    result = R @ a
+    np.testing.assert_allclose(result, b, atol=1e-10)
+    # Must be proper rotation
+    np.testing.assert_allclose(R @ R.T, np.eye(3), atol=1e-10)
+    np.testing.assert_allclose(np.linalg.det(R), 1.0, atol=1e-10)
+
+
+def test_rotation_between_vectors_antiparallel():
+    """Rotating a vector to its opposite gives 180-degree rotation."""
+    a = np.array([0.0, 0.0, 1.0])
+    b = np.array([0.0, 0.0, -1.0])
+    R = _rotation_between_vectors(a, b)
+    result = R @ a
+    np.testing.assert_allclose(result, b, atol=1e-10)
+    np.testing.assert_allclose(R @ R.T, np.eye(3), atol=1e-10)
+    np.testing.assert_allclose(np.linalg.det(R), 1.0, atol=1e-10)
+
+
+def test_rotation_between_vectors_arbitrary():
+    """Rotating between arbitrary unit vectors maps correctly."""
+    rng = np.random.default_rng(42)
+    for _ in range(10):
+        a = rng.standard_normal(3)
+        a /= np.linalg.norm(a)
+        b = rng.standard_normal(3)
+        b /= np.linalg.norm(b)
+        R = _rotation_between_vectors(a, b)
+        np.testing.assert_allclose(R @ a, b, atol=1e-10)
+        np.testing.assert_allclose(R @ R.T, np.eye(3), atol=1e-10)
+        np.testing.assert_allclose(np.linalg.det(R), 1.0, atol=1e-10)
+
+
+# ── CameraCalibrator.from_checkerboard ─────────────────────────────────
+
+
+class _MockCameraForCheckerboard:
+    """Mock camera that returns depth frames for checkerboard calibration."""
+
+    def __init__(self, intrinsics, frames):
+        self._intrinsics = intrinsics
+        self._frames = list(frames)
+        self._idx = 0
+
+    def get_intrinsics(self):
+        return self._intrinsics
+
+    def get_frame(self):
+        if self._idx >= len(self._frames):
+            return None
+        frame = self._frames[self._idx]
+        self._idx += 1
+        return frame
+
+
+def test_from_checkerboard_gravity_aligned():
+    """Mock cv2 functions to test the gravity-alignment logic.
+
+    Setup: board Z in camera frame = [0, 0, 1] (identity PnP).
+    gravity_cam = -board_z = [0, 0, -1].
+    gravity_body = [0, 0, -1] (default).
+    Expected: R_cam_body ≈ identity.
+    """
+    import unittest.mock as mock
+    import cv2 as _cv2
+
+    intrinsics = CameraIntrinsics(
+        fx=425.0, fy=425.0, cx=424.0, cy=240.0, width=848, height=480
+    )
+
+    # Create depth frames with valid depth (500mm uniform)
+    depth = np.full((480, 848), 500, dtype=np.uint16)
+    frames = [(depth.copy(), float(i)) for i in range(5)]
+    camera = _MockCameraForCheckerboard(intrinsics, frames)
+
+    board_size = (7, 5)
+    n_corners = board_size[0] * board_size[1]
+
+    # Fake corners at plausible pixel locations
+    fake_corners = np.zeros((n_corners, 1, 2), dtype=np.float32)
+    for i in range(n_corners):
+        row, col = divmod(i, board_size[0])
+        fake_corners[i, 0] = [200 + col * 20, 100 + row * 20]
+
+    # Identity rvec (no rotation)
+    rvec_identity = np.zeros(3, dtype=np.float64)
+    tvec_half_m = np.array([0.0, 0.0, 0.5], dtype=np.float64)
+
+    with mock.patch.object(_calibration_mod.cv2, 'findChessboardCorners',
+                           return_value=(True, fake_corners)):
+        with mock.patch.object(_calibration_mod.cv2, 'cornerSubPix',
+                               return_value=fake_corners):
+            with mock.patch.object(_calibration_mod.cv2, 'solvePnP',
+                                   return_value=(True, rvec_identity.reshape(3, 1),
+                                                 tvec_half_m.reshape(3, 1))):
+                with mock.patch.object(_calibration_mod.cv2, 'CALIB_CB_ADAPTIVE_THRESH', 1):
+                    with mock.patch.object(_calibration_mod.cv2, 'CALIB_CB_NORMALIZE_IMAGE', 2):
+                        with mock.patch.object(_calibration_mod.cv2, 'SOLVEPNP_IPPE', 6):
+                            ext = CameraCalibrator.from_checkerboard(
+                                camera,
+                                board_size=board_size,
+                                square_size_m=0.025,
+                                num_frames=3,
+                            )
+
+    # R_cam_body should be identity (gravity already aligned)
+    np.testing.assert_allclose(ext.R_cam_body, np.eye(3), atol=1e-6)
+    np.testing.assert_allclose(ext.t_cam_body, np.zeros(3), atol=1e-6)
+
+
+def test_from_checkerboard_rotated_board():
+    """Board rotated 90° around X: board Z in cam = [0, -1, 0].
+
+    gravity_cam = -board_z = [0, 1, 0].
+    gravity_body = [0, 0, -1].
+    R_cam_body should map [0, 1, 0] → [0, 0, -1].
+    """
+    import unittest.mock as mock
+    import cv2 as _cv2
+
+    intrinsics = CameraIntrinsics(
+        fx=425.0, fy=425.0, cx=424.0, cy=240.0, width=848, height=480
+    )
+    depth = np.full((480, 848), 500, dtype=np.uint16)
+    frames = [(depth.copy(), float(i)) for i in range(5)]
+    camera = _MockCameraForCheckerboard(intrinsics, frames)
+
+    board_size = (7, 5)
+    n_corners = board_size[0] * board_size[1]
+    fake_corners = np.zeros((n_corners, 1, 2), dtype=np.float32)
+    for i in range(n_corners):
+        row, col = divmod(i, board_size[0])
+        fake_corners[i, 0] = [200 + col * 20, 100 + row * 20]
+
+    # 90° rotation around X axis: R_x(pi/2) → board Z maps to [0, -1, 0] in camera
+    rvec_90x = np.array([np.pi / 2, 0, 0], dtype=np.float64)
+    tvec = np.array([0.0, 0.0, 0.5], dtype=np.float64)
+
+    with mock.patch.object(_calibration_mod.cv2, 'findChessboardCorners',
+                           return_value=(True, fake_corners)):
+        with mock.patch.object(_calibration_mod.cv2, 'cornerSubPix',
+                               return_value=fake_corners):
+            with mock.patch.object(_calibration_mod.cv2, 'solvePnP',
+                                   return_value=(True, rvec_90x.reshape(3, 1),
+                                                 tvec.reshape(3, 1))):
+                with mock.patch.object(_calibration_mod.cv2, 'CALIB_CB_ADAPTIVE_THRESH', 1):
+                    with mock.patch.object(_calibration_mod.cv2, 'CALIB_CB_NORMALIZE_IMAGE', 2):
+                        with mock.patch.object(_calibration_mod.cv2, 'SOLVEPNP_IPPE', 6):
+                            ext = CameraCalibrator.from_checkerboard(
+                                camera,
+                                board_size=board_size,
+                                square_size_m=0.025,
+                                num_frames=3,
+                            )
+
+    # Verify: R_cam_body maps gravity_cam to gravity_body
+    R_board_cam, _ = _cv2.Rodrigues(rvec_90x)
+    board_z_cam = R_board_cam[:, 2]
+    gravity_cam = -board_z_cam
+    gravity_body = np.array([0.0, 0.0, -1.0])
+
+    result = ext.R_cam_body @ gravity_cam
+    np.testing.assert_allclose(result, gravity_body, atol=1e-6)
+    np.testing.assert_allclose(ext.R_cam_body @ ext.R_cam_body.T, np.eye(3), atol=1e-6)
+    np.testing.assert_allclose(np.linalg.det(ext.R_cam_body), 1.0, atol=1e-6)
+
+
+def test_from_checkerboard_too_few_frames_raises():
+    """If camera produces no valid frames, should raise RuntimeError."""
+    import unittest.mock as mock
+
+    intrinsics = CameraIntrinsics(
+        fx=425.0, fy=425.0, cx=424.0, cy=240.0, width=848, height=480
+    )
+    depth = np.full((480, 848), 500, dtype=np.uint16)
+    frames = [(depth.copy(), 0.0)] * 5
+    camera = _MockCameraForCheckerboard(intrinsics, frames)
+
+    # findChessboardCorners always fails
+    with mock.patch.object(_calibration_mod.cv2, 'findChessboardCorners',
+                           return_value=(False, None)):
+        with mock.patch.object(_calibration_mod.cv2, 'CALIB_CB_ADAPTIVE_THRESH', 1):
+            with mock.patch.object(_calibration_mod.cv2, 'CALIB_CB_NORMALIZE_IMAGE', 2):
+                try:
+                    CameraCalibrator.from_checkerboard(camera, num_frames=3)
+                    assert False, "Expected RuntimeError"
+                except RuntimeError as e:
+                    assert "valid checkerboard frames" in str(e)
+
+
+def test_from_checkerboard_no_opencv_raises():
+    """If cv2 is not available, should raise ImportError."""
+    original_cv2 = _calibration_mod.cv2
+    _calibration_mod.cv2 = None
+    try:
+        intrinsics = CameraIntrinsics(
+            fx=425.0, fy=425.0, cx=424.0, cy=240.0, width=848, height=480
+        )
+        camera = _MockCameraForCheckerboard(intrinsics, [])
+        try:
+            CameraCalibrator.from_checkerboard(camera, num_frames=3)
+            assert False, "Expected ImportError"
+        except ImportError as e:
+            assert "OpenCV" in str(e)
+    finally:
+        _calibration_mod.cv2 = original_cv2
+
+
+def test_from_checkerboard_custom_gravity():
+    """Custom gravity_body vector is respected."""
+    import unittest.mock as mock
+
+    intrinsics = CameraIntrinsics(
+        fx=425.0, fy=425.0, cx=424.0, cy=240.0, width=848, height=480
+    )
+    depth = np.full((480, 848), 500, dtype=np.uint16)
+    frames = [(depth.copy(), float(i)) for i in range(5)]
+    camera = _MockCameraForCheckerboard(intrinsics, frames)
+
+    board_size = (7, 5)
+    n_corners = board_size[0] * board_size[1]
+    fake_corners = np.zeros((n_corners, 1, 2), dtype=np.float32)
+    for i in range(n_corners):
+        row, col = divmod(i, board_size[0])
+        fake_corners[i, 0] = [200 + col * 20, 100 + row * 20]
+
+    rvec_identity = np.zeros(3, dtype=np.float64)
+    tvec = np.array([0.0, 0.0, 0.5], dtype=np.float64)
+
+    # Custom gravity: tilted robot
+    gravity_body = np.array([0.1, 0.0, -0.995])
+    gravity_body /= np.linalg.norm(gravity_body)
+
+    with mock.patch.object(_calibration_mod.cv2, 'findChessboardCorners',
+                           return_value=(True, fake_corners)):
+        with mock.patch.object(_calibration_mod.cv2, 'cornerSubPix',
+                               return_value=fake_corners):
+            with mock.patch.object(_calibration_mod.cv2, 'solvePnP',
+                                   return_value=(True, rvec_identity.reshape(3, 1),
+                                                 tvec.reshape(3, 1))):
+                with mock.patch.object(_calibration_mod.cv2, 'CALIB_CB_ADAPTIVE_THRESH', 1):
+                    with mock.patch.object(_calibration_mod.cv2, 'CALIB_CB_NORMALIZE_IMAGE', 2):
+                        with mock.patch.object(_calibration_mod.cv2, 'SOLVEPNP_IPPE', 6):
+                            ext = CameraCalibrator.from_checkerboard(
+                                camera,
+                                board_size=board_size,
+                                square_size_m=0.025,
+                                num_frames=3,
+                                gravity_body=gravity_body,
+                            )
+
+    # Verify gravity alignment
+    gravity_cam = np.array([0.0, 0.0, -1.0])  # identity rvec → board_z=[0,0,1] → grav=-[0,0,1]
+    result = ext.R_cam_body @ gravity_cam
+    np.testing.assert_allclose(result, gravity_body, atol=1e-6)
+    np.testing.assert_allclose(ext.R_cam_body @ ext.R_cam_body.T, np.eye(3), atol=1e-6)
+
+
 # ── Runner ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

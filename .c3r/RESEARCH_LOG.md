@@ -183,3 +183,31 @@ Decision:   Next: YOLO detector stub is the next real-hardware item, but it
             requires TensorRT which we don't have in this env. Better to wait
             for policy retrain or work on checkerboard calibration (from_checkerboard).
             Check policy agent progress — still at iter 32 with 81% context.
+
+## Iteration 142 — Implement CameraCalibrator.from_checkerboard()  (2026-04-09T18:00:00Z)
+Hypothesis: Implementing the checkerboard calibration routine (PnP + gravity
+            alignment) completes another real-hardware component while waiting
+            for policy Stage G retrain.
+Change:     (1) Implemented from_checkerboard(): captures N depth frames,
+            detects checkerboard corners via cv2.findChessboardCorners,
+            runs solvePnP for each, averages board Z direction in camera frame
+            to get gravity_cam, then uses _rotation_between_vectors() (Rodrigues'
+            formula via cross product) to compute R_cam_body that maps
+            gravity_cam to gravity_body. Translation set to zero (requires
+            manual measurement for production).
+            (2) Added _rotation_between_vectors() helper: handles identity,
+            antiparallel, and general cases via skew-symmetric cross product.
+            (3) Added 9 tests: 4 for _rotation_between_vectors (identity,
+            orthogonal, antiparallel, 10 random pairs), 5 for from_checkerboard
+            (gravity-aligned, rotated board, too-few-frames error, no-opencv
+            error, custom gravity). All use mock cv2 functions.
+Command:    pytest scripts/perception/ -x -q → 585/585 passed (12.28s)
+Result:     from_checkerboard() no longer a stub. Gravity-alignment tested:
+            R_cam_body correctly maps camera gravity to body gravity for
+            identity rotation, 90° X rotation, and custom tilted gravity.
+            _rotation_between_vectors passes 10 random direction pairs.
+            Test count: 576 → 585.
+            Policy agent at iter 32, 81% context, retraining Stage G.
+Decision:   Next: YOLO detector is the last stub but blocked on TensorRT.
+            Could implement a lightweight fallback (colour thresholding on
+            depth) or wait for policy results. Check policy progress next iter.

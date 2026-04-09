@@ -32,8 +32,8 @@
 
 ## Real Hardware Integration (blocked on Go1 + D435i access)
 - [x] D435iCamera wrapper (pyrealsense2, depth-only 848x480 @ 90fps) — iter 141
+- [x] CameraCalibrator.from_checkerboard() — gravity-aligned via PnP + Wahba — iter 142
 - [ ] BallDetector._detect_yolo (TRT FP16 inference)
-- [ ] CameraCalibrator.from_checkerboard()
 - [ ] YOLO training data collection + fine-tune
 - [ ] End-to-end hardware test
 

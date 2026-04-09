@@ -80,3 +80,19 @@ git show agent/policy:.c3r/RESEARCH_LOG.md
 git show agent/policy:.c3r/RESEARCH_LOG_ARCHIVE.md
 ```
 
+## fix-prior-fixer
+- **role**: fix-it
+- **focus**: so the prior fixer said this: Policy agent status (as of 16:30 UTC, ~40 min ago)
+- **status**: running · iter #0 · ctx 0%
+
+### Recent commits on `agent/fix-prior-fixer`
+```
+aab3845 torso tracking edit
+9c4793a pi_2 with v trackign works
+3841f54 working on pi_1 + pi_2
+085e457 frank-proofed requirements.txt
+7256612 added req + install explainer
+```
+### Files modified on `agent/fix-prior-fixer` (relative to `c3r/QuadruJuggle`)
+_(none)_
+
