@@ -110,3 +110,28 @@ Result:     GPU still locked. Background process waiting. All CPU work complete.
 Decision:   Next iter: check for sentinel file (logs/perception/gpu_demo_DONE). If found,
             parse results from GPU log + debug frames. If not found, check if PID 1133926
             is still running or if it died. Re-queue if needed.
+
+## Iteration 90 — EKF vs raw detection GPU sweep by ball height  (2026-04-09T08:07:00Z)
+Hypothesis: EKF filtering should beat raw camera detection at higher ball heights where
+            depth noise increases; at low heights raw detection may be accurate enough.
+Change:     1. Added trajectory.npz export to demo_camera_ekf.py (_save_trajectory_npz).
+            2. Created analyze_ekf_vs_raw.py — height-binned RMSE comparison + figure.
+            3. Created run_ekf_sweep.sh — extended 500-step bounce demo + analysis.
+            4. 7 new tests for height-binned analysis (318/318 total pass).
+Command:    $C3R_BIN/gpu_lock.sh bash scripts/perception/run_ekf_sweep.sh
+            (500 steps bounce mode + offline analysis)
+Result:     100% detection rate across all heights (0-700mm above paddle).
+            Raw detection: 190mm constant RMSE (depth estimation error, height-independent).
+            EKF: wins at 0-200mm (166-190mm RMSE, ballistic prediction accurate near paddle).
+            EKF: DIVERGES at 200mm+ (876mm→2067mm RMSE), much worse than raw.
+            Root cause: bounce mode uses write_root_velocity_to_sim (artificial kicks) which
+            are invisible to the contact-aware EKF. The EKF expects real paddle contacts
+            to reset its ballistic prediction. Without contact triggers, velocity prediction
+            accumulates error at each bounce.
+            Height-binned table + comparison figure saved:
+              images/perception/ekf_vs_raw_by_height.png
+              logs/perception/ekf_sweep_DONE sentinel written.
+Decision:   EKF comparison needs trained policy (real contacts) to be meaningful.
+            BLOCKED on same cross-branch issue as iter 89. Bounce mode validates that raw
+            detection accuracy is ~190mm (constant with height) — acceptable for pi1 input.
+            Next: update Quarto with sweep figure + finding, or pick up next fix_plan item.

@@ -332,6 +332,9 @@ def main():
     if use_policy:
         print(f"  Episodes: {total_episodes}  |  Timeout: {100*total_timeouts/max(1,total_episodes):.1f}%")
 
+    # Save raw trajectory data for offline analysis (EKF vs raw sweep etc.)
+    _save_trajectory_npz(traj, metrics, out_dir, dt)
+
     # Generate summary visualizations
     _save_summary_plots(traj, metrics, out_dir, dt)
     _compile_video(out_dir)
@@ -341,6 +344,29 @@ def main():
 
     env.close()
     simulation_app.close()
+
+
+def _save_trajectory_npz(traj, metrics, out_dir, dt):
+    """Save raw trajectory data to .npz for offline analysis (e.g. EKF vs raw sweep)."""
+    try:
+        gt = np.array(traj["gt"])            # (T, 3)
+        ekf = np.array(traj["ekf"])          # (T, 3)
+        steps = np.array(traj["steps"])      # (T,)
+        det = np.array(traj["det"]) if traj["det"] else np.zeros((0, 3))  # (D, 3)
+        det_steps = np.array(traj["det_steps"]) if traj["det_steps"] else np.zeros((0,), dtype=int)
+        rmse_ekf = np.array(metrics["rmse_ekf"])
+        rmse_det = np.array(metrics["rmse_det"])
+
+        path = os.path.join(out_dir, "trajectory.npz")
+        np.savez_compressed(
+            path,
+            gt=gt, ekf=ekf, steps=steps, dt=dt,
+            det=det, det_steps=det_steps,
+            rmse_ekf=rmse_ekf, rmse_det=rmse_det,
+        )
+        print(f"[demo] Trajectory data saved: {path} ({gt.shape[0]} steps, {det.shape[0]} detections)")
+    except Exception as e:
+        print(f"[demo] Could not save trajectory data: {e}")
 
 
 def _save_summary_plots(traj, metrics, out_dir, dt):

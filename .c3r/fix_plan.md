@@ -24,8 +24,12 @@
     Bounce mode demo (iter 87) validates camera pipeline independently.
 
 # EKF tuning (lower priority, mostly done)
-- [ ] GPU sweep at higher target heights (0.3-0.5m) to confirm EKF beats raw at distance
+- [x] GPU sweep at higher target heights (0.3-0.5m) — bounce mode sweep done (iter 90)
+  - EKF diverges on artificial kicks; raw det wins above 200mm (190mm constant RMSE)
+  - EKF wins at 0-200mm (near paddle, ballistic prediction accurate between measurements)
+  - Real comparison needs trained policy where contact-aware Q triggers on paddle bounces
 - [ ] Re-run sweep with noise-trained pi1 (from policy agent) once it converges
+- [ ] Add trajectory npz analysis script for Quarto experiment write-up
 
 # Support policy agent
 - [ ] Support policy agent with noise curriculum tuning (when requested)
