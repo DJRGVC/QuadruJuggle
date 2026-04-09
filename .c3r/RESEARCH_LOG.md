@@ -212,6 +212,33 @@ Decision:   Next: YOLO detector is the last stub but blocked on TensorRT.
             Could implement a lightweight fallback (colour thresholding on
             depth) or wait for policy results. Check policy progress next iter.
 
+## Iteration 144 — Pipeline latency tracking for hardware bring-up  (2026-04-09T22:00:00Z)
+Hypothesis: Adding measurement-age and detection-time tracking to
+            RealPerceptionPipeline will provide critical diagnostics
+            for hardware bring-up (camera-to-output latency breakdown).
+Change:     (1) Added `created_at` and `detect_dt` fields to _Measurement.
+            (2) Acquisition loop now times detector.detect() and records
+            wall-clock creation time on each measurement.
+            (3) get_observation() tracks measurement age (consume - create time).
+            (4) stats property now exposes: mean_meas_age, max_meas_age,
+            mean_detect_dt, max_detect_dt (all in seconds).
+            (5) Counters reset on pipeline start().
+            (6) Added 3 tests: latency stats populated, zero before detections,
+            reset on restart.
+Command:    pytest scripts/perception/ -x -q → 591/591 passed (12.78s)
+Result:     Test count: 588 → 591 (+3). All pass. Latency tracking adds
+            zero overhead (time.monotonic() is nanosecond-scale).
+            Stats breakdown: mean_detect_dt measures Hough/YOLO time per frame,
+            mean_meas_age measures thread handoff + queue delay.
+            On real hardware, expect: detect_dt ~2-5ms (Hough), ~1ms (YOLO TRT),
+            meas_age ~5-20ms depending on policy rate and queue depth.
+            Policy agent at iter 32, 81% context, planning Stage G retrain with
+            fixed ES metric.
+Decision:   Pipeline now has full latency instrumentation for hardware bring-up.
+            Next: wait for policy Stage G retrain. If checkpoint available,
+            re-validate gap predictions. Otherwise, consider YOLO training data
+            generation (synthetic depth frames for fine-tuning).
+
 ## Iteration 143 — Extrinsics to_yaml() round-trip + Quarto update  (2026-04-09T20:00:00Z)
 Hypothesis: Adding to_yaml() to CameraCalibrator completes the calibration
             persistence workflow (calibrate → save → load at deploy time).

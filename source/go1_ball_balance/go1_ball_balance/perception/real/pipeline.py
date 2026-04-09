@@ -41,6 +41,8 @@ class _Measurement:
     timestamp: float       # monotonic seconds
     confidence: float
     method: str
+    created_at: float = 0.0  # wall-clock time.monotonic() when detection finished
+    detect_dt: float = 0.0   # seconds spent in detector.detect()
 
 
 class PipelineObservation:
@@ -132,13 +134,28 @@ class RealPerceptionPipeline:
         self._total_frames = 0
         self._total_detections = 0
 
+        # Latency tracking (for hardware bring-up diagnostics)
+        self._meas_age_sum = 0.0      # sum of (consume_time - created_at)
+        self._meas_age_max = 0.0      # worst-case measurement age
+        self._meas_age_count = 0
+        self._detect_dt_sum = 0.0     # sum of detector processing times
+        self._detect_dt_max = 0.0     # worst-case detection time
+        self._detect_dt_count = 0
+
     @property
     def is_running(self) -> bool:
         return self._running
 
     @property
     def stats(self) -> dict:
-        """Pipeline statistics for diagnostics."""
+        """Pipeline statistics for diagnostics.
+
+        Latency fields (seconds):
+          - mean_meas_age: average time from detection completion to EKF consumption
+          - max_meas_age: worst-case measurement age (thread handoff + queue delay)
+          - mean_detect_dt: average detector.detect() wall-clock time
+          - max_detect_dt: worst-case detection processing time
+        """
         return {
             "total_frames": self._total_frames,
             "total_detections": self._total_detections,
@@ -146,6 +163,16 @@ class RealPerceptionPipeline:
             "detection_rate": (
                 self._total_detections / max(1, self._total_frames)
             ),
+            "mean_meas_age": (
+                self._meas_age_sum / self._meas_age_count
+                if self._meas_age_count > 0 else 0.0
+            ),
+            "max_meas_age": self._meas_age_max,
+            "mean_detect_dt": (
+                self._detect_dt_sum / self._detect_dt_count
+                if self._detect_dt_count > 0 else 0.0
+            ),
+            "max_detect_dt": self._detect_dt_max,
         }
 
     def start(self) -> None:
@@ -168,6 +195,12 @@ class RealPerceptionPipeline:
         self._consecutive_dropouts = 0
         self._total_frames = 0
         self._total_detections = 0
+        self._meas_age_sum = 0.0
+        self._meas_age_max = 0.0
+        self._meas_age_count = 0
+        self._detect_dt_sum = 0.0
+        self._detect_dt_max = 0.0
+        self._detect_dt_count = 0
         self._last_predict_time = time.monotonic()
         self._last_update_time = None
 
@@ -191,16 +224,24 @@ class RealPerceptionPipeline:
             depth_frame, timestamp = result
             self._total_frames += 1
 
-            # Run detection
+            # Run detection (timed for latency diagnostics)
+            t0 = time.monotonic()
             detection = self._detector.detect(depth_frame, self._intrinsics)
+            detect_dt = time.monotonic() - t0
 
             if detection is not None:
                 self._total_detections += 1
+                now = time.monotonic()
+                self._detect_dt_sum += detect_dt
+                self._detect_dt_max = max(self._detect_dt_max, detect_dt)
+                self._detect_dt_count += 1
                 meas = _Measurement(
                     pos_cam=detection.pos_cam,
                     timestamp=timestamp,
                     confidence=detection.confidence,
                     method=detection.method,
+                    created_at=now,
+                    detect_dt=detect_dt,
                 )
                 with self._meas_lock:
                     self._meas_queue.append(meas)
@@ -251,6 +292,12 @@ class RealPerceptionPipeline:
             self._consecutive_dropouts = 0
             # Use latest measurement (most recent timestamp)
             meas = measurements[-1]
+
+            # Track measurement age: time from detection to consumption
+            meas_age = now - meas.created_at if meas.created_at > 0 else 0.0
+            self._meas_age_sum += meas_age
+            self._meas_age_max = max(self._meas_age_max, meas_age)
+            self._meas_age_count += 1
 
             # Transform measurement from camera frame to world frame
             pos_world = R_cam_world @ meas.pos_cam + t_cam_world
