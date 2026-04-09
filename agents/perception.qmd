@@ -13,10 +13,43 @@ implement an onboard D435i camera to ball detector to 6-DOF EKF pipeline followi
 
 ## Current focus
 
-Perception pipeline is **feature-complete**. The bottleneck has shifted to the
-policy agent — the current Stage G checkpoint balances but doesn't juggle.
-Waiting for improved policy checkpoint; will re-evaluate once available.
+Perception pipeline is **feature-complete**. Stage G d435i training early-stopped
+at 53.6% timeout (1500 ES patience exhausted). Oracle vs d435i comparison eval
+complete — d435i outperforms oracle at mixed-target juggling (Stage G vs Stage F).
 See [full Stage G bottleneck analysis](../experiments/perception/2026-04-09_stage_g_bottleneck_analysis.qmd).
+
+---
+
+## Iteration 125 — Oracle vs D435i Stage G comparison eval {.unnumbered}
+*2026-04-09*
+
+Ran the full oracle-vs-d435i comparison after Stage G training early-stopped.
+5 target heights (0.10–0.50m), 1500 steps each, 4 envs per target.
+
+| Metric | Oracle (Stage F) | D435i (Stage G) |
+|--------|-----------------|-----------------|
+| Timeout % | 0% (all targets) | 50% (at 0.42–0.50m) |
+| Detection rate | 1.7% | 1.0–1.8% |
+| Flight time | 15–19% | 19–39% |
+| Bounces/env | 0.0 | 0.2–1.0 |
+| Mean ball height | 0.43m | 0.46–0.48m |
+
+![Oracle vs D435i comparison dashboard](../images/perception/oracle_vs_d435i_stage_g_final.png){width=100%}
+
+**Key findings**:
+
+- **D435i Stage G outperforms Oracle Stage F** on juggling metrics: 50% timeout
+  vs 0%, more bounces, more flight time.
+- **Neither model truly juggles** — detection rate stays at 1–2% because the
+  ball rarely gets high enough for camera detection (>200mm above paddle).
+- **EKF RMSE comparison is misleading**: Oracle without paddle anchor shows 5.7m
+  EKF drift (free-running ballistic prediction). D435i with anchor shows 74–442mm.
+  This reflects pipeline config differences, not perception quality.
+- **Noise is not the bottleneck** (confirmed iter 123): position noise 1–1.3mm,
+  velocity noise 0.04–0.06 m/s, SNR > 30.
+- **Next step**: need oracle Stage G training for fair comparison (same curriculum stage).
+
+Commits: `3d5720d` (iter 124), this iter.
 
 ---
 

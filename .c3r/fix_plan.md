@@ -33,8 +33,12 @@
 - [~] UNBLOCKING: policy agent training Stage G now (d435i noise, mixed targets 0.10-0.50m)
   - [x] Created parameterized run_perception_eval.sh (iter 112) — replaces hardcoded scripts
   - [x] Run Stage G eval (iter 116): det 1-2%, EKF RMSE 0.14-0.44m. Policy balances, doesn't juggle.
-  - [ ] Run oracle comparison when GPU free (confirm policy vs perception split)
+  - [x] Run oracle comparison when GPU free (confirm policy vs perception split) — DONE iter 125
+    - Oracle (Stage F) 0% timeout vs D435i (Stage G) 50% timeout
+    - EKF RMSE misleading: oracle lacks anchor (5.7m drift), d435i has anchor (74-442mm)
+    - Neither model truly juggles; detection 1-2% (ball too low for camera)
   - [ ] Run oracle-trained checkpoint through d435i pipeline (does it balance better?)
+  - [ ] Request oracle Stage G training from policy agent for fair comparison
 - [x] EKF covariance clamping for sparse-measurement regime (iter 103)
   - p_max_pos=0.25m, p_max_vel=5.0m/s prevents P divergence during long predict-only
   - steps_since_measurement counter for diagnostics

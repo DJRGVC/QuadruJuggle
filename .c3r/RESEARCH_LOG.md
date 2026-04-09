@@ -77,3 +77,33 @@ Result:     TRAINING HISTORY CAPTURED:
             All 497 tests still pass.
 Decision:   Next iter: GPU should be free (ES ~step 4330). Launch oracle vs d435i
             comparison eval via run_oracle_vs_d435i.sh. Ready to execute immediately.
+
+## Iteration 125 — Oracle vs D435i Stage G final comparison eval  (2026-04-09T23:10:00Z)
+Hypothesis: Running the oracle (Stage F) and d435i (Stage G) checkpoints through
+            matched perception evals will quantify the perception gap vs policy gap.
+Change:     Waited for Stage G early stop (ES 1500/1500 at step 4294), then ran
+            run_oracle_vs_d435i.sh with 5 targets (0.10-0.50m), 1500 steps, 4 envs.
+            Updated Quarto page with comparison table and dashboard figure.
+Command:    $C3R_BIN/gpu_lock.sh bash scripts/perception/run_oracle_vs_d435i.sh \
+              --oracle-pi1 .../2026-04-08_19-19-41/model_best.pt \
+              --d435i-pi1 .../2026-04-09_07-38-27/model_best.pt \
+              --targets "0.10 0.20 0.30 0.42 0.50" --label stage_g_final \
+              --steps 1500 --num-envs 4
+Result:     STAGE G TRAINING COMPLETED: 1531 iters, 53.6% timeout, ES early-stopped.
+            COMPARISON RESULTS:
+            Oracle (Stage F): 0% timeout ALL targets, 0 bounces, 15-19% flight, 1.7% det
+            D435i (Stage G):  50% timeout at 0.42/0.50m, 0.2-1.0 bounces, 19-39% flight
+            EKF RMSE COMPARISON MISLEADING:
+            - Oracle: 5.6-5.8m (no paddle anchor → EKF diverges in predict-only mode)
+            - D435i: 74-442mm (paddle anchor keeps EKF bounded during contact)
+            RMSE difference reflects pipeline config, NOT perception quality.
+            POLICY PERFORMANCE:
+            - D435i Stage G clearly outperforms Oracle Stage F on juggling metrics
+            - But this is unfair: different training stages (G vs F)
+            - Neither model truly juggles — ball rarely above 200mm for camera detection
+            Figure: images/perception/oracle_vs_d435i_stage_g_final.png
+            Eval data: logs/perception/eval_stage_g_final_{oracle,d435i}/
+Decision:   Need oracle Stage G training for fair comparison (same curriculum).
+            Will ping policy agent to request oracle Stage G run. Meanwhile, explore
+            running oracle checkpoint through d435i pipeline (cross-eval: does the
+            noise model degrade oracle performance?).
