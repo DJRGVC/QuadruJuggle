@@ -18,6 +18,32 @@ reverse chronological order (newest first).
 
 ---
 
+## Iteration 111 — Height-dependent velocity noise fix {.unnumbered}
+*2026-04-11*
+
+Found and fixed a bug in the D435i velocity noise model: `_apply_d435i_vel_noise`
+used a fixed `z_nominal=0.5m` for all envs, regardless of actual ball height. The
+position noise was correctly distance-dependent (σ_xy ∝ z, σ_z ∝ z²), but
+velocity noise was constant. This underestimates noise at Stage G heights (1.0m
+above paddle → velocity noise should be **2.7× higher** than the old estimate).
+
+The fix passes actual ball position (`pos_b`) to the velocity noise function,
+making per-env noise scale with real ball-camera distance. Backward-compatible:
+callers that don't pass `pos_b` get the old nominal behavior.
+
+![D435i noise model characterization — old vs new velocity noise scaling with height](../images/perception/noise_vs_height_iter111.png){width=80%}
+
+Key takeaway from the figure: at Stage A heights (100mm), both models agree.
+At Stage G (1000mm), the corrected model produces 2.7× more Z velocity noise
+and 2.0× more XY velocity noise. The policy agent's current Stage G training
+uses the old (under-estimated) noise — flagged for potential retrain.
+
+440/440 tests pass (6 new tests for height-dependent velocity noise).
+
+Commits: iter 111
+
+---
+
 ## Iterations 107-109 — Phase tracker + camera scheduling {.unnumbered}
 *2026-04-10*
 

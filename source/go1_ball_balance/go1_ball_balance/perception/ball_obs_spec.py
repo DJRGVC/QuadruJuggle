@@ -765,7 +765,8 @@ def ball_vel_perceived(
 
     if noise_cfg.mode == "d435i":
         scaled_params = _scaled_d435i_params(noise_cfg.d435i, noise_cfg.noise_scale)
-        return _apply_d435i_vel_noise(vel_b, scaled_params)
+        pos_b = _ball_pos_paddle_frame_gt(env, ball_cfg, robot_cfg, paddle_offset_b)
+        return _apply_d435i_vel_noise(vel_b, scaled_params, pos_b)
 
     if noise_cfg.mode == "ekf":
         pipeline = _get_or_create_pipeline(env, noise_cfg)
@@ -853,6 +854,7 @@ def _apply_d435i_pos_noise(
 def _apply_d435i_vel_noise(
     vel_b: torch.Tensor,
     params: D435iNoiseParams,
+    pos_b: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Apply noise to ball velocity estimate.
 
@@ -862,30 +864,53 @@ def _apply_d435i_vel_noise(
     frame-to-frame dt (~33ms at 30Hz).
 
     Velocity noise std ≈ sqrt(2) * sigma_pos / dt.
-    Uses nominal z=0.5m for the distance-dependent noise parameters.
+
+    When pos_b is provided, noise scales with actual ball-camera distance
+    (z component in paddle frame). Otherwise falls back to z_nominal=0.5m.
     """
     device = vel_b.device
     N = vel_b.shape[0]
-
-    # Use nominal z=0.5m for velocity noise estimate (mid-range)
-    z_nominal = 0.5
     dt_camera = 1.0 / 30.0  # 30Hz D435i frame rate
-    sigma_xy_nominal = max(params.sigma_xy_floor, params.sigma_xy_per_metre * z_nominal)
-    sigma_z_nominal = params.sigma_z_base + params.sigma_z_quadratic * z_nominal * z_nominal
-    sigma_vel_xy = (2 ** 0.5) * sigma_xy_nominal / dt_camera
-    sigma_vel_z = (2 ** 0.5) * sigma_z_nominal / dt_camera
 
-    noise = torch.zeros_like(vel_b)
-    noise[:, :2] = torch.randn(N, 2, device=device) * sigma_vel_xy
-    noise[:, 2] = torch.randn(N, device=device) * sigma_vel_z
+    if pos_b is not None:
+        # Per-env distance-dependent velocity noise (matches position noise model)
+        z_dist = pos_b[:, 2].abs()
+        sigma_xy = torch.clamp(params.sigma_xy_per_metre * z_dist, min=params.sigma_xy_floor)
+        sigma_z = params.sigma_z_base + params.sigma_z_quadratic * z_dist * z_dist
+        sigma_vel_xy = (2 ** 0.5) * sigma_xy / dt_camera
+        sigma_vel_z = (2 ** 0.5) * sigma_z / dt_camera
 
-    # Dropout at nominal distance
-    p_dropout_nominal = params.dropout_base
-    if p_dropout_nominal > 0:
-        dropout_mask = (
-            torch.rand(N, device=device) < p_dropout_nominal
-        ).unsqueeze(-1)
-        noise = noise * (~dropout_mask).float()
+        noise = torch.zeros_like(vel_b)
+        noise[:, 0] = torch.randn(N, device=device) * sigma_vel_xy
+        noise[:, 1] = torch.randn(N, device=device) * sigma_vel_xy
+        noise[:, 2] = torch.randn(N, device=device) * sigma_vel_z
+
+        # Distance-dependent dropout (same model as position noise)
+        z_excess = torch.clamp(z_dist - 0.5, min=0.0)
+        p_dropout = params.dropout_base + params.dropout_range * (
+            1.0 - torch.exp(-z_excess / params.dropout_scale)
+        )
+        if params.dropout_base > 0 or params.dropout_range > 0:
+            dropout_mask = (torch.rand(N, device=device) < p_dropout).unsqueeze(-1)
+            noise = noise * (~dropout_mask).float()
+    else:
+        # Fallback: fixed nominal z=0.5m (backward compat)
+        z_nominal = 0.5
+        sigma_xy_nominal = max(params.sigma_xy_floor, params.sigma_xy_per_metre * z_nominal)
+        sigma_z_nominal = params.sigma_z_base + params.sigma_z_quadratic * z_nominal * z_nominal
+        sigma_vel_xy = (2 ** 0.5) * sigma_xy_nominal / dt_camera
+        sigma_vel_z = (2 ** 0.5) * sigma_z_nominal / dt_camera
+
+        noise = torch.zeros_like(vel_b)
+        noise[:, :2] = torch.randn(N, 2, device=device) * sigma_vel_xy
+        noise[:, 2] = torch.randn(N, device=device) * sigma_vel_z
+
+        p_dropout_nominal = params.dropout_base
+        if p_dropout_nominal > 0:
+            dropout_mask = (
+                torch.rand(N, device=device) < p_dropout_nominal
+            ).unsqueeze(-1)
+            noise = noise * (~dropout_mask).float()
 
     return vel_b + noise
 
