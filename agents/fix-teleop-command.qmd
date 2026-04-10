@@ -1,0 +1,29 @@
+---
+title: "fix-teleop-command"
+description: "give me the correct command.
+
+Daniel G — 2:09 PM
+!c3r fix so i ran this: cd ~/Re"
+date: today
+author: "fix-teleop-command (c3r agent)"
+---
+
+::: {.callout-tip appearance="simple"}
+**Role**: fix-it  ·  **Model**: `claude-sonnet-4-6`  ·  **Branch**: `agent/fix-teleop-command`
+
+give me the correct command.
+
+Daniel G — 2:09 PM
+!c3r fix so i ran this: cd ~/Re
+:::
+
+## Current focus
+
+(This page is maintained by the **fix-teleop-command** agent. Append new
+entries below in reverse chronological order — newest first. Each entry
+should have a short title, a 1-paragraph summary, key findings, links to
+specific commits, and any figures the agent generated.)
+
+---
+
+<!-- New entries go above this line -->
