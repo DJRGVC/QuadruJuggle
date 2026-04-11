@@ -17,9 +17,13 @@ Optional flags:
     --apex_height    Target ball apex height in metres above paddle (default 0.20)
     --h_nominal      Trunk height target in metres (default 0.38)
     --centering_gain Lateral correction gain (default 2.0)
+    --video          Save replay as MP4 (always overwrites videos/mirror_law_latest.mp4)
+    --video_length   Number of steps to record (default 500)
 """
 
 import argparse
+import glob
+import math
 import os
 import sys
 
@@ -45,6 +49,10 @@ parser.add_argument("--cmd_smooth_alpha", type=float, default=1.0,
 parser.add_argument("--impact_tilt_gain", type=float, default=1.0,
                     help="Multiply roll/pitch during impact for stronger bounce. "
                          "1.0=mirror law only, 1.5-2.5=diagonal energy injection.")
+parser.add_argument("--video", action="store_true", default=False,
+                    help="Record replay as MP4. Always overwrites videos/mirror_law_latest.mp4.")
+parser.add_argument("--video_length", type=int, default=500,
+                    help="Number of steps to record when --video is set (default 500).")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 
@@ -57,6 +65,7 @@ import gymnasium as gym
 
 import isaaclab_tasks  # noqa: F401 — registers all Isaac Lab built-in tasks
 import go1_ball_balance  # noqa: F401 — registers our custom tasks
+import isaaclab.utils.math as math_utils
 
 from go1_ball_balance.tasks.ball_juggle_hier.ball_juggle_mirror_env_cfg import (
     BallJuggleMirrorEnvCfg,
@@ -66,6 +75,20 @@ from go1_ball_balance.tasks.ball_juggle_hier.ball_juggle_mirror_env_cfg import (
 env_cfg = BallJuggleMirrorEnvCfg()
 env_cfg.scene.num_envs = args.num_envs
 env_cfg.scene.env_spacing = 3.5
+
+# Frame the whole env grid instead of a single robot. This also affects recorded video.
+grid_cols = max(1, math.ceil(math.sqrt(args.num_envs)))
+grid_rows = max(1, math.ceil(args.num_envs / grid_cols))
+grid_w = max(0.0, (grid_cols - 1) * env_cfg.scene.env_spacing)
+grid_h = max(0.0, (grid_rows - 1) * env_cfg.scene.env_spacing)
+cx = 0.5 * grid_w
+cy = 0.5 * grid_h
+env_cfg.viewer.lookat = (cx, cy, 0.55)
+env_cfg.viewer.eye = (
+    cx + max(4.5, 0.75 * grid_w + 3.0),
+    cy + max(4.5, 0.75 * grid_h + 3.0),
+    3.2 + 0.15 * max(grid_w, grid_h),
+)
 
 # Set pi2 checkpoint and mirror-law hyper-params
 env_cfg.actions.torso_cmd.pi2_checkpoint = os.path.abspath(args.pi2_checkpoint)
@@ -82,14 +105,32 @@ env_cfg.observations.policy.enable_corruption = False
 
 # ── Create environment ──────────────────────────────────────────────────────
 # Isaac Lab's ManagerBasedRLEnv uses 'cfg' kwarg (not 'env_cfg')
-env = gym.make("Isaac-BallJuggleMirror-Go1-v0", cfg=env_cfg)
+env = gym.make("Isaac-BallJuggleMirror-Go1-v0", cfg=env_cfg,
+               render_mode="rgb_array" if args.video else None)
+
+if args.video:
+    video_folder = os.path.join(os.path.dirname(__file__), "..", "videos", "mirror_law")
+    os.makedirs(video_folder, exist_ok=True)
+    # Delete previous recording so the file is always overwritten
+    for old in glob.glob(os.path.join(video_folder, "mirror_law_latest*.mp4")):
+        os.remove(old)
+    env = gym.wrappers.RecordVideo(
+        env,
+        video_folder=video_folder,
+        name_prefix="mirror_law_latest",
+        step_trigger=lambda step: step == 0,
+        video_length=args.video_length,
+        disable_logger=True,
+    )
+    print(f"[play_mirror_law] Recording {args.video_length} steps → {video_folder}/mirror_law_latest-episode-0.mp4")
 
 device = env.unwrapped.device
 
 # Mirror law is deterministic — feed a fixed apex height (normalised 1.0 = max)
 # Changing this to a value in [0, 1] scales the apex toward apex_height_min.
 apex_action = torch.ones(args.num_envs, 1, device=device)
-print("I am trying to take a look at apex action:", apex_action)
+# apex_action = torch.tensor([[0.3], [0.2], [2.0], [1.0]], device=device)
+
 
 print(f"\n[play_mirror_law] pi2 checkpoint : {args.pi2_checkpoint}")
 print(f"[play_mirror_law] apex_height    : {args.apex_height:.3f} m")
@@ -125,10 +166,15 @@ try:
                 episode_lengths[i] = 0.0
 
         step += 1
-        if step % 200 == 0:
+        if args.video and step >= args.video_length:
+            print(f"[play_mirror_law] Video recorded ({args.video_length} steps). Exiting.")
+            break
+        if step % 100 == 0:
             # Print ball height and paddle state for env 0
             ball = env.unwrapped.scene["ball"]
             robot = env.unwrapped.scene["robot"]
+            ball_test = env.unwrapped.scene["ball_test"]
+
             paddle_z = robot.data.root_pos_w[0, 2].item() + 0.07
             ball_z   = ball.data.root_pos_w[0, 2].item()
             ball_vz  = ball.data.root_lin_vel_w[0, 2].item()
@@ -136,6 +182,23 @@ try:
                 f"  step {step:5d} | "
                 f"paddle_z={paddle_z:.3f} ball_z={ball_z:.3f} ball_vz={ball_vz:+.2f} | "
                 f"ep_rew(mean)={episode_rewards.mean().item():.1f}"
+            )
+
+            ball_test_pos_w = ball_test.data.root_pos_w[0]
+            ball_test_quat_w = ball_test.data.root_quat_w[0]
+            robot_pos_w = robot.data.root_pos_w[0]  # (3,)
+            robot_quat_w = robot.data.root_quat_w[0]  # (4,) wxyz
+            
+            ball_test_rel = ball_test_pos_w - robot_pos_w
+            ball_test_b = math_utils.quat_apply_inverse(robot_quat_w, ball_test_rel)
+
+            ball_test_quat_b = math_utils.quat_mul(
+                math_utils.quat_conjugate(robot_quat_w), ball_test_quat_w
+            )
+
+            print(
+                f"    ball_test_b={ball_test_b.tolist()} "
+                f"ball_test_quat_b={ball_test_quat_b.tolist()}"
             )
 
 except KeyboardInterrupt:

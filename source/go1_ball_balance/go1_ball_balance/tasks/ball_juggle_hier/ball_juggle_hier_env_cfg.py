@@ -58,7 +58,7 @@ class BallJuggleHierSceneCfg(InteractiveSceneCfg):
 
     dome_light = AssetBaseCfg(
         prim_path="/World/DomeLight",
-        spawn=sim_utils.DomeLightCfg(color=(0.9, 0.9, 0.9), intensity=500.0),
+        spawn=sim_utils.DomeLightCfg(color=(0.9, 0.9, 0.9), intensity=1000.0),
     )
 
     robot: ArticulationCfg = UNITREE_GO1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
@@ -140,6 +140,8 @@ class ObservationsCfg:
                 "robot_cfg": SceneEntityCfg("robot"),
             },
         )
+
+
         base_lin_vel      = ObsTerm(func=mdp.base_lin_vel)
         base_ang_vel      = ObsTerm(func=mdp.base_ang_vel)
         projected_gravity = ObsTerm(func=mdp.projected_gravity)

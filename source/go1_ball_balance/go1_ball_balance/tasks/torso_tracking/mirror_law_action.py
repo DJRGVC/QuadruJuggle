@@ -241,11 +241,10 @@ class MirrorLawTorsoAction(TorsoCommandAction):
         h_cmd = torch.full((self._num_envs,), self._h_nominal, device=self._device)
 
         # h_dot: pulse upward when ball is near the paddle and descending.
-        # A stationary paddle (h_dot=0) loses energy each bounce (restitution<1).
-        # Moving the paddle upward at impact adds energy:
-        #   v_out = v_paddle*(1+e) - e*|v_in|
-        # Required paddle velocity for target apex from ball at current speed:
-        #   v_paddle = (v_out_target + e*|v_in_z|) / (1+e)
+        # 1D impact: v_out = e*|v_in| + v_paddle*(1+e)
+        # → v_paddle = (v_out_target - e*|v_in_z|) / (1+e)
+        # Negative when incoming speed is already sufficient (clamp to 0 → stationary paddle,
+        # restitution alone reduces height). Positive when energy needs to be added.
         # Pi2's h_dot tracking is ~34-50%, so we command 2× the physical target.
         # Compliant legs need ~0.2s of lead time to build upward velocity before impact.
         # Wider 0.50m window (vs old 0.25m) gives that lead time at typical fall speeds.
@@ -253,7 +252,7 @@ class MirrorLawTorsoAction(TorsoCommandAction):
         ball_descending = (ball_vel_w[:, 2] < 0.0).float()
         near_impact     = (ball_rel_z < 0.50).float()   # within 50 cm above paddle
         v_in_z_abs = ball_vel_w[:, 2].abs()
-        v_paddle_target = (v_out_z + self._restitution * v_in_z_abs) / (1.0 + self._restitution)
+        v_paddle_target = (v_out_z - self._restitution * v_in_z_abs) / (1.0 + self._restitution)
         # Clamp to physical max first, then apply 2× tracking-lag boost.
         # Clamping *before* the boost preserves proportionality across apex heights
         # (previously: 2× caused saturation at apex > ~0.05 m, making all heights identical).

@@ -36,6 +36,7 @@ import torch
 import torch.nn as nn
 import mujoco
 import mujoco.viewer
+import imageio
 
 # ── Constants matching Isaac Lab env cfg ──────────────────────────────────────
 PADDLE_OFFSET_B   = np.array([0.0, 0.0, 0.070])   # paddle in trunk body frame
@@ -335,6 +336,12 @@ def main():
                         help=f"Scale pi2 action magnitude (default {MUJOCO_ACTION_SCALE}). "
                              "Compensates for Isaac Lab USD vs MuJoCo MJCF geometry difference. "
                              "Must be < ~0.42 for stability; use 1.0 to match Isaac Lab exactly.")
+    parser.add_argument("--video", action="store_true", default=False,
+                        help="Record replay as MP4. Saves to videos/mujoco_latest.mp4.")
+    parser.add_argument("--video_length", type=int, default=600,
+                        help="Number of policy steps to record (default 600 ≈ 12 s).")
+    parser.add_argument("--video_fps", type=int, default=50,
+                        help="Output video frame rate (default 50 = real-time).")
     args = parser.parse_args()
 
     print(f"[play_mujoco] launcher     : {args.launcher_checkpoint}")
@@ -365,17 +372,20 @@ def main():
 
     reset_sim(model, data)
 
-    def run_loop(viewer=None):
+    def run_loop(viewer=None, renderer=None):
         nonlocal last_action, last_apex, prev_ball_vz, bounce_count, episode
 
         step = 0
         ep_start = step
         ep_bounces = 0
+        frames = [] if renderer is not None else None
 
         print(f"\n[play_mujoco] Running — {'Ctrl+C' if viewer is None else 'close window'} to stop.\n")
 
         while True:
             if args.max_steps > 0 and step >= args.max_steps:
+                break
+            if renderer is not None and step >= args.video_length:
                 break
 
             # ── Policy step (every 4 physics steps = 50 Hz) ───────────────
@@ -420,6 +430,11 @@ def main():
                 data.ctrl[:] = np.clip(KP_FALLBACK * pos_err + KD_FALLBACK * (-data.qvel[6:18]),
                                        -23.7, 23.7)
                 mujoco.mj_step(model, data)
+
+            # ── Video frame capture ───────────────────────────────────────
+            if renderer is not None:
+                renderer.update_scene(data)
+                frames.append(renderer.render().copy())
 
             # ── Logging & apex detection ──────────────────────────────────
             trunk_z  = data.body("trunk").xpos[2]
@@ -466,7 +481,18 @@ def main():
 
             step += 1
 
-    if args.headless:
+        if renderer is not None and frames:
+            video_dir = os.path.join(os.path.dirname(__file__), "..", "videos")
+            os.makedirs(video_dir, exist_ok=True)
+            video_path = os.path.abspath(os.path.join(video_dir, "mujoco_latest.mp4"))
+            imageio.mimwrite(video_path, frames, fps=args.video_fps)
+            print(f"[play_mujoco] Video saved → {video_path}  ({len(frames)} frames @ {args.video_fps} fps)")
+
+    if args.video:
+        renderer = mujoco.Renderer(model, height=480, width=640)
+        run_loop(renderer=renderer)
+        renderer.close()
+    elif args.headless:
         run_loop(viewer=None)
     else:
         with mujoco.viewer.launch_passive(model, data) as viewer:

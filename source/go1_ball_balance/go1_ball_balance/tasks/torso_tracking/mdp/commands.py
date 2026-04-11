@@ -25,12 +25,15 @@ _CMD_RANGES_DEFAULT = {
     "h_dot": (-1.0, 1.0),     # m/s  (wider for active juggling)
     "roll":  (-0.4, 0.4),     # rad
     "pitch": (-0.4, 0.4),     # rad
-    "omega_roll":  (-3.0, 3.0),   # rad/s
-    "omega_pitch": (-3.0, 3.0),   # rad/s
+    "omega_roll":  (0.0, 0.0),   # rad/s
+    "omega_pitch": (0.0, 0.0),   # rad/s
 }
 
-# Smoothing time constant (seconds).  Larger = slower transitions.
-_SMOOTH_TAU = 0.15
+# Per-dimension smoothing time constants [h, h_dot, roll, pitch, ω_roll, ω_pitch].
+# Larger tau = heavier filter = slower transitions.
+# h/h_dot use heavy filtering (leg compliance is slow to respond).
+# roll/pitch/rates use light filtering (ball juggling needs fast tilt response).
+_SMOOTH_TAUS = [0.40, 0.30, 0.02, 0.02, 0.01, 0.01]
 
 
 def _ensure_cmd_buffer(env: ManagerBasedRLEnv) -> torch.Tensor:
@@ -94,5 +97,8 @@ def update_torso_commands_smooth(
         return
 
     dt = env.cfg.sim.dt  # 1/200 = 0.005s
-    alpha = 1.0 - math.exp(-dt / _SMOOTH_TAU)
-    env._torso_cmd[:] = env._torso_cmd + alpha * (env._torso_cmd_goal - env._torso_cmd)
+    alphas = torch.tensor(
+        [1.0 - math.exp(-dt / tau) for tau in _SMOOTH_TAUS],
+        device=env.device,
+    )  # (6,) — one blend rate per dimension
+    env._torso_cmd[:] = env._torso_cmd + alphas * (env._torso_cmd_goal - env._torso_cmd)
