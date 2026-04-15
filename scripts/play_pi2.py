@@ -40,12 +40,16 @@ parser.add_argument("--video_length", type=int, default=500,
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 
+if args.video:
+    args.headless = True
+    args.enable_cameras = True
+
 app_launcher = AppLauncher(args)
 simulation_app = app_launcher.app
 
 import torch
+import torch.nn as nn
 import gymnasium as gym
-from rsl_rl.runners import OnPolicyRunner
 import isaaclab.utils.math as math_utils
 
 import matplotlib
@@ -56,8 +60,39 @@ import isaaclab_tasks  # noqa: F401
 import go1_ball_balance  # noqa: F401
 
 from go1_ball_balance.tasks.torso_tracking.torso_tracking_env_cfg import TorsoTrackingEnvCfg_PLAY
-from go1_ball_balance.tasks.torso_tracking.agents.rsl_rl_ppo_cfg import TorsoTrackingPPORunnerCfg
-from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
+
+
+def _build_actor(checkpoint_path: str, device: str) -> nn.Module:
+    """Load actor directly from checkpoint, bypassing rsl_rl's OnPolicyRunner."""
+    ck = torch.load(checkpoint_path, map_location=device, weights_only=True)
+    sd = ck.get("model_state_dict", ck)
+
+    actor_keys = sorted([k for k in sd if k.startswith("actor.") and "weight" in k])
+    layers = [(sd[k].shape[1], sd[k].shape[0]) for k in actor_keys]
+
+    modules: list[nn.Module] = []
+    for i, (in_dim, out_dim) in enumerate(layers):
+        modules.append(nn.Linear(in_dim, out_dim))
+        if i < len(layers) - 1:
+            modules.append(nn.ELU())
+    actor = nn.Sequential(*modules).to(device)
+
+    actor_sd: dict[str, torch.Tensor] = {}
+    for key in actor_keys:
+        seq_idx = int(key.split(".")[1])
+        actor_sd[f"{seq_idx}.weight"] = sd[key]
+        bias_key = key.replace("weight", "bias")
+        if bias_key in sd:
+            actor_sd[f"{seq_idx}.bias"] = sd[bias_key]
+    actor.load_state_dict(actor_sd)
+
+    for p in actor.parameters():
+        p.requires_grad = False
+    actor.eval()
+
+    arch = " → ".join(f"{i}→{o}" for i, o in layers)
+    print(f"[play_pi2] actor loaded: {arch}")
+    return actor
 
 # ── Video folder ────────────────────────────────────────────────────────────
 _video_folder = os.path.join(os.path.dirname(__file__), "..", "videos", "pi2")
@@ -85,11 +120,10 @@ if args.video:
     print(f"[play_pi2] Recording {args.video_length} steps → {_video_folder}/pi2_latest-episode-0.mp4")
 
 # ── Load pi2 policy ─────────────────────────────────────────────────────────
-agent_cfg = TorsoTrackingPPORunnerCfg()
-env_wrapped = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
-runner = OnPolicyRunner(env_wrapped, agent_cfg.to_dict(), log_dir=None, device=str(device))
-runner.load(os.path.abspath(args.pi2_checkpoint))
-policy = runner.get_inference_policy(device=str(device))
+_actor = _build_actor(os.path.abspath(args.pi2_checkpoint), str(device))
+
+def policy(obs_dict: dict) -> torch.Tensor:
+    return _actor(obs_dict["policy"])
 
 print(f"\n[play_pi2] checkpoint : {args.pi2_checkpoint}")
 print(f"[play_pi2] num_envs   : {args.num_envs}")

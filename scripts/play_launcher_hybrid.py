@@ -50,13 +50,20 @@ parser.add_argument("--video_length",        type=int,   default=500,
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 
+# Video recording needs offscreen camera rendering.
+# AppLauncher reads args.__dict__ directly, so mutate the namespace here.
+# headless=True + enable_cameras=True → PARTIAL_RENDERING (supports rgb_array).
+if args.video:
+    args.headless = True
+    args.enable_cameras = True
+
 app_launcher = AppLauncher(args)
 simulation_app = app_launcher.app
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import gymnasium as gym
-from rsl_rl.runners import OnPolicyRunner
 import isaaclab.utils.math as math_utils
 import matplotlib
 matplotlib.use("Agg")   # headless-safe backend
@@ -68,8 +75,48 @@ import go1_ball_balance  # noqa: F401
 from go1_ball_balance.tasks.ball_juggle_hier.ball_juggle_launcher_env_cfg import (
     BallJuggleLauncherEnvCfg_PLAY,
 )
-from go1_ball_balance.tasks.ball_juggle_hier.agents.rsl_rl_ppo_cfg import BallJuggleHierPPORunnerCfg
-from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
+
+
+def _build_pi1_actor(checkpoint_path: str, device: str) -> nn.Module:
+    """Load pi1 actor directly from checkpoint, bypassing rsl_rl's OnPolicyRunner.
+
+    Works with any rsl_rl version — we just read the actor weights directly.
+    """
+    ck = torch.load(checkpoint_path, map_location=device, weights_only=True)
+    sd = ck.get("model_state_dict", ck)
+
+    # Infer architecture from weight shapes
+    actor_keys = sorted([k for k in sd if k.startswith("actor.") and "weight" in k])
+    layers = []
+    for key in actor_keys:
+        out_dim, in_dim = sd[key].shape
+        layers.append((in_dim, out_dim))
+
+    # Build MLP: linear → ELU → ... → linear (no final activation)
+    modules: list[nn.Module] = []
+    for i, (in_dim, out_dim) in enumerate(layers):
+        modules.append(nn.Linear(in_dim, out_dim))
+        if i < len(layers) - 1:
+            modules.append(nn.ELU())
+    actor = nn.Sequential(*modules).to(device)
+
+    # Load weights (RSL-RL uses skip-2 indices: 0,2,4,6 for linear layers)
+    actor_sd: dict[str, torch.Tensor] = {}
+    for key in actor_keys:
+        seq_idx = int(key.split(".")[1])
+        actor_sd[f"{seq_idx}.weight"] = sd[key]
+        bias_key = key.replace("weight", "bias")
+        if bias_key in sd:
+            actor_sd[f"{seq_idx}.bias"] = sd[bias_key]
+    actor.load_state_dict(actor_sd)
+
+    for p in actor.parameters():
+        p.requires_grad = False
+    actor.eval()
+
+    arch = " → ".join(f"{i}→{o}" for i, o in layers)
+    print(f"[play_launcher_hybrid] pi1 actor loaded: {arch}")
+    return actor
 
 # Mirror-law command scaling (must match action_term.py)
 _CMD_SCALES  = torch.tensor([0.125, 1.0, 0.4, 0.4, 3.0, 3.0])
@@ -205,11 +252,10 @@ if args.video:
     )
     print(f"[play_launcher_hybrid] Recording {args.video_length} steps → {_video_folder}/hybrid_latest-episode-0.mp4")
 
-agent_cfg = BallJuggleHierPPORunnerCfg()
-env_wrapped = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
-runner = OnPolicyRunner(env_wrapped, agent_cfg.to_dict(), log_dir=None, device=str(device))
-runner.load(os.path.abspath(args.launcher_checkpoint))
-policy = runner.get_inference_policy(device=str(device))
+_pi1_actor = _build_pi1_actor(os.path.abspath(args.launcher_checkpoint), str(device))
+
+def policy(obs_dict: dict) -> torch.Tensor:
+    return _pi1_actor(obs_dict["policy"])
 
 # Fix apex height
 env.unwrapped._apex_target_h   = torch.full((args.num_envs,), args.apex_height, device=device)
