@@ -87,36 +87,6 @@ class BallJuggleMirrorSceneCfg(InteractiveSceneCfg):
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 0.54)),
     )
 
-        ###########Add an extra ball for testing purpose############
-
-    ball_test = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/Ball_test",
-        spawn=sim_utils.SphereCfg(
-            radius=_BALL_RADIUS,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                linear_damping=0.1,
-                angular_damping=0.1,
-                max_linear_velocity=10.0,
-                max_angular_velocity=50.0,
-                max_depenetration_velocity=1.0,
-                disable_gravity=False,
-            ),
-            mass_props=sim_utils.MassPropertiesCfg(mass=0.0027),
-            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
-            physics_material=sim_utils.RigidBodyMaterialCfg(
-                restitution=0.85,
-                restitution_combine_mode="max",
-                static_friction=0.3,
-                dynamic_friction=0.3,
-            ),
-            visual_material=sim_utils.PreviewSurfaceCfg(
-                diffuse_color=(0.3, 0.6, 0.3),   # purple — visually distinct from flat juggle (blue)
-            ),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(1.0, 0.0, 1.54)),
-    )
-
-    #######################
 
 
     paddle = RigidObjectCfg(

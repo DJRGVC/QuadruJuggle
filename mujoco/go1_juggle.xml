@@ -6,7 +6,7 @@
     <compiler angle="radian"
               meshdir="/home/frank/berkeley_mde/walk-these-ways/resources/robots/go1/meshes/" />
     <size njmax="500" nconmax="200" />
-    <option gravity="0 0 -9.806" iterations="50" solver="Newton" timestep="0.002"/>
+    <option gravity="0 0 -9.806" iterations="50" solver="Newton" timestep="0.005"/>
 
     <default>
         <geom contype="1" conaffinity="1" friction="0.6 0.3 0.3"
@@ -14,7 +14,7 @@
         <light castshadow="false" diffuse="1 1 1"/>
         <motor ctrlrange="-33.5 33.5" ctrllimited="true"/>
         <camera fovy="60"/>
-        <joint damping="0.01" armature="0.01" frictionloss="0.2"/>
+        <joint damping="0.5" armature="0.01" frictionloss="0.0"/>
     </default>
 
     <asset>
@@ -54,14 +54,13 @@
             <joint type="free"/>
             <geom type="mesh" contype="0" conaffinity="0" group="1"
                   rgba="0.913725 0.913725 0.847059 1" mesh="trunk"/>
-            <geom size="0.13 0.04675 0.057" type="box"
+            <geom name="trunk_box" size="0.13 0.04675 0.057" type="box"
                   rgba="0.913725 0.913725 0.847059 1"/>
             <site name="imu"    pos="0 0 0"/>
-            <!-- Paddle: 0.07 m above trunk centre (matches Isaac Lab _PADDLE_OFFSET_B).
-                 Geom for collision + site for reference. Ball (r=0.02) bounces off this. -->
-            <geom name="paddle" type="box" size="0.15 0.15 0.005" pos="0 0 0.07"
+            <!-- Paddle: radius=0.153m, half-height=0.0035m (thin disc, tunneling prevented by margin in contact pair) -->
+            <geom name="paddle" type="cylinder" size="0.153 0.0035" pos="0 0 0.07"
                   rgba="0.2 0.6 1.0 0.7" contype="1" conaffinity="1"
-                  mass="0.01"/>
+                  mass="0.15"/>
             <site name="paddle_site" pos="0 0 0.07"/>
 
             <!-- Front-Right leg -->
@@ -73,7 +72,7 @@
                        limited="true" range="-0.802851 0.802851"/>
                 <geom quat="0 1 0 0" type="mesh" contype="0" conaffinity="0"
                       group="1" rgba="0.913725 0.913725 0.847059 1" mesh="hip"/>
-                <geom size="0.046 0.02" pos="0 -0.045 0" quat="0.707107 0.707107 0 0"
+                <geom name="FR_hip_geom" size="0.046 0.02" pos="0 -0.045 0" quat="0.707107 0.707107 0 0"
                       type="cylinder" rgba="0.913725 0.913725 0.847059 0"/>
                 <body name="FR_thigh" pos="0 -0.08 0">
                     <inertial pos="-0.003468 0.018947 -0.032736"
@@ -108,7 +107,7 @@
                        limited="true" range="-0.802851 0.802851"/>
                 <geom type="mesh" contype="0" conaffinity="0" group="1"
                       rgba="0.913725 0.913725 0.847059 1" mesh="hip"/>
-                <geom size="0.046 0.02" pos="0 0.045 0" quat="0.707107 0.707107 0 0"
+                <geom name="FL_hip_geom" size="0.046 0.02" pos="0 0.045 0" quat="0.707107 0.707107 0 0"
                       type="cylinder" rgba="0.913725 0.913725 0.847059 0"/>
                 <body name="FL_thigh" pos="0 0.08 0">
                     <inertial pos="-0.003468 -0.018947 -0.032736"
@@ -143,7 +142,7 @@
                        limited="true" range="-0.802851 0.802851"/>
                 <geom quat="0 0 0 -1" type="mesh" contype="0" conaffinity="0"
                       group="1" rgba="0.913725 0.913725 0.847059 1" mesh="hip"/>
-                <geom size="0.046 0.02" pos="0 -0.045 0" quat="0.707107 0.707107 0 0"
+                <geom name="RR_hip_geom" size="0.046 0.02" pos="0 -0.045 0" quat="0.707107 0.707107 0 0"
                       type="cylinder" rgba="0.913725 0.913725 0.847059 0"/>
                 <body name="RR_thigh" pos="0 -0.08 0">
                     <inertial pos="-0.003468 0.018947 -0.032736"
@@ -178,7 +177,7 @@
                        limited="true" range="-0.802851 0.802851"/>
                 <geom quat="0 0 1 0" type="mesh" contype="0" conaffinity="0"
                       group="1" rgba="0.913725 0.913725 0.847059 1" mesh="hip"/>
-                <geom size="0.046 0.02" pos="0 0.07 0" quat="0.707107 0.707107 0 0"
+                <geom name="RL_hip_geom" size="0.046 0.02" pos="0 0.07 0" quat="0.707107 0.707107 0 0"
                       type="cylinder" rgba="0.913725 0.913725 0.847059 0"/>
                 <body name="RL_thigh" pos="0 0.08 0">
                     <inertial pos="-0.003468 -0.018947 -0.032736"
@@ -207,26 +206,46 @@
 
         <!-- ── Juggling ball ──────────────────────────────────────── -->
         <!-- Starts ~0.12 m above paddle (paddle at ~0.38 m, ball at 0.50 m) -->
-        <body name="ball" pos="0 0 0.50">
+        <body name="ball" pos="0 0 1.00">
             <joint name="ball_free" type="free"
                    damping="0" armature="0" frictionloss="0"/>
-            <geom name="ball_geom" type="sphere" size="0.020" mass="0.02"
+            <geom name="ball_geom" type="sphere" size="0.020" mass="0.0027"
                   rgba="1.0 0.4 0.0 1"
-                  contype="1" conaffinity="1"/>
+                  contype="1" conaffinity="1"
+                  friction="0.3 0.3 0.3"/>
         </body>
     </worldbody>
 
     <!-- ── Contact pairs: elastic ball-paddle bounce ──────────── -->
-    <!-- Direct stiffness mode (negative solref) for near-elastic contact.
-         solref=[-k, -b]: k=2e5 N/m (stiff), b=2 N·s/m (low damping)
-         → damping ratio ζ ≈ b/(2√(k·m_ball)) = 2/(2√(2e5·0.02)) ≈ 0.050
-         → coefficient of restitution e ≈ exp(-π·ζ/√(1-ζ²)) ≈ 0.85
-         solimp: near-rigid (d0=0.99, d1=0.999, width=0.0001) -->
+    <!-- Matches Isaac Lab restitution=0.99, restitution_combine_mode=max.
+         solref=[-k, -b]: k=2e5 N/m (stiff), b=0.1 N·s/m (near-zero damping)
+         → damping ratio ζ ≈ 0.1/(2√(2e5·0.0027)) ≈ 0.00068  → e ≈ 0.99 -->
     <contact>
+        <!-- Ball-paddle: high restitution (~0.99), stiff spring, margin prevents tunneling -->
         <pair geom1="ball_geom" geom2="paddle"
-              solref="-200000 -2"
-              solimp="0.99 0.999 0.0001 0.5 2"/>
+            solref="-20000 -0.1"
+            solimp="0.8 0.95 0.001 0.5 2"
+            margin="0.025"/>
+        <!-- Ball-body (trunk + hip motors): tunable elasticity, margin prevents tunneling -->
+        <pair geom1="ball_geom" geom2="trunk_box"   solref="-20000 -5.0" solimp="0.8 0.95 0.001 0.5 2" margin="0.025"/>
+        <pair geom1="ball_geom" geom2="FR_hip_geom" solref="-20000 -5.0" solimp="0.8 0.95 0.001 0.5 2" margin="0.025"/>
+        <pair geom1="ball_geom" geom2="FL_hip_geom" solref="-20000 -5.0" solimp="0.8 0.95 0.001 0.5 2" margin="0.025"/>
+        <pair geom1="ball_geom" geom2="RR_hip_geom" solref="-20000 -5.0" solimp="0.8 0.95 0.001 0.5 2" margin="0.025"/>
+        <pair geom1="ball_geom" geom2="RL_hip_geom" solref="-20000 -5.0" solimp="0.8 0.95 0.001 0.5 2" margin="0.025"/>
+        <!-- Ball-floor: e≈0.87 (b=2.0, ζ=b/(2√km)=0.043) — ball bounces visibly off ground -->
+        <pair geom1="ball_geom" geom2="floor"
+              solref="-5000 -1"
+              solimp="0.8 0.95 0.001 0.5 2"/>
     </contact>
+
+    <!-- <contact>
+    <pair geom1="ball_geom" geom2="paddle"
+          solref="-100 -0.1" 
+          solimp="0.8 0.95 0.001 0.5 2"/>
+    <pair geom1="ball_geom" geom2="floor"
+          solref="-100 -5.0"
+          solimp="0.8 0.95 0.001 0.5 2"/>
+     </contact> -->
 
     <!-- ── Actuators (torque control, PD applied in script) ─── -->
     <!-- Order: FR, FL, RR, RL  (matches go1.xml actuator order) -->

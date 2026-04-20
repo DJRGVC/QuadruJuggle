@@ -1,14 +1,13 @@
 """Joint command comparison test — MuJoCo side.
 
-Applies a fixed step-input to each joint in sequence and logs the actual
-joint response.  Run alongside test_joint_cmd_isaaclab.py to compare
-joint ordering, PD gains, and default positions across simulators.
+play_mirror_law.py is the official reference (BallJuggleMirrorEnvCfg):
+  sim.dt = 1/200 s (200 Hz physics), decimation=4 (50 Hz policy).
+Both test scripts must use SIM_DT = 1/200 to match.
 
 Two actuator modes
 ------------------
-  PD (default)        KP=100, KD=3 — fast but not matching Isaac Lab
-  --use_actuator_net  Same unitree_go1.pt MLP that Isaac Lab uses internally
-                      → this is the apples-to-apples comparison
+  PD (default)        KP=100, KD=3
+  --use_actuator_net  Same unitree_go1.pt MLP as Isaac Lab — apples-to-apples
 
 Protocol
 --------
@@ -40,21 +39,26 @@ import sys
 import time
 
 import numpy as np
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(__file__), ".."))
+from mujoco_utils import build_reindex
 import torch
 import mujoco
 import mujoco.viewer
 
 # ── Constants (must match play_mujoco.py exactly) ─────────────────────────────
 
+# Type-grouped order matching actual Isaac Lab articulation (confirmed by
+# test_joint_cmd_isaaclab.py): all hips, then all thighs, then all calves.
 DEFAULT_JOINT_POS_ISAAC = np.array([
-     0.1,  0.8, -1.5,   # FL: hip, thigh, calf
-    -0.1,  0.8, -1.5,   # FR
-     0.1,  1.0, -1.5,   # RL
-    -0.1,  1.0, -1.5,   # RR
+     0.1, -0.1,  0.1, -0.1,   # FL_hip  FR_hip  RL_hip  RR_hip
+     0.8,  0.8,  1.0,  1.0,   # FL_thigh FR_thigh RL_thigh RR_thigh
+    -1.5, -1.5, -1.5, -1.5,   # FL_calf  FR_calf  RL_calf  RR_calf
 ])
 
-REINDEX = np.array([3, 4, 5,  0, 1, 2,  9, 10, 11,  6, 7, 8])
-DEFAULT_JOINT_POS_MJCF = DEFAULT_JOINT_POS_ISAAC[REINDEX]
+# REINDEX and DEFAULT_JOINT_POS_MJCF computed at runtime after model load.
+REINDEX = None
+DEFAULT_JOINT_POS_MJCF = None
 
 JOINT_NAMES_MJCF = [
     "FR_hip", "FR_thigh", "FR_calf",
@@ -74,7 +78,7 @@ DEFAULT_ACTUATOR_NET_PATH = os.path.normpath(os.path.join(
     "../../../walk-these-ways/resources/actuator_nets/unitree_go1.pt",
 ))
 
-SIM_DT = 0.002   # MuJoCo timestep
+SIM_DT = 1.0 / 200.0   # Must match play_mirror_law.py (BallJuggleMirrorEnvCfg sim.dt)
 
 
 # ── Actuator net wrapper (copied from play_mujoco.py) ─────────────────────────
@@ -225,6 +229,10 @@ def main():
     xml_path = os.path.abspath(args.xml)
     model = mujoco.MjModel.from_xml_path(xml_path)
     data  = mujoco.MjData(model)
+
+    global REINDEX, DEFAULT_JOINT_POS_MJCF
+    REINDEX = build_reindex(model)
+    DEFAULT_JOINT_POS_MJCF = DEFAULT_JOINT_POS_ISAAC[REINDEX]
 
     # ── Actuator ──────────────────────────────────────────────────────────────
     actuator_net = None

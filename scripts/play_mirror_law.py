@@ -31,7 +31,11 @@ import sys
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Mirror-law ball juggling play.")
-parser.add_argument("--pi2_checkpoint", type=str, required=True,
+_BEST_PI2 = os.path.join(
+    os.path.dirname(__file__), "..",
+    "logs/rsl_rl/go1_torso_tracking/2026-03-13_03-02-24/model_best.pt"
+)
+parser.add_argument("--pi2_checkpoint", type=str, default=_BEST_PI2,
                     help="Path to trained pi2 (torso-tracking) checkpoint .pt")
 parser.add_argument("--num_envs",       type=int,   default=4)
 parser.add_argument("--apex_height",    type=float, default=0.20,
@@ -169,37 +173,7 @@ try:
         if args.video and step >= args.video_length:
             print(f"[play_mirror_law] Video recorded ({args.video_length} steps). Exiting.")
             break
-        if step % 100 == 0:
-            # Print ball height and paddle state for env 0
-            ball = env.unwrapped.scene["ball"]
-            robot = env.unwrapped.scene["robot"]
-            ball_test = env.unwrapped.scene["ball_test"]
 
-            paddle_z = robot.data.root_pos_w[0, 2].item() + 0.07
-            ball_z   = ball.data.root_pos_w[0, 2].item()
-            ball_vz  = ball.data.root_lin_vel_w[0, 2].item()
-            print(
-                f"  step {step:5d} | "
-                f"paddle_z={paddle_z:.3f} ball_z={ball_z:.3f} ball_vz={ball_vz:+.2f} | "
-                f"ep_rew(mean)={episode_rewards.mean().item():.1f}"
-            )
-
-            ball_test_pos_w = ball_test.data.root_pos_w[0]
-            ball_test_quat_w = ball_test.data.root_quat_w[0]
-            robot_pos_w = robot.data.root_pos_w[0]  # (3,)
-            robot_quat_w = robot.data.root_quat_w[0]  # (4,) wxyz
-            
-            ball_test_rel = ball_test_pos_w - robot_pos_w
-            ball_test_b = math_utils.quat_apply_inverse(robot_quat_w, ball_test_rel)
-
-            ball_test_quat_b = math_utils.quat_mul(
-                math_utils.quat_conjugate(robot_quat_w), ball_test_quat_w
-            )
-
-            print(
-                f"    ball_test_b={ball_test_b.tolist()} "
-                f"ball_test_quat_b={ball_test_quat_b.tolist()}"
-            )
 
 except KeyboardInterrupt:
     print("\n[play_mirror_law] Stopped by user.")

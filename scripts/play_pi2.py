@@ -28,7 +28,8 @@ import os
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Pi2 torso-tracking standalone play.")
-parser.add_argument("--pi2_checkpoint", type=str, required=True,
+parser.add_argument("--pi2_checkpoint", type=str,
+                    default="logs/rsl_rl/go1_torso_tracking/2026-03-13_03-02-24/model_best.pt",
                     help="Path to trained pi2 checkpoint .pt")
 parser.add_argument("--num_envs",    type=int, default=4)
 parser.add_argument("--max_steps",   type=int, default=1000,

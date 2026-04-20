@@ -33,11 +33,11 @@ while [[ $# -gt 0 ]]; do
             shift 3
             ;;
         --all)
-            # MJCF order → Isaac order mapping for all 12 joints
-            # MJCF:  FR(0-2), FL(3-5), RR(6-8), RL(9-11)
-            # Isaac: FL(0-2), FR(3-5), RL(6-8), RR(9-11)
-            MUJOCO_IDXS=(0 1 2  3 4 5  6 7 8   9 10 11)
-            ISAAC_IDXS=( 3 4 5  0 1 2  9 10 11  6 7  8)
+            # MJCF leg-grouped (FR 0-2, FL 3-5, RR 6-8, RL 9-11)
+            # → Isaac type-grouped (all hips 0-3, all thighs 4-7, all calves 8-11)
+            # [FL FR RL RR]_hip=0-3, [FL FR RL RR]_thigh=4-7, [FL FR RL RR]_calf=8-11
+            MUJOCO_IDXS=(0 1 2   3 4 5   6 7 8    9 10 11)
+            ISAAC_IDXS=( 1 5 9   0 4 8   3 7 11   2  6 10)
             ALL=true
             shift
             ;;
@@ -49,9 +49,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ${#MUJOCO_IDXS[@]} -eq 0 ]]; then
-    # Default: FR_hip
+    # Default: FR_hip  (MJCF idx=0 → Isaac idx=1)
     MUJOCO_IDXS=(0)
-    ISAAC_IDXS=(3)
+    ISAAC_IDXS=(1)
 fi
 
 HOLD=50
@@ -63,6 +63,7 @@ for i in "${!MUJOCO_IDXS[@]}"; do
     echo "  MuJoCo joint_idx=$MIDX"
     conda run -n isaaclab python "$ROOT/scripts/tests/test_joint_cmd_mujoco.py" \
         --joint_idx "$MIDX" \
+        --use_actuator_net \
         --hold_steps "$HOLD" \
         --step_steps "$STEPS" \
         > "$OUT/mujoco_joint${MIDX}.csv" 2>"$OUT/mujoco_joint${MIDX}.log"
@@ -74,8 +75,9 @@ echo "=== Running Isaac Lab tests ==="
 for i in "${!ISAAC_IDXS[@]}"; do
     IIDX="${ISAAC_IDXS[$i]}"
     echo "  Isaac Lab joint_idx=$IIDX"
-    PYTHONPATH="/home/frank/IsaacLab/scripts/reinforcement_learning/rsl_rl:$PYTHONPATH" \
-    conda run -n isaaclab python "$ROOT/scripts/tests/test_joint_cmd_isaaclab.py" \
+    conda run -n isaaclab env \
+        PYTHONPATH="/home/frank/IsaacLab/scripts/reinforcement_learning/rsl_rl:${PYTHONPATH:-}" \
+        python "$ROOT/scripts/tests/test_joint_cmd_isaaclab.py" \
         --joint_idx "$IIDX" \
         --hold_steps "$HOLD" \
         --step_steps "$STEPS" \

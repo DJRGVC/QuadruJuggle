@@ -14,10 +14,10 @@ Actuator model:
     effort_limit=23.7 N·m (same as Go1 real hardware).
 
 Joint ordering note:
-    Isaac Lab: FL(0-2), FR(3-5), RL(6-8), RR(9-11)
-    MJCF:      FR(0-2), FL(3-5), RR(6-8), RL(9-11)
-    Reindex:   MJCF_idx = Isaac_idx[[3,4,5, 0,1,2, 9,10,11, 6,7,8]]
-               (same permutation used in both directions)
+    Isaac Lab: type-grouped — hips(0-3), thighs(4-7), calves(8-11)
+               [FL FR RL RR]_hip, [FL FR RL RR]_thigh, [FL FR RL RR]_calf
+    MJCF:      leg-grouped  — FR(0-2), FL(3-5), RR(6-8), RL(9-11)
+    Reindex built at runtime by mujoco_utils.build_reindex() — do not hardcode.
 
 Usage:
     cd /home/frank/berkeley_mde/QuadruJuggle
@@ -32,6 +32,9 @@ import os
 import time
 
 import numpy as np
+import sys, os as _os
+sys.path.insert(0, _os.path.dirname(__file__))
+from mujoco_utils import build_reindex
 import torch
 import torch.nn as nn
 import mujoco
@@ -41,7 +44,7 @@ import imageio
 # ── Constants matching Isaac Lab env cfg ──────────────────────────────────────
 PADDLE_OFFSET_B   = np.array([0.0, 0.0, 0.070])   # paddle in trunk body frame
 BALL_RADIUS       = 0.020                           # metres
-MAX_TARGET_HEIGHT = 0.60                            # normalisation ceiling
+MAX_TARGET_HEIGHT = 1.00                            # matches Isaac Lab max_target_height=1.00
 
 # Pi1 action scaling: physical = action * scale + offset
 CMD_SCALES  = np.array([0.125, 1.0, 0.4, 0.4, 3.0, 3.0])
@@ -51,20 +54,19 @@ CMD_OFFSETS = np.array([0.375, 0.0, 0.0, 0.0, 0.0, 0.0])
 OBS_NORM   = np.array([8.0, 1.0, 2.5, 2.5, 1/3, 1/3])   # 1/CMD_SCALES
 OBS_OFFSET = np.array([-0.375, 0.0, 0.0, 0.0, 0.0, 0.0])
 
-# Isaac Lab Go1 default joint positions (FL, FR, RL, RR order)
+# Isaac Lab Go1 default joint positions — type-grouped order (confirmed by
+# test_joint_cmd_isaaclab.py): all hips, then all thighs, then all calves.
 DEFAULT_JOINT_POS_ISAAC = np.array([
-     0.1,  0.8, -1.5,   # FL: hip, thigh, calf
-    -0.1,  0.8, -1.5,   # FR
-     0.1,  1.0, -1.5,   # RL
-    -0.1,  1.0, -1.5,   # RR
+     0.1, -0.1,  0.1, -0.1,   # FL_hip  FR_hip  RL_hip  RR_hip
+     0.8,  0.8,  1.0,  1.0,   # FL_thigh FR_thigh RL_thigh RR_thigh
+    -1.5, -1.5, -1.5, -1.5,   # FL_calf  FR_calf  RL_calf  RR_calf
 ])
 
-# Reindex: converts between Isaac (FL,FR,RL,RR) and MJCF (FR,FL,RR,RL) order.
-# Same permutation applies in both directions.
-REINDEX = np.array([3, 4, 5,  0, 1, 2,  9, 10, 11,  6, 7, 8])
-
-# MJCF default joint positions (MJCF order: FR,FL,RR,RL)
-DEFAULT_JOINT_POS_MJCF = DEFAULT_JOINT_POS_ISAAC[REINDEX]
+# REINDEX and DEFAULT_JOINT_POS_MJCF are computed at runtime after model load.
+# See build_reindex() in mujoco_utils.py — queried from model joint metadata.
+# Placeholders here so module-level functions can reference them before main() runs.
+REINDEX = None
+DEFAULT_JOINT_POS_MJCF = None
 
 # Actuator net path (same model Isaac Lab uses, locally available)
 ACTUATOR_NET_PATH = os.path.join(
@@ -180,15 +182,14 @@ def build_pi1_obs(data: mujoco.MjData,
     gravity_w = np.array([0.0, 0.0, -1.0])
     proj_gravity = R.T @ gravity_w                             # (3,)
 
-    # Joint positions (MJCF order FR,FL,RR,RL → reindex to Isaac FL,FR,RL,RR)
-    # qpos layout: [trunk_xyz(3), trunk_quat(4), joints(12), ball_xyz(3), ball_quat(4)]
-    joint_pos_mjcf = data.qpos[7:19].copy()
-    joint_pos_isaac = joint_pos_mjcf[REINDEX]
+    # Joint positions: scatter MJCF→Isaac (result[reindex]=mjcf); gather mjcf[reindex] is wrong dir.
+    joint_pos_isaac = np.zeros(12)
+    joint_pos_isaac[REINDEX] = data.qpos[7:19]
     joint_pos_rel = joint_pos_isaac - DEFAULT_JOINT_POS_ISAAC  # (12,)
 
-    # Joint velocities (MJCF order → Isaac order)
-    joint_vel_mjcf  = data.qvel[6:18].copy()
-    joint_vel_isaac = joint_vel_mjcf[REINDEX]                  # (12,)
+    # Joint velocities: same scatter pattern
+    joint_vel_isaac = np.zeros(12)
+    joint_vel_isaac[REINDEX] = data.qvel[6:18]
 
     obs = np.concatenate([
         ball_pos_paddle,    # 3
@@ -221,9 +222,11 @@ def build_pi2_obs(torso_cmd: np.ndarray, data: mujoco.MjData) -> np.ndarray:
     trunk_angvel_b = R.T @ data.qvel[3:6]
     proj_gravity   = R.T @ np.array([0.0, 0.0, -1.0])
 
-    joint_pos_mjcf  = data.qpos[7:19].copy()
-    joint_pos_rel   = joint_pos_mjcf[REINDEX] - DEFAULT_JOINT_POS_ISAAC
-    joint_vel_isaac = data.qvel[6:18][REINDEX]
+    joint_pos_isaac = np.zeros(12)
+    joint_pos_isaac[REINDEX] = data.qpos[7:19]
+    joint_pos_rel   = joint_pos_isaac - DEFAULT_JOINT_POS_ISAAC
+    joint_vel_isaac = np.zeros(12)
+    joint_vel_isaac[REINDEX] = data.qvel[6:18]
 
     obs = np.concatenate([
         torso_cmd_norm,  # 6
@@ -253,13 +256,14 @@ class GoActuatorNet:
     POS_SCALE    = -1.0
     VEL_SCALE    =  1.0
     EFFORT_LIMIT = 23.7   # N·m — matches Go1 hardware
-
-    def __init__(self, net_path: str):
+    TORQUE_SCALE = 0.93    # compensates for MuJoCo vs PhysX physics gap (~2.5x weaker response)
+    def __init__(self, net_path: str, reindex: np.ndarray):
         net_path = os.path.abspath(net_path)
         self.net = torch.jit.load(net_path, map_location="cpu").eval()
         print(f"[ActuatorNet] Loaded from {net_path}")
         self._pos_hist = np.zeros((self.HISTORY_LEN, 12), dtype=np.float32)
         self._vel_hist = np.zeros((self.HISTORY_LEN, 12), dtype=np.float32)
+        self._reindex  = reindex   # MJCF→Isaac: reindex[mjcf_i] = isaac_i
 
     def reset(self):
         self._pos_hist[:] = 0.0
@@ -269,22 +273,27 @@ class GoActuatorNet:
                 joint_pos_mjcf: np.ndarray,
                 joint_vel_mjcf: np.ndarray) -> np.ndarray:
         """Return torques (MJCF order, clipped to ±23.7 N·m)."""
-        pos_err = targets_mjcf - joint_pos_mjcf   # (12,)
-        # Roll history: newest at index 0
+        pos_err_mjcf = targets_mjcf - joint_pos_mjcf
+
+        # Reorder MJCF → Isaac before feeding net
+        e_isaac = np.zeros(12, dtype=np.float32); e_isaac[self._reindex] = pos_err_mjcf
+        v_isaac = np.zeros(12, dtype=np.float32); v_isaac[self._reindex] = joint_vel_mjcf
+
         self._pos_hist = np.roll(self._pos_hist, 1, axis=0)
         self._vel_hist = np.roll(self._vel_hist, 1, axis=0)
-        self._pos_hist[0] = pos_err
-        self._vel_hist[0] = joint_vel_mjcf
+        self._pos_hist[0] = e_isaac
+        self._vel_hist[0] = v_isaac
 
-        # Build (12, 6) input: [pos_err * pos_scale × 3, vel × vel_scale × 3]
         pos_in = (self._pos_hist * self.POS_SCALE).T   # (12, 3)
         vel_in = (self._vel_hist * self.VEL_SCALE).T   # (12, 3)
         net_in = np.concatenate([pos_in, vel_in], axis=1)  # (12, 6)
 
         with torch.no_grad():
-            torques = self.net(torch.from_numpy(net_in)).squeeze(-1).numpy()  # (12,)
+            torques_isaac = self.net(torch.from_numpy(net_in)).squeeze(-1).numpy()
 
-        return np.clip(torques, -self.EFFORT_LIMIT, self.EFFORT_LIMIT)
+        # Convert Isaac torques → MJCF order for data.ctrl, scaled for MuJoCo physics gap
+        return np.clip(torques_isaac[self._reindex] * self.TORQUE_SCALE,
+                       -self.EFFORT_LIMIT, self.EFFORT_LIMIT)
 
 
 # ── Apex detection ─────────────────────────────────────────────────────────────
@@ -299,28 +308,85 @@ def detect_apex(prev_vz: float, curr_vz: float,
 
 # ── Reset ─────────────────────────────────────────────────────────────────────
 
-def reset_sim(model: mujoco.MjModel, data: mujoco.MjData) -> None:
-    """Reset to standing pose with ball above paddle."""
+def reset_sim(model: mujoco.MjModel, data: mujoco.MjData,
+              actuator=None, warmup_steps: int = 500,
+              actuator_warmup: int = 20,
+              kp: float = 100.0, kd: float = 3.0) -> None:
+    """Reset to standing pose with ball above paddle.
+
+    Three-phase warmup (mirrors Isaac Lab fix_root_link + write_joint_state_to_sim):
+      1. PD warmup with base pinned — joints settle to default without gravity drift.
+      2. Hard-set joints to exact default — jp_err_max = 0.
+      3. Actuator net warmup with base pinned — fills 3-step history with near-zero errors.
+    """
     mujoco.mj_resetData(model, data)
 
-    data.qpos[0:3] = [0, 0, 0.35]        # trunk position (near MuJoCo natural height)
-    data.qpos[3:7] = [1, 0, 0, 0]        # trunk quaternion (identity)
-    data.qpos[7:19] = DEFAULT_JOINT_POS_MJCF  # joints (MJCF order)
+    _spawn_pos  = np.array([0.0, 0.0, 0.42])   # matches Isaac Lab init_state.pos
+    _spawn_quat = np.array([1.0, 0.0, 0.0, 0.0])
 
-    # Ball above paddle: trunk at 0.315, paddle at +0.07 = 0.385, ball 0.15m above
-    data.qpos[19:22] = [0.0, 0.0, 0.53]  # ball xyz
-    data.qpos[22:26] = [1, 0, 0, 0]      # ball quaternion
-
+    data.qpos[0:3]  = _spawn_pos
+    data.qpos[3:7]  = _spawn_quat
+    data.qpos[7:19] = DEFAULT_JOINT_POS_MJCF
+    data.qpos[19:22] = [0.0, 0.0, 0.53]
+    data.qpos[22:26] = [1, 0, 0, 0]
     mujoco.mj_forward(model, data)
+
+    if actuator is None:
+        return
+
+    _ball_spawn = np.array([0.0, 0.0, 0.63])
+
+    # Phase 1: PD warmup with base + ball pinned.
+    # Without pinning, gravity pulls the robot down and the ball falls to the floor
+    # during the ~2.5 s warmup, causing an immediate reset when the main loop starts.
+    actuator.reset()
+    for _ in range(warmup_steps):
+        err = DEFAULT_JOINT_POS_MJCF - data.qpos[7:19]
+        data.ctrl[:] = np.clip(kp * err - kd * data.qvel[6:18], -23.7, 23.7)
+        mujoco.mj_step(model, data)
+        data.qpos[0:3]  = _spawn_pos
+        data.qpos[3:7]  = _spawn_quat
+        data.qvel[0:6]  = 0.0
+        data.qpos[19:22] = _ball_spawn   # keep ball from falling during warmup
+        data.qvel[19:25] = 0.0
+
+    # Phase 2: hard-set joints to exact default (mirrors write_joint_state_to_sim).
+    data.qpos[7:19]  = DEFAULT_JOINT_POS_MJCF
+    data.qpos[19:22] = _ball_spawn
+    data.qvel[:]     = 0.0
+    mujoco.mj_forward(model, data)
+
+    # Phase 3: actuator net warmup — fills 3-step history with near-zero errors.
+    actuator.reset()
+    for _ in range(actuator_warmup):
+        data.ctrl[:] = actuator.compute(
+            DEFAULT_JOINT_POS_MJCF, data.qpos[7:19], data.qvel[6:18])
+        mujoco.mj_step(model, data)
+        data.qpos[0:3]  = _spawn_pos
+        data.qpos[3:7]  = _spawn_quat
+        data.qvel[0:6]  = 0.0
+        data.qpos[19:22] = _ball_spawn
+        data.qvel[19:25] = 0.0
+
+    data.qpos[7:19]  = DEFAULT_JOINT_POS_MJCF
+    data.qpos[19:22] = _ball_spawn
+    data.qvel[:]     = 0.0
+    mujoco.mj_forward(model, data)
+
+    jp_err = np.abs(data.qpos[7:19] - DEFAULT_JOINT_POS_MJCF).max()
+    print(f"  [reset_sim] trunk_z={data.body('trunk').xpos[2]:.3f}  jp_err_max={jp_err:.4f}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="Sim-to-Sim: Isaac Lab policies in MuJoCo")
-    parser.add_argument("--launcher_checkpoint", required=True,
+    _root = os.path.dirname(os.path.abspath(__file__)) + "/.."
+    parser.add_argument("--launcher_checkpoint",
+                        default=f"{_root}/logs/rsl_rl/go1_ball_launcher/2026-04-05_21-42-11/model_best.pt",
                         help="Path to trained pi1 launcher checkpoint .pt")
-    parser.add_argument("--pi2_checkpoint", required=True,
+    parser.add_argument("--pi2_checkpoint",
+                        default=f"{_root}/logs/rsl_rl/go1_torso_tracking/2026-03-13_03-02-24/model_best.pt",
                         help="Path to frozen pi2 torso-tracking checkpoint .pt")
     parser.add_argument("--apex_height", type=float, default=0.30,
                         help="Target apex height in metres (default 0.30)")
@@ -358,11 +424,15 @@ def main():
     model = mujoco.MjModel.from_xml_path(xml_path)
     data  = mujoco.MjData(model)
 
-    # Actuator net still loaded for reference, but PD fallback used for stability
-    actuator = GoActuatorNet(ACTUATOR_NET_PATH)
+    # Build joint reindex from model metadata (replaces hardcoded array)
+    global REINDEX, DEFAULT_JOINT_POS_MJCF
+    REINDEX = build_reindex(model)
+    DEFAULT_JOINT_POS_MJCF = DEFAULT_JOINT_POS_ISAAC[REINDEX]
+
+    actuator = GoActuatorNet(ACTUATOR_NET_PATH, REINDEX)
 
     # Simulation parameters
-    DECIMATION   = 4     # pi1/pi2 run at 50 Hz, physics at 200 Hz (0.002s × 4 = 0.02s)
+    DECIMATION   = 4     # pi1/pi2 run at 50 Hz, physics at 200 Hz (0.005s × 4 = 0.02s)
     apex_norm    = args.apex_height / MAX_TARGET_HEIGHT
     last_action  = np.zeros(6, dtype=np.float32)
     last_apex    = 0.0
@@ -370,7 +440,7 @@ def main():
     bounce_count = 0
     episode      = 0
 
-    reset_sim(model, data)
+    reset_sim(model, data, actuator)
 
     def run_loop(viewer=None, renderer=None):
         nonlocal last_action, last_apex, prev_ball_vz, bounce_count, episode
@@ -401,13 +471,35 @@ def main():
             # Scale to physical torso command
             torso_cmd = pi1_action * CMD_SCALES + CMD_OFFSETS       # (6,)
 
-            # MuJoCo geometry gap: Isaac Lab USD equilibrium 0.375m ≠ MJCF 0.316m.
-            # Pi1's velocity/angular commands (cmd[1..5]) cause MuJoCo pi2 to walk
-            # away from the ball. Zero them out; keep only the height cmd[0] so pi1
-            # can still inject energy via timed height changes.
-            # Height clamped to [0.34, 0.41]: range pi2 can actually track in MuJoCo.
-            torso_cmd[0] = np.clip(torso_cmd[0], 0.34, 0.41)
-            torso_cmd[1:] = 0.0   # zero velocity/angular commands → robot stands still
+            # Clamp commands to ranges pi2 can reliably track in MuJoCo:
+            #   height:     [0.34, 0.41]  (MuJoCo equilibrium ~0.41m)
+            #   roll/pitch: ±0.25 rad     (pi2 stable up to ~0.30 rad in MuJoCo)
+            #   h_dot / rates: zeroed     (height velocity not tracked well in MuJoCo)
+            # 1. Capture the 'raw' intent from the policy/controller
+            raw_torso_cmd = torso_cmd.copy()
+
+            # 2. Apply your clipping logic (with the fix for index [1])
+            torso_cmd[0] = np.clip(raw_torso_cmd[0], 0.34, 0.41)
+            torso_cmd[1] = np.clip(raw_torso_cmd[1], -1.0, 1.0)
+            torso_cmd[2] = np.clip(raw_torso_cmd[2], -0.4, 0.4)
+            torso_cmd[3] = np.clip(raw_torso_cmd[3], -0.4, 0.4)
+            torso_cmd[4:6] = 0.0
+
+            # 3. Print the comparison (formatted for readability)
+            # Only print every N steps to avoid flooding the terminal
+            if step % 50 == 0:
+                print(f"\n--- Cmd Clipping Check (Step {step}) ---")
+                # Height (index 0)
+                print(f"Height | Raw: {raw_torso_cmd[0]:.3f} -> Clip: {torso_cmd[0]:.3f} {'[SATURATED]' if abs(raw_torso_cmd[0]-torso_cmd[0]) > 1e-5 else ''}")
+                
+                # Roll (index 2)
+                print(f"Roll   | Raw: {raw_torso_cmd[2]:.3f} -> Clip: {torso_cmd[2]:.3f} {'[SATURATED]' if abs(raw_torso_cmd[2]-torso_cmd[2]) > 1e-5 else ''}")
+                
+                # Pitch (index 3)
+                print(f"Pitch  | Raw: {raw_torso_cmd[3]:.3f} -> Clip: {torso_cmd[3]:.3f} {'[SATURATED]' if abs(raw_torso_cmd[3]-torso_cmd[3]) > 1e-5 else ''}")
+                
+                # Yaw / Extras (indices 4:6)
+                print(f"Yaw/R  | Forced to 0.0 (Raw was: {raw_torso_cmd[4:6]})")
 
             # Build pi2 obs and run
             pi2_obs_np = build_pi2_obs(torso_cmd, data)
@@ -426,9 +518,8 @@ def main():
 
             # ── Inner physics loop (4 × 0.005s = 0.02s) ──────────────────
             for _ in range(DECIMATION):
-                pos_err = targets_mjcf - data.qpos[7:19]
-                data.ctrl[:] = np.clip(KP_FALLBACK * pos_err + KD_FALLBACK * (-data.qvel[6:18]),
-                                       -23.7, 23.7)
+                data.ctrl[:] = actuator.compute(
+                    targets_mjcf, data.qpos[7:19], data.qvel[6:18])
                 mujoco.mj_step(model, data)
 
             # ── Video frame capture ───────────────────────────────────────
@@ -451,10 +542,15 @@ def main():
             prev_ball_vz = ball_vz
 
             if step % 100 == 0:
-                print(f"  step {step:5d} | trunk_z={trunk_z:.3f} "
-                      f"ball_z={ball_z:.3f} ball_vz={ball_vz:+.2f} "
-                      f"| last_apex={last_apex:.2f}m "
-                      f"| bounces={bounce_count}")
+                ball_pos  = data.body("ball").xpos.copy()
+                jp_isaac  = np.zeros(12); jp_isaac[REINDEX] = data.qpos[7:19]
+                jp_rel    = jp_isaac - DEFAULT_JOINT_POS_ISAAC
+                print(f"  step {step:5d} | trunk_z={trunk_z:.3f} | bounces={bounce_count} | last_apex={last_apex:.2f}m")
+                print(f"    ball_pos  : x={ball_pos[0]:+.3f}  y={ball_pos[1]:+.3f}  z={ball_pos[2]:+.3f}  vz={ball_vz:+.2f}")
+                print(f"    6d_cmd    : h={torso_cmd[0]:.3f}  h_dot={torso_cmd[1]:+.2f}  "
+                      f"roll={torso_cmd[2]:+.3f}  pitch={torso_cmd[3]:+.3f}  "
+                      f"wr={torso_cmd[4]:+.2f}  wp={torso_cmd[5]:+.2f}")
+                print(f"    jp_rel    : {np.round(jp_rel, 3)}")
 
             # Episode reset: ball fell below paddle or robot fell over
             ball_off   = ball_z < (paddle_z - 0.15) or \
@@ -472,7 +568,7 @@ def main():
                 ep_bounces = 0
                 last_action[:] = 0
                 prev_ball_vz   = 0
-                reset_sim(model, data)
+                reset_sim(model, data, actuator)
 
             if viewer is not None:
                 viewer.sync()

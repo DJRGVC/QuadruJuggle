@@ -28,9 +28,13 @@ import os
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="V4 Launcher pi1 + mirror-law hybrid.")
-parser.add_argument("--launcher_checkpoint", type=str, required=True,
+parser.add_argument("--launcher_checkpoint", type=str,
+                    default=os.path.join(os.path.dirname(__file__),
+                        "../logs/rsl_rl/go1_ball_launcher/2026-04-05_21-42-11/model_best.pt"),
                     help="Path to trained V4 launcher pi1 checkpoint .pt")
-parser.add_argument("--pi2_checkpoint",      type=str, required=True,
+parser.add_argument("--pi2_checkpoint",      type=str,
+                    default=os.path.join(os.path.dirname(__file__),
+                        "../logs/rsl_rl/go1_torso_tracking/2026-03-13_03-02-24/model_best.pt"),
                     help="Path to frozen pi2 (torso-tracking) checkpoint .pt")
 parser.add_argument("--num_envs",            type=int,   default=4)
 parser.add_argument("--apex_height",         type=float, default=0.30,
@@ -293,6 +297,12 @@ _keys6d = ["h", "h_dot", "roll", "pitch", "omega_roll", "omega_pitch"]
 _torso_des: dict[str, list[float]] = {k: [] for k in _keys6d}
 _torso_act: dict[str, list[float]] = {k: [] for k in _keys6d}
 
+# First-5s snapshot: ball xyz + 6D torso cmd (desired only), env 0
+_POLICY_DT   = 0.02          # 4 × 0.005 s
+_PLOT_STEPS  = int(10.0 / _POLICY_DT)   # 250 steps
+_snap_ball:  list[list[float]] = []   # [[x,y,z], ...]
+_snap_cmd:   list[list[float]] = []   # [[h,h_dot,roll,pitch,wr,wp], ...]
+
 try:
     while simulation_app.is_running():
         ball  = env.unwrapped.scene["ball"]
@@ -357,6 +367,7 @@ try:
             mask    = using_mirror.unsqueeze(-1).float()
             actions = ml_actions * mask + pi1_actions * (1.0 - mask)
 
+
             obs_raw, rew, terminated, truncated, _ = env.step(actions)
 
         dones = terminated | truncated
@@ -396,6 +407,13 @@ try:
         _torso_act["omega_roll"].append(ang_vel_b[0].item())
         _torso_act["omega_pitch"].append(ang_vel_b[1].item())
 
+        if step < _PLOT_STEPS:
+            _snap_ball.append(ball_pos_w[0].cpu().tolist())
+            _snap_cmd.append(cmd_phys.tolist())
+            if step == _PLOT_STEPS - 1:
+                print(f"[play_launcher_hybrid] 5s snapshot complete ({_PLOT_STEPS} steps) — saving plot.")
+                break
+
         step += 1
         if args.video and step >= args.video_length:
             print(f"[play_launcher_hybrid] Video recorded ({args.video_length} steps). Exiting.")
@@ -432,6 +450,24 @@ def _shade_mirror(ax, mode_arr):
     if in_mirror:
         ax.axvspan(seg_start, len(mode_arr), alpha=0.15, color="orange",
                    label="mirror law" if not labeled else "")
+
+
+# ── Helper: shade both modes with time x-axis ────────────────────────────────
+def _shade_modes_t(ax, mode_arr, t):
+    """Orange = mirror law, cornflower-blue = RL (pi1)."""
+    lbl = {0: True, 1: True}
+    colors = {0: ("cornflowerblue", "RL (pi1)"), 1: ("orange", "mirror law")}
+    cur_mode, seg_start = mode_arr[0], 0
+    def _flush(mode, start, end):
+        c, name = colors[mode]
+        ax.axvspan(t[start], t[min(end, len(t)-1)], alpha=0.18, color=c,
+                   label=name if lbl[mode] else "")
+        lbl[mode] = False
+    for i, m in enumerate(mode_arr):
+        if m != cur_mode:
+            _flush(cur_mode, seg_start, i - 1)
+            cur_mode, seg_start = m, i
+    _flush(cur_mode, seg_start, len(mode_arr) - 1)
 
 
 # ── Plot 1: Ball trajectory ──────────────────────────────────────────────────
@@ -486,6 +522,46 @@ if _torso_des["h"]:
     fig.savefig(path, dpi=150)
     plt.close(fig)
     print(f"[play_launcher_hybrid] Torso command saved → {path}")
+
+# ── Plot 3: First-5s ball position + 6D torso command ────────────────────────
+if _snap_ball:
+    import numpy as np
+    n   = len(_snap_ball)
+    t   = np.arange(n) * _POLICY_DT
+    bp  = np.array(_snap_ball)    # (n, 3)
+    cmd = np.array(_snap_cmd)     # (n, 6)
+    cmd_labels = ["h [m]", "h_dot [m/s]", "roll [rad]", "pitch [rad]",
+                  "ω_roll [rad/s]", "ω_pitch [rad/s]"]
+
+    mode_snap = _mode_log[:n]
+    fig, axes = plt.subplots(9, 1, figsize=(12, 18), sharex=True)
+
+    for ai, (label, data, color) in enumerate([
+        ("ball x [m]", bp[:, 0], "steelblue"),
+        ("ball y [m]", bp[:, 1], "darkorange"),
+        ("ball z [m]", bp[:, 2], "green"),
+    ]):
+        axes[ai].plot(t, data, linewidth=0.9, color=color)
+        _shade_modes_t(axes[ai], mode_snap, t)
+        axes[ai].set_ylabel(label, fontsize=8)
+        axes[ai].legend(loc="upper right", fontsize=7)
+        axes[ai].grid(True, alpha=0.3)
+
+    for ai, (label, col) in enumerate(zip(cmd_labels, range(6))):
+        ax = axes[3 + ai]
+        ax.plot(t, cmd[:, col], linewidth=0.9, color="crimson")
+        _shade_modes_t(ax, mode_snap, t)
+        ax.set_ylabel(label, fontsize=8)
+        ax.legend(loc="upper right", fontsize=7)
+        ax.grid(True, alpha=0.3)
+
+    axes[-1].set_xlabel("Time [s]")
+    fig.suptitle(f"V4 Hybrid — First {n*_POLICY_DT:.1f}s: Ball Position & 6D Torso Cmd (env 0)", fontsize=11)
+    fig.tight_layout()
+    path = os.path.join(_video_folder, "hybrid_first5s.png")
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    print(f"[play_launcher_hybrid] First-5s plot saved → {path}")
 
 env.close()
 simulation_app.close()
