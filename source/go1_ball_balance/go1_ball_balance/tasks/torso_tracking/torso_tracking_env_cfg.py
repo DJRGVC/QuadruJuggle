@@ -104,7 +104,7 @@ class TorsoTrackingSceneCfg(InteractiveSceneCfg):
     paddle = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Paddle",
         spawn=sim_utils.UsdFileCfg(
-            usd_path=f"{_ASSETS_DIR}/disc.usda",
+            usd_path=f"{_ASSETS_DIR}/dumbbell.usda",
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 kinematic_enabled=True,
                 disable_gravity=True,

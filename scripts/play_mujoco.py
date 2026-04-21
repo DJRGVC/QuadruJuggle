@@ -123,12 +123,20 @@ def _build_actor(state_dict: dict, prefix: str) -> nn.Sequential:
 def load_policies(pi1_path: str, pi2_path: str):
     pi1_ckpt = torch.load(pi1_path, map_location="cpu")
     pi2_ckpt = torch.load(pi2_path, map_location="cpu")
-    pi1_sd = pi1_ckpt.get("model_state_dict", pi1_ckpt)
-    pi2_sd = pi2_ckpt.get("model_state_dict", pi2_ckpt)
-    pi1 = _build_actor(pi1_sd, "actor.")
-    pi2 = _build_actor(pi2_sd, "actor.")
-    print(f"[play_mujoco] Pi1 input dim: {pi1[0].in_features}")
-    print(f"[play_mujoco] Pi2 input dim: {pi2[0].in_features}")
+    # rsl_rl 5.0.1: checkpoint has separate actor_state_dict with "mlp." prefix
+    # rsl_rl 4.x:   checkpoint has model_state_dict with "actor." prefix
+    if "actor_state_dict" in pi1_ckpt:
+        pi1_sd, pi1_pfx = pi1_ckpt["actor_state_dict"], "mlp."
+    else:
+        pi1_sd, pi1_pfx = pi1_ckpt.get("model_state_dict", pi1_ckpt), "actor."
+    if "actor_state_dict" in pi2_ckpt:
+        pi2_sd, pi2_pfx = pi2_ckpt["actor_state_dict"], "mlp."
+    else:
+        pi2_sd, pi2_pfx = pi2_ckpt.get("model_state_dict", pi2_ckpt), "actor."
+    pi1 = _build_actor(pi1_sd, pi1_pfx)
+    pi2 = _build_actor(pi2_sd, pi2_pfx)
+    print(f"[play_mujoco] Pi1 input dim: {pi1[0].in_features}  (key={pi1_pfx})")
+    print(f"[play_mujoco] Pi2 input dim: {pi2[0].in_features}  (key={pi2_pfx})")
     return pi1, pi2
 
 
@@ -383,7 +391,7 @@ def main():
     parser = argparse.ArgumentParser(description="Sim-to-Sim: Isaac Lab policies in MuJoCo")
     _root = os.path.dirname(os.path.abspath(__file__)) + "/.."
     parser.add_argument("--launcher_checkpoint",
-                        default=f"{_root}/logs/rsl_rl/go1_ball_launcher/2026-04-05_21-42-11/model_best.pt",
+                        default=f"{_root}/logs/rsl_rl/go1_ball_launcher/2026-04-20_11-03-50/model_best.pt",
                         help="Path to trained pi1 launcher checkpoint .pt")
     parser.add_argument("--pi2_checkpoint",
                         default=f"{_root}/logs/rsl_rl/go1_torso_tracking/2026-03-13_03-02-24/model_best.pt",

@@ -57,8 +57,11 @@
             <geom name="trunk_box" size="0.13 0.04675 0.057" type="box"
                   rgba="0.913725 0.913725 0.847059 1"/>
             <site name="imu"    pos="0 0 0"/>
-            <!-- Paddle: radius=0.153m, half-height=0.0035m (thin disc, tunneling prevented by margin in contact pair) -->
-            <geom name="paddle" type="cylinder" size="0.153 0.0035" pos="0 0 0.07"
+            <!-- Paddle: single box covering dumbbell.usda bounding box
+                 X: -0.10 to +0.265 (disc left edge to wing tip), halfsize=0.1825, centre=+0.0825
+                 Y: ±0.10 (disc radius), halfsize=0.10
+                 Z: 6 mm thick, half-height=0.003 -->
+            <geom name="paddle" type="box" size="0.1825 0.10 0.003" pos="0.0825 0 0.07"
                   rgba="0.2 0.6 1.0 0.7" contype="1" conaffinity="1"
                   mass="0.15"/>
             <site name="paddle_site" pos="0 0 0.07"/>

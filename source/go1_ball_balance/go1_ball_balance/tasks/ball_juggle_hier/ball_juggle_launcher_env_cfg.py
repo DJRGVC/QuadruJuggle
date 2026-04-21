@@ -97,6 +97,23 @@ class LauncherRewardsCfg:
     )
     early_termination = RewTerm(func=mdp.early_termination_penalty, weight=-5.0)
 
+    # ── Success bonus (NEW) ───────────────────────────────────────────────────
+    # early_termination_penalty fires on ALL non-timeout dones, including
+    # launcher_success — this explicitly offsets that penalty and adds a strong
+    # positive terminal reward so the robot is incentivised to hit the window.
+    launcher_success_bonus = RewTerm(
+        func=mdp.ball_apex_in_window,
+        weight=25.0,
+        params={
+            "window": _LAUNCH_WINDOW,
+            "ball_cfg": SceneEntityCfg("ball"),
+            "robot_cfg": SceneEntityCfg("robot"),
+            "paddle_offset_b": _PADDLE_OFFSET_B,
+            "min_height": 0.34,
+            "nominal_height": 0.40,
+        },
+    )
+
     # ── Precision apex reward (TIGHT std vs V3's 0.10) ────────────────────────
     # Peak reward only within ±0.03 m of target — forces accurate launching
     ball_apex_height = RewTerm(
@@ -134,7 +151,7 @@ class LauncherRewardsCfg:
     # ── Bouncing: lower weight than V3 (speed less critical than precision) ───
     ball_bouncing = RewTerm(
         func=mdp.ball_bouncing_reward,
-        weight=0.5,                    # V3=2.0 → V4=0.5
+        weight=0.1,                    # V3=2.0 → V4=0.5 → V4.1=0.1: prevent safe-bounce local optimum
         params={
             "ball_cfg": SceneEntityCfg("ball"),
             "robot_cfg": SceneEntityCfg("robot"),
@@ -177,6 +194,15 @@ class LauncherRewardsCfg:
     foot_contact  = RewTerm(
         func=mdp.feet_off_ground_penalty, weight=-1.0,
         params={"foot_contact_cfg": SceneEntityCfg("foot_contact_forces")},
+    )
+    foot_spread = RewTerm(
+        func=mdp.foot_pair_spread_penalty, weight=-5.0,
+        params={
+            "robot_cfg": SceneEntityCfg(
+                "robot", body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"]
+            ),
+            "min_spread": 0.12,
+        },
     )
 
 

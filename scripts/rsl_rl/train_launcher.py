@@ -113,7 +113,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
-    runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+    runner = OnPolicyRunner(env, _build_runner_cfg(agent_cfg), log_dir=log_dir, device=agent_cfg.device)
     runner.add_git_repo_to_log(__file__)
 
     # Warm-start actor from V3 pi1 or any previous checkpoint
@@ -121,8 +121,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
         resume_path = os.path.abspath(args_cli.resume_checkpoint)
         print(f"[INFO] Warm-starting actor from: {resume_path}")
         loaded = torch.load(resume_path, map_location=agent_cfg.device)
-        runner.alg.policy.load_state_dict(loaded["model_state_dict"])
-        print("[INFO] Actor weights loaded. Critic re-initializes fresh (new reward scale).")
+        actor = runner.alg.actor if hasattr(runner.alg, "actor") else runner.alg.policy
+        key = "actor_state_dict" if "actor_state_dict" in loaded else "model_state_dict"
+        actor.load_state_dict(loaded[key], strict=False)
+        print(f"[INFO] Actor weights loaded from key '{key}'. Critic re-initializes fresh (new reward scale).")
 
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
@@ -136,20 +138,38 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
     env.close()
 
 
-def _install_std_clamp(runner, min_std: float = 0.02) -> None:
-    """Monkey-patch PPO update() to clamp policy std >= min_std after every grad step.
+def _build_runner_cfg(agent_cfg) -> dict:
+    """Convert agent config to dict, stripping deprecated rsl_rl < 5.0 fields."""
+    _deprecated = {"stochastic", "init_noise_std", "noise_std_type", "state_dependent_std"}
+    cfg = agent_cfg.to_dict()
+    for model_key in ("actor", "critic"):
+        if isinstance(cfg.get(model_key), dict):
+            for k in _deprecated:
+                cfg[model_key].pop(k, None)
+    return cfg
 
-    RSL-RL stores std as a raw nn.Parameter (no softplus/exp).  If gradient updates
-    push any element of std below 0, the next Normal().sample() call crashes with
-    'RuntimeError: normal expects all elements of std >= 0.0'.
-    Clamping after each optimizer.step() is the minimal robust fix.
-    """
+
+def _install_std_clamp(runner, min_std: float = 0.02) -> None:
+    """Clamp actor distribution std >= min_std after every gradient step."""
+    actor = runner.alg.actor if hasattr(runner.alg, "actor") else runner.alg.policy
+    dist = getattr(actor, "distribution", None)
+    if dist is None:
+        print("[LAUNCHER-TRAIN] No distribution found on actor — std clamp skipped.")
+        return
+
+    std_param = getattr(dist, "std_param", None)
+    if std_param is None:
+        std_param = getattr(dist, "log_std_param", None)
+    if std_param is None:
+        print("[LAUNCHER-TRAIN] No std_param found — std clamp skipped.")
+        return
+
     original_update = runner.alg.update
 
     def _safe_update(*args, **kwargs):
         result = original_update(*args, **kwargs)
         with torch.no_grad():
-            runner.alg.policy.std.clamp_(min=min_std)
+            std_param.clamp_(min=min_std)
         return result
 
     runner.alg.update = _safe_update
@@ -157,15 +177,15 @@ def _install_std_clamp(runner, min_std: float = 0.02) -> None:
 
 
 def _install_best_checkpoint(runner, log_dir: str) -> None:
-    """Save model_best.pt whenever mean reward improves."""
-    original_log = runner.log
+    """Save model_best.pt whenever mean episode reward improves."""
+    original_log = runner.logger.log
     state = {"best_reward": float("-inf")}
 
-    def _wrapped_log(locs, *args, **kwargs):
-        original_log(locs, *args, **kwargs)
-        import statistics
-        rew_buf = locs.get("rewbuffer", [])
-        if rew_buf:
+    def _wrapped_log(*args, **kwargs):
+        original_log(*args, **kwargs)
+        rew_buf = runner.logger.rewbuffer
+        if len(rew_buf) > 0:
+            import statistics
             mean_reward = statistics.mean(rew_buf)
             if mean_reward > state["best_reward"] + 0.5:
                 state["best_reward"] = mean_reward
@@ -173,7 +193,7 @@ def _install_best_checkpoint(runner, log_dir: str) -> None:
                 runner.save(best_path)
                 print(f"[LAUNCHER-TRAIN] New best reward: {mean_reward:.1f} → saved {best_path}")
 
-    runner.log = _wrapped_log
+    runner.logger.log = _wrapped_log
     print("[LAUNCHER-TRAIN] model_best saving installed.")
 
 

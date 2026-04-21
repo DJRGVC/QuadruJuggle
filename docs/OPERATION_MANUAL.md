@@ -405,6 +405,39 @@ logs/rsl_rl/
     2026-03-20_20-25-22/           Pi1 v1 checkpoint (fixed 0.20 m apex)
 ```
 
+### File Dependency Table
+
+| File | play_mirror_law | play_launcher_hybrid | train_launcher (pi1) | train_torso_tracking (pi2) |
+|------|:-:|:-:|:-:|:-:|
+| `scripts/play_mirror_law.py` | ● | | | |
+| `scripts/play_launcher_hybrid.py` | | ● | | |
+| `scripts/rsl_rl/train_launcher.py` | | | ● | |
+| `scripts/rsl_rl/train_torso_tracking.py` | | | | ● |
+| `tasks/ball_juggle_hier/ball_juggle_mirror_env_cfg.py` | ● | | | |
+| `tasks/ball_juggle_hier/ball_juggle_launcher_env_cfg.py` | | ● | ● | |
+| `tasks/ball_juggle_hier/ball_juggle_pi1_env_cfg.py` (scene/obs/events base) | ● | ● | ● | |
+| `tasks/ball_juggle_hier/pi1_learned_action.py` | | ● | ● | |
+| `tasks/ball_juggle_hier/__init__.py` (task registration) | ● | ● | ● | |
+| `tasks/torso_tracking/action_term.py` (TorsoCommandAction / frozen pi2) | ● | ● | ● | |
+| `tasks/torso_tracking/mirror_law_action.py` | ● | | | |
+| `tasks/torso_tracking/torso_tracking_env_cfg.py` | | | | ● |
+| `tasks/torso_tracking/__init__.py` (task registration) | | | | ● |
+| `tasks/torso_tracking/mdp/commands.py` (torso cmd resampling / EMA) | | | | ● |
+| `tasks/torso_tracking/mdp/observations.py` | | | | ● |
+| `tasks/torso_tracking/mdp/rewards.py` (tracking rewards) | | | | ● |
+| `tasks/torso_tracking/mdp/events.py` (paddle/robot reset) | ● | ● | ● | ● |
+| `tasks/ball_juggle_hier/mdp/observations.py` (ball_pos/vel in paddle frame) | ● | ● | ● | |
+| `tasks/ball_juggle_hier/mdp/rewards.py` (apex height, bouncing, xy dist) | ● | ● | ● | |
+| `tasks/ball_juggle_hier/mdp/terminations.py` (ball_off, robot_tilt) | ● | ● | ● | |
+| `tasks/ball_juggle_hier/mdp/events.py` (randomize_apex_height) | ● | ● | ● | |
+| `tasks/torso_tracking/agents/rsl_rl_ppo_cfg.py` (pi2 PPO config) | | | | ● |
+| `tasks/ball_juggle_hier/agents/rsl_rl_ppo_cfg.py` (pi1 PPO config) | | | ● | |
+| `assets/paddle/dumbbell.usda` (paddle shape) | ● | ● | ● | ● |
+| `logs/rsl_rl/go1_torso_tracking/.../model_best.pt` (pi2 checkpoint) | ● | ● | ● (frozen) | |
+| `logs/rsl_rl/go1_ball_launcher/.../model_best.pt` (pi1 checkpoint) | | ● | | |
+
+> Paths are relative to `source/go1_ball_balance/go1_ball_balance/` unless prefixed with `scripts/`, `assets/`, or `logs/`.
+
 ---
 
 ## Troubleshooting

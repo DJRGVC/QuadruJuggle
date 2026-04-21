@@ -157,8 +157,19 @@ def _tt_blend_stages(rl_env, old_idx: int, new_idx: int, alpha: float) -> None:
     rl_env._torso_cmd_ranges["omega_pitch"] = [blended[6], blended[7]]
 
 
+def _build_runner_cfg(agent_cfg) -> dict:
+    """Convert agent config to dict, stripping deprecated rsl_rl < 5.0 fields."""
+    _deprecated = {"stochastic", "init_noise_std", "noise_std_type", "state_dependent_std"}
+    cfg = agent_cfg.to_dict()
+    for model_key in ("actor", "critic"):
+        if isinstance(cfg.get(model_key), dict):
+            for k in _deprecated:
+                cfg[model_key].pop(k, None)
+    return cfg
+
+
 def _tt_install_curriculum(runner) -> None:
-    """Monkey-patch runner.log() for curriculum + early stopping."""
+    """Monkey-patch runner.logger.log() for curriculum + early stopping."""
     try:
         rl_env = runner.env.unwrapped
     except AttributeError:
@@ -170,7 +181,7 @@ def _tt_install_curriculum(runner) -> None:
     _ensure_cmd_buffer(rl_env)
     _tt_apply_stage(rl_env, 0)
 
-    original_log = runner.log
+    original_log = runner.logger.log
     _STAGE_LETTERS = "ABCD"
     state = {
         "stage":       0,
@@ -178,15 +189,14 @@ def _tt_install_curriculum(runner) -> None:
         "stage_iter":  0,
         "old_stage":   None,
         "trans_iter":  0,
-        # Early stopping
         "best_reward": float("-inf"),
         "no_improve":  0,
     }
 
-    log_dir = getattr(runner, "log_dir", None)
+    log_dir = getattr(runner.logger, "log_dir", None)
 
-    def _wrapped_log(locs, *args, **kwargs):
-        original_log(locs, *args, **kwargs)
+    def _wrapped_log(*args, **kwargs):
+        original_log(*args, **kwargs)
 
         state["stage_iter"] += 1
         s      = state["stage"]
@@ -202,15 +212,13 @@ def _tt_install_curriculum(runner) -> None:
             if state["trans_iter"] >= _TT_TRANSITION:
                 state["old_stage"] = None
 
-        # ── extract per-term tracking rewards + total reward ────────────────
-        ep_infos = locs.get("ep_infos", [])
-        mean_reward = locs.get("mean_reward", None)
+        # ── extract per-term tracking rewards from logger ────────────────────
+        ep_infos = list(runner.logger.ep_extras)
 
         tracking_keys = ["height_tracking", "roll_tracking", "pitch_tracking",
                          "height_vel_tracking", "roll_rate_tracking", "pitch_rate_tracking"]
         tracking_vals = {}
         time_out_frac = None
-        height_tracking_val = None
 
         if ep_infos:
             for key in ep_infos[0]:
@@ -224,13 +232,8 @@ def _tt_install_curriculum(runner) -> None:
                         if vals:
                             tracking_vals[tk] = sum(vals) / len(vals)
 
-        # Height tracking is the hardest — extract it specifically
         height_tracking_val = tracking_vals.get("height_tracking", None)
-
-        # Compute mean of all tracking terms for curriculum signal
-        tracking_mean = None
-        if tracking_vals:
-            tracking_mean = sum(tracking_vals.values()) / len(tracking_vals)
+        tracking_mean = sum(tracking_vals.values()) / len(tracking_vals) if tracking_vals else None
 
         # ── curriculum: advance only if ALL tracking is good, including height ─
         if not final and tracking_mean is not None:
@@ -246,7 +249,6 @@ def _tt_install_curriculum(runner) -> None:
                 state["stage"]      += 1
                 state["above_count"] = 0
                 state["stage_iter"]  = 0
-                # Reset early stop — task just got harder
                 state["best_reward"] = float("-inf")
                 state["no_improve"]  = 0
                 s     = state["stage"]
@@ -261,18 +263,16 @@ def _tt_install_curriculum(runner) -> None:
                     f"omega=[{n[6]:.1f},{n[7]:.1f}]\n"
                 )
 
-        # ── early stopping ─────────────────────────────────────────────────────
-        # RSL-RL stores episode returns in locs["rewbuffer"] (list)
-        if mean_reward is None:
-            rew_buf = locs.get("rewbuffer", [])
-            if rew_buf:
-                import statistics
-                mean_reward = statistics.mean(rew_buf)
+        # ── early stopping ────────────────────────────────────────────────────
+        mean_reward = None
+        rew_buf = runner.logger.rewbuffer
+        if len(rew_buf) > 0:
+            import statistics
+            mean_reward = statistics.mean(rew_buf)
         reward_for_es = mean_reward if mean_reward is not None else 0.0
         if reward_for_es > state["best_reward"] + _ES_MIN_DELTA:
             state["best_reward"] = reward_for_es
             state["no_improve"] = 0
-            # Save best checkpoint
             if log_dir:
                 best_path = os.path.join(log_dir, "model_best.pt")
                 runner.save(best_path)
@@ -304,7 +304,7 @@ def _tt_install_curriculum(runner) -> None:
             )
             raise EarlyStopException()
 
-    runner.log = _wrapped_log
+    runner.logger.log = _wrapped_log
     print(
         f"[TORSO-CURRICULUM] Installed.  "
         f"Stages: {len(_TT_STAGES)}  "
@@ -374,9 +374,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
     if agent_cfg.class_name == "OnPolicyRunner":
-        runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+        runner = OnPolicyRunner(env, _build_runner_cfg(agent_cfg), log_dir=log_dir, device=agent_cfg.device)
     elif agent_cfg.class_name == "DistillationRunner":
-        runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+        runner = DistillationRunner(env, _build_runner_cfg(agent_cfg), log_dir=log_dir, device=agent_cfg.device)
     else:
         raise ValueError(f"Unsupported runner class: {agent_cfg.class_name}")
 

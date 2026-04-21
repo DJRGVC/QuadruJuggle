@@ -1,11 +1,10 @@
 """RSL-RL PPO runner config for the torso-tracking task (pi2).
 
-Professor feedback: 2 hidden layers, not 3.  Lower init_noise_std and
-entropy_coef for stable torso tracking convergence.
+rsl_rl 5.0.1 API: actor/critic use RslRlMLPModelCfg with distribution_cfg.
 """
 
 from isaaclab.utils import configclass
-from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, RslRlPpoAlgorithmCfg
+from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlMLPModelCfg, RslRlPpoAlgorithmCfg
 
 
 @configclass
@@ -16,11 +15,19 @@ class TorsoTrackingPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     experiment_name = "go1_torso_tracking"
     empirical_normalization = False
 
-    policy = RslRlPpoActorCriticCfg(
-        init_noise_std=0.5,
-        actor_hidden_dims=[256, 128],       # 2 layers per professor feedback
-        critic_hidden_dims=[256, 128],
+    actor = RslRlMLPModelCfg(
+        class_name="MLPModel",
+        hidden_dims=[256, 128],
         activation="elu",
+        obs_normalization=False,
+        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(init_std=0.5),
+    )
+    critic = RslRlMLPModelCfg(
+        class_name="MLPModel",
+        hidden_dims=[256, 128],
+        activation="elu",
+        obs_normalization=False,
+        distribution_cfg=None,
     )
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,

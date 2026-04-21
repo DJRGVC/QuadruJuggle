@@ -432,6 +432,43 @@ def feet_off_ground_penalty(
     return airborne.sum(dim=-1)                                  # (N,)
 
 
+def foot_pair_spread_penalty(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg(
+        "robot", body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"]
+    ),
+    min_spread: float = 0.12,
+) -> torch.Tensor:
+    """Penalise squeezing the front or rear foot pair too close together in Y.
+
+    When both feet of a pair (FL+FR or RL+RR) converge inward the robot's
+    support polygon narrows and it tips over. Returns the sum of shortfalls
+    below ``min_spread`` for both pairs, so the penalty is 0 when both pairs
+    are wide enough.
+
+    Go1 nominal side-to-side foot spread is ~0.19 m; 0.12 m is the threshold
+    where stability degrades noticeably.
+
+    Args:
+        robot_cfg: Must resolve to body indices [FL_foot, FR_foot, RL_foot, RR_foot]
+            in that order.
+        min_spread: Minimum acceptable Y-distance between left/right foot of
+            each pair, in metres.
+
+    Returns:
+        Tensor of shape (num_envs,) — non-negative, apply with negative weight.
+    """
+    robot: Articulation = env.scene[robot_cfg.name]
+    # body_pos_w: (N, num_bodies, 3) — resolve indices from cfg
+    ids = robot_cfg.body_ids  # [FL_idx, FR_idx, RL_idx, RR_idx]
+    pos = robot.data.body_pos_w[:, ids, :]   # (N, 4, 3)
+    front_spread = torch.abs(pos[:, 0, 1] - pos[:, 1, 1])  # |FL_y - FR_y|
+    rear_spread  = torch.abs(pos[:, 2, 1] - pos[:, 3, 1])  # |RL_y - RR_y|
+    penalty = torch.clamp(min_spread - front_spread, min=0.0) \
+            + torch.clamp(min_spread - rear_spread,  min=0.0)
+    return penalty
+
+
 def trunk_contact_penalty(
     env: ManagerBasedRLEnv,
     contact_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
