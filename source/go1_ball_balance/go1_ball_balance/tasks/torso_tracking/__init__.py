@@ -1,4 +1,9 @@
-"""Torso-tracking task — Go1 tracks 6D torso pose/velocity commands (pi2)."""
+"""Torso-tracking task — Go1 tracks 9D torso pose/velocity commands (pi2).
+
+9D command: [h, h_dot, roll, pitch, omega_roll, omega_pitch, vx, vy, omega_yaw]
+The first 6 dims come from pi1 (juggling). The last 3 dims are body-frame
+locomotion (user-driven at play time) and introduced by curriculum in training.
+"""
 
 import gymnasium as gym
 

@@ -1,10 +1,18 @@
 """Custom ActionTerm that wraps a frozen pi2 (torso-tracking) policy.
 
-pi1 outputs 6D torso commands → this term constructs pi2's 39D observation
-vector, runs the frozen pi2 actor MLP, and applies the resulting 12D joint
-position targets to the robot.
+Architecture:
+  - pi1 (or mirror law) outputs a 6D juggling command:
+        [h, h_dot, roll, pitch, omega_roll, omega_pitch]
+  - The user (or a scripted controller) supplies a 3D locomotion command:
+        [vx, vy, omega_yaw]  (body frame, read from env._user_cmd_vel)
+  - This term concatenates them → 9D → runs frozen pi2 → 12D joint targets.
 
-Usage in an env config:
+The 6D input is the ActionTerm interface used by the RL manager (so pi1
+still trains / runs with 6D output). The user 3D is an external override
+buffered on the env; during pi2 training the torso-tracking task samples
+a full 9D command directly (no TorsoCommandAction used there).
+
+Usage in a hierarchical env config:
     actions = TorsoCommandActionCfg(
         asset_name="robot",
         pi2_checkpoint="/path/to/model_best.pt",
@@ -24,13 +32,13 @@ from isaaclab.assets import Articulation
 from isaaclab.managers import ActionTerm, ActionTermCfg
 from isaaclab.utils import configclass
 
-from .mdp.observations import _NORM, _OFFSET
+from .mdp.observations import _NORM, _OFFSET, CMD_DIM
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
 
-# Command dimension ranges for scaling [-1, 1] → physical units
+# Command dimension ranges for scaling [-1, 1] → physical units (9D).
 _CMD_SCALES = torch.tensor([
     0.125,   # h: half-range (centre 0.375)
     1.0,     # h_dot
@@ -38,6 +46,9 @@ _CMD_SCALES = torch.tensor([
     0.4,     # pitch
     3.0,     # omega_roll
     3.0,     # omega_pitch
+    0.5,     # vx
+    0.5,     # vy
+    1.5,     # omega_yaw
 ])
 
 _CMD_OFFSETS = torch.tensor([
@@ -47,15 +58,37 @@ _CMD_OFFSETS = torch.tensor([
     0.0,
     0.0,
     0.0,
+    0.0,     # vx symmetric
+    0.0,     # vy symmetric
+    0.0,     # omega_yaw symmetric
 ])
+
+# pi1 drives only the first 6 dims (juggling channel).
+# The remaining 3 dims (vx, vy, omega_yaw) are user-driven at play time.
+_PI1_ACTION_DIM = 6
+_USER_CMD_DIM = 3
+
+
+def ensure_user_cmd_buffer(env) -> torch.Tensor:
+    """Ensure env._user_cmd_vel exists (3D: vx, vy, omega_yaw, normalized [-1,1]).
+
+    Called lazily by TorsoCommandAction on first process_actions. External
+    controllers (keyboard, CLI args, policies) can write into this tensor
+    directly.
+    """
+    if not hasattr(env, "_user_cmd_vel"):
+        env._user_cmd_vel = torch.zeros(env.num_envs, _USER_CMD_DIM, device=env.device)
+    return env._user_cmd_vel
 
 
 class TorsoCommandAction(ActionTerm):
-    """Action term that takes 6D torso commands from pi1, runs frozen pi2, and
-    applies 12D joint position targets.
+    """Action term that takes 6D juggling commands from pi1 and 3D user
+    locomotion commands, concatenates to 9D, runs frozen pi2, and applies
+    12D joint position targets.
 
-    The 6D input actions (from pi1) are in [-1, 1] and are scaled to physical
-    units before being fed as part of pi2's 39D observation vector.
+    The 6D raw actions (from pi1) and the 3D user commands are each in
+    [-1, 1] and are scaled to physical units before being fed as part of
+    pi2's 42D observation vector (9 command + 33 proprio).
     """
 
     cfg: "TorsoCommandActionCfg"
@@ -74,18 +107,21 @@ class TorsoCommandAction(ActionTerm):
         self._joint_ids, _ = self._robot.find_joints(".*")
         self._num_joints = len(self._joint_ids)
 
-        # Action buffers
-        self._raw_actions = torch.zeros(self._num_envs, 6, device=self._device)
+        # Action buffers — RL-facing is 6D (pi1 output dim).
+        self._raw_actions = torch.zeros(self._num_envs, _PI1_ACTION_DIM, device=self._device)
         self._joint_targets = torch.zeros(self._num_envs, self._num_joints, device=self._device)
 
         # Default joint positions (for offset)
         self._default_joint_pos = self._robot.data.default_joint_pos[:, self._joint_ids].clone()
 
-        # Scaling tensors
+        # Scaling tensors (9D)
         self._cmd_scales = _CMD_SCALES.to(self._device)
         self._cmd_offsets = _CMD_OFFSETS.to(self._device)
         self._obs_norm = _NORM.to(self._device)
         self._obs_offset = _OFFSET.to(self._device)
+
+        # Ensure user command buffer exists (initialised to zero motion).
+        ensure_user_cmd_buffer(env)
 
     def _load_pi2(self, checkpoint_path: str) -> None:
         """Load pi2 actor weights from checkpoint and freeze."""
@@ -116,7 +152,6 @@ class TorsoCommandAction(ActionTerm):
 
         # Load weights
         actor_state = {}
-        layer_idx = 0
         for key in actor_keys:
             # Map 'actor.X.weight' → sequential module index
             parts = key.split(".")
@@ -147,13 +182,17 @@ class TorsoCommandAction(ActionTerm):
                 "count": count,
             }
 
+        # Record pi2 input dim so we can tell 6D vs 9D checkpoints apart.
+        self._pi2_input_dim = layers[0][0] if layers else None
+
         print(f"[TorsoCommandAction] Loaded pi2 from {checkpoint_path}")
         print(f"  Actor architecture: {[f'{in_d}→{out_d}' for in_d, out_d in layers]}")
         print(f"  Normalizer: {'yes' if self._obs_normalizer else 'no'}")
 
     @property
     def action_dim(self) -> int:
-        return 6
+        # RL-facing action dim is pi1's output dim (6D juggling channel).
+        return _PI1_ACTION_DIM
 
     @property
     def raw_actions(self) -> torch.Tensor:
@@ -164,23 +203,24 @@ class TorsoCommandAction(ActionTerm):
         return self._joint_targets
 
     def process_actions(self, actions: torch.Tensor) -> None:
-        """Convert 6D commands → 12D joint targets via frozen pi2.
+        """Convert 6D juggling + 3D user commands → 12D joint targets via frozen pi2.
 
         Called once per policy step (50 Hz).
         """
         self._raw_actions[:] = actions
 
-        # Scale [-1, 1] → physical units
-        torso_cmd = actions * self._cmd_scales + self._cmd_offsets
+        # Fetch user-driven vx/vy/omega_yaw (normalised to [-1, 1]).
+        user_cmd = ensure_user_cmd_buffer(self._env)
+        # Concatenate pi1's 6D + user's 3D → 9D normalised command.
+        cmd_norm = torch.cat([actions, user_cmd], dim=-1)  # (N, 9)
 
-        # Build pi2's 39D observation vector (must match training order exactly):
-        # [torso_command_normalized(6), base_lin_vel(3), base_ang_vel(3),
-        #  projected_gravity(3), joint_pos_rel(12), joint_vel_rel(12)]
+        # Scale [-1, 1] → physical units.
+        torso_cmd = cmd_norm * self._cmd_scales + self._cmd_offsets
 
-        # Normalize torso command (same as torso_command_obs)
+        # Normalise back the way the observation pipeline does (training parity).
         torso_cmd_norm = (torso_cmd + self._obs_offset) * self._obs_norm
 
-        # Proprioception
+        # Proprioception.
         base_lin_vel = self._robot.data.root_lin_vel_b          # (N, 3)
         base_ang_vel = self._robot.data.root_ang_vel_b          # (N, 3)
         projected_gravity = self._robot.data.projected_gravity_b # (N, 3)
@@ -190,28 +230,35 @@ class TorsoCommandAction(ActionTerm):
         )
         joint_vel = self._robot.data.joint_vel[:, self._joint_ids]
 
-        # Concatenate in training order
+        # Build pi2's observation vector (must match training order exactly).
+        # 9D command + 33D proprio = 42D total.
         pi2_obs = torch.cat([
-            torso_cmd_norm,    # 6
+            torso_cmd_norm,    # 9
             base_lin_vel,      # 3
             base_ang_vel,      # 3
             projected_gravity, # 3
             joint_pos_rel,     # 12
             joint_vel,         # 12
-        ], dim=-1)  # (N, 39)
+        ], dim=-1)  # (N, 42)
 
-        # Apply normalizer if available
+        # Apply normalizer if available.
         if self._obs_normalizer is not None:
             mean = self._obs_normalizer["mean"]
             var = self._obs_normalizer["var"]
             pi2_obs = (pi2_obs - mean) / (var.sqrt() + 1e-8)
 
-        # Run frozen pi2 actor (no grad)
+        # Run frozen pi2 actor (no grad).
         with torch.no_grad():
             pi2_actions = self._pi2_actor(pi2_obs)  # (N, 12)
 
-        # Apply same scaling as JointPositionAction: target = default + scale * action
+        # Same scaling as JointPositionAction: target = default + scale * action.
         self._joint_targets[:] = self._default_joint_pos + 0.25 * pi2_actions
+
+        # Cache the full 9D command on the env so viz / diagnostics can see it
+        # (same buffer the torso-tracking training task uses).
+        if not hasattr(self._env, "_torso_cmd"):
+            self._env._torso_cmd = torch.zeros(self._num_envs, CMD_DIM, device=self._device)
+        self._env._torso_cmd[:] = torso_cmd
 
     def apply_actions(self) -> None:
         """Apply joint position targets to robot (called every physics step)."""
@@ -219,6 +266,9 @@ class TorsoCommandAction(ActionTerm):
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         self._raw_actions[env_ids] = 0.0
+        # Clear user command so a fresh episode starts stationary.
+        if hasattr(self._env, "_user_cmd_vel"):
+            self._env._user_cmd_vel[env_ids] = 0.0
 
 
 @configclass

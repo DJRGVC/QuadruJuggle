@@ -11,11 +11,15 @@ narrow (easy) to full (hard).
 Early stopping: if mean reward does not improve by min_delta=0.5 for 100
 consecutive iterations, training halts and saves the best checkpoint.
 
-  Stage  h_range        roll/pitch     h_dot          omega
-  A      [0.36, 0.42]   [-0.1, 0.1]   [-0.1, 0.1]   [-0.5, 0.5]
-  B      [0.32, 0.46]   [-0.2, 0.2]   [-0.4, 0.4]   [-1.0, 1.0]
-  C      [0.28, 0.48]   [-0.3, 0.3]   [-0.7, 0.7]   [-2.0, 2.0]
-  D      [0.25, 0.50]   [-0.4, 0.4]   [-1.0, 1.0]   [-3.0, 3.0]
+9D extension: stages B–D progressively introduce body-frame velocity (vx, vy)
+and yaw-rate commands on top of Frank's original pose+rate tracking. Stage A
+remains pose-only (vxy=0, yaw=0) so the policy first learns to stand+tilt.
+
+  Stage  h_range      rp           h_dot        omega       vxy           yaw
+  A      [0.36,0.42]  [-0.1,0.1]   [-0.1,0.1]   [-0.5,0.5]  [0,0]         [0,0]
+  B      [0.32,0.46]  [-0.2,0.2]   [-0.4,0.4]   [-1.0,1.0]  [-0.15,0.15]  [-0.3,0.3]
+  C      [0.28,0.48]  [-0.3,0.3]   [-0.7,0.7]   [-2.0,2.0]  [-0.3,0.3]    [-0.8,0.8]
+  D      [0.25,0.50]  [-0.4,0.4]   [-1.0,1.0]   [-3.0,3.0]  [-0.5,0.5]    [-1.5,1.5]
 
 Usage:
     uv run --active python scripts/rsl_rl/train_torso_tracking.py \\
@@ -105,13 +109,21 @@ torch.backends.cudnn.benchmark = False
 
 # ── Torso-tracking command-range curriculum ──────────────────────────────────
 # Stages define the command ranges for each dimension.
-# Format: (h_lo, h_hi, rp_lo, rp_hi, hd_lo, hd_hi, om_lo, om_hi)
+# Format: (h_lo, h_hi, rp_lo, rp_hi, hd_lo, hd_hi, om_lo, om_hi,
+#          vxy_lo, vxy_hi, yaw_lo, yaw_hi)
+#
+# vxy_* applies to BOTH vx and vy (body-frame, symmetric).
+# yaw_* is omega_yaw (body-frame, symmetric).
+#
+# Stage A is pose-only (vxy=0, yaw=0) so the policy first learns to stand+tilt
+# with the same ranges as Frank's original 6D baseline. Stages B–D widen pose
+# and progressively introduce locomotion.
 _TT_STAGES = [
-    # h_lo   h_hi   rp_lo  rp_hi  hd_lo  hd_hi  om_lo  om_hi
-    (0.36,   0.42,  -0.1,  0.1,   -0.1,  0.1,   -0.5,  0.5),    # A — narrow
-    (0.32,   0.46,  -0.2,  0.2,   -0.4,  0.4,   -1.0,  1.0),    # B — medium
-    (0.28,   0.48,  -0.3,  0.3,   -0.7,  0.7,   -2.0,  2.0),    # C — wide
-    (0.25,   0.50,  -0.4,  0.4,   -1.0,  1.0,   -3.0,  3.0),    # D — full
+    # h_lo   h_hi   rp_lo  rp_hi  hd_lo  hd_hi  om_lo  om_hi  vxy_lo vxy_hi yaw_lo yaw_hi
+    (0.36,   0.42,  -0.1,  0.1,   -0.1,  0.1,   -0.5,  0.5,   0.0,   0.0,   0.0,   0.0),    # A — pose only
+    (0.32,   0.46,  -0.2,  0.2,   -0.4,  0.4,   -1.0,  1.0,  -0.15,  0.15, -0.3,   0.3),    # B — light locomotion
+    (0.28,   0.48,  -0.3,  0.3,   -0.7,  0.7,   -2.0,  2.0,  -0.3,   0.3,  -0.8,   0.8),    # C — medium locomotion
+    (0.25,   0.50,  -0.4,  0.4,   -1.0,  1.0,   -3.0,  3.0,  -0.5,   0.5,  -1.5,   1.5),    # D — full 9D
 ]
 _TT_THRESHOLD = 0.7    # mean tracking reward fraction to advance
 _TT_HEIGHT_THRESHOLD = 0.3  # minimum height_tracking reward to advance (prevents ignoring height)
@@ -129,7 +141,7 @@ class EarlyStopException(Exception):
 
 
 def _tt_apply_stage(rl_env, stage_idx: int) -> None:
-    """Set command ranges to a specific stage."""
+    """Set command ranges to a specific stage (12-element tuple)."""
     s = _TT_STAGES[stage_idx]
     rl_env._torso_cmd_ranges["h"] = [s[0], s[1]]
     rl_env._torso_cmd_ranges["roll"] = [s[2], s[3]]
@@ -137,24 +149,31 @@ def _tt_apply_stage(rl_env, stage_idx: int) -> None:
     rl_env._torso_cmd_ranges["h_dot"] = [s[4], s[5]]
     rl_env._torso_cmd_ranges["omega_roll"] = [s[6], s[7]]
     rl_env._torso_cmd_ranges["omega_pitch"] = [s[6], s[7]]
+    rl_env._torso_cmd_ranges["vx"] = [s[8], s[9]]
+    rl_env._torso_cmd_ranges["vy"] = [s[8], s[9]]
+    rl_env._torso_cmd_ranges["omega_yaw"] = [s[10], s[11]]
     print(
         f"\n[TORSO-CURRICULUM] Stage {stage_idx}/{len(_TT_STAGES) - 1}  "
         f"h=[{s[0]:.2f},{s[1]:.2f}]  roll/pitch=[{s[2]:.1f},{s[3]:.1f}]  "
-        f"h_dot=[{s[4]:.1f},{s[5]:.1f}]  omega=[{s[6]:.1f},{s[7]:.1f}]\n"
+        f"h_dot=[{s[4]:.1f},{s[5]:.1f}]  omega=[{s[6]:.1f},{s[7]:.1f}]  "
+        f"vxy=[{s[8]:.2f},{s[9]:.2f}]  yaw=[{s[10]:.1f},{s[11]:.1f}]\n"
     )
 
 
 def _tt_blend_stages(rl_env, old_idx: int, new_idx: int, alpha: float) -> None:
-    """Linearly interpolate command ranges between two stages."""
+    """Linearly interpolate command ranges between two stages (12 dims)."""
     o = _TT_STAGES[old_idx]
     n = _TT_STAGES[new_idx]
-    blended = tuple(o[i] + alpha * (n[i] - o[i]) for i in range(8))
+    blended = tuple(o[i] + alpha * (n[i] - o[i]) for i in range(12))
     rl_env._torso_cmd_ranges["h"] = [blended[0], blended[1]]
     rl_env._torso_cmd_ranges["roll"] = [blended[2], blended[3]]
     rl_env._torso_cmd_ranges["pitch"] = [blended[2], blended[3]]
     rl_env._torso_cmd_ranges["h_dot"] = [blended[4], blended[5]]
     rl_env._torso_cmd_ranges["omega_roll"] = [blended[6], blended[7]]
     rl_env._torso_cmd_ranges["omega_pitch"] = [blended[6], blended[7]]
+    rl_env._torso_cmd_ranges["vx"] = [blended[8], blended[9]]
+    rl_env._torso_cmd_ranges["vy"] = [blended[8], blended[9]]
+    rl_env._torso_cmd_ranges["omega_yaw"] = [blended[10], blended[11]]
 
 
 def _tt_install_curriculum(runner) -> None:
@@ -206,6 +225,11 @@ def _tt_install_curriculum(runner) -> None:
         ep_infos = locs.get("ep_infos", [])
         mean_reward = locs.get("mean_reward", None)
 
+        # Core pose-tracking terms for the advancement signal. Locomotion
+        # tracking (vx/vy/yaw) is kept out of the signal because its targets
+        # are zero in Stage A — including those would trivially inflate
+        # tracking_mean and cause premature advancement. Locomotion tracking
+        # is rewarded via the env rewards, just not gated on here.
         tracking_keys = ["height_tracking", "roll_tracking", "pitch_tracking",
                          "height_vel_tracking", "roll_rate_tracking", "pitch_rate_tracking"]
         tracking_vals = {}
@@ -258,7 +282,9 @@ def _tt_install_curriculum(runner) -> None:
                     f"h=[{n[0]:.2f},{n[1]:.2f}]  "
                     f"roll/pitch=[{n[2]:.1f},{n[3]:.1f}]  "
                     f"h_dot=[{n[4]:.1f},{n[5]:.1f}]  "
-                    f"omega=[{n[6]:.1f},{n[7]:.1f}]\n"
+                    f"omega=[{n[6]:.1f},{n[7]:.1f}]  "
+                    f"vxy=[{n[8]:.2f},{n[9]:.2f}]  "
+                    f"yaw=[{n[10]:.1f},{n[11]:.1f}]\n"
                 )
 
         # ── early stopping ─────────────────────────────────────────────────────

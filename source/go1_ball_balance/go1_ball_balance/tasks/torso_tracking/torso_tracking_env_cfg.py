@@ -1,10 +1,10 @@
 """Environment configuration for Go1 torso-tracking task (pi2).
 
-Goal: The Go1 must track randomised 6D torso pose/velocity commands
-(height, height velocity, roll, pitch, roll rate, pitch rate) using
-its 12 joint actuators.  This is the low-level policy in the
-hierarchical architecture: pi1 (ball planner) outputs 6D commands,
-pi2 (this task) converts them to joint targets.
+Goal: The Go1 must track randomised 9D torso pose/velocity commands
+(height, height velocity, roll, pitch, roll rate, pitch rate,
+vx, vy, yaw rate) using its 12 joint actuators.  This is the low-level
+policy in the hierarchical architecture: pi1 (ball planner) outputs the
+first 6 dims (juggling); the last 3 dims are user-driven at play time.
 
 Scene:
   - Unitree Go1 on flat ground
@@ -14,8 +14,8 @@ Scene:
   - Foot contact sensors for anti-exploit penalty
   - Target marker (translucent disc) showing commanded height/tilt
 
-Observations (39D):
-  - torso_command (normalized)  (6)  — target pose/velocity
+Observations (42D):
+  - torso_command (normalized)  (9)  — target pose/velocity
   - base_lin_vel               (3)
   - base_ang_vel               (3)
   - projected_gravity          (3)
@@ -28,11 +28,16 @@ Actions (12D):
 Rewards:
   - alive              +1.0   per-step survival
   - height_tracking    +5.0   Gaussian on trunk z vs h_target
-  - height_vel_tracking +2.0  Gaussian on z_dot vs h_dot_target
+  - height_vel_tracking +3.0  Gaussian on z_dot vs h_dot_target
   - roll_tracking      +3.0   Gaussian on roll vs roll_target
-  - pitch_tracking     +3.0   Gaussian on pitch vs pitch_target
-  - roll_rate_tracking +1.5   Gaussian on omega_roll vs target
-  - pitch_rate_tracking +1.5  Gaussian on omega_pitch vs target
+  - pitch_tracking     +4.0   Gaussian on pitch vs pitch_target
+  - roll_rate_tracking +2.5   Gaussian on omega_roll vs target
+  - pitch_rate_tracking +2.5  Gaussian on omega_pitch vs target
+  - vx_tracking        +2.0   Gaussian on body vx vs target (9D ext)
+  - vy_tracking        +2.0   Gaussian on body vy vs target (9D ext)
+  - yaw_rate_tracking  +1.5   Gaussian on body yaw rate vs target (9D ext)
+  - vxy_error          -1.5   Linear penalty fills Gaussian flat tail
+  - yaw_rate_error     -1.0   Linear penalty for yaw tracking tail
   - base_height        -5.0   penalise trunk below 0.22m
   - base_height_max    -5.0   penalise trunk above 0.53m
   - foot_contact       -0.5   per foot off ground
@@ -44,7 +49,7 @@ Terminations:
   - trunk_collapsed: trunk z < 0.15m
 
 Curriculum (managed by train_torso_tracking.py):
-  3 stages A→C: narrow → full command ranges.
+  4 stages A→D: pose only → full 9D (pose + vxy + yaw rate).
 """
 
 import os
@@ -337,6 +342,33 @@ class RewardsCfg:
         func=mdp.pitch_rate_tracking_reward,
         weight=2.5,
         params={"std": 0.8, "robot_cfg": SceneEntityCfg("robot")},
+    )
+
+    # -- 9D extension: locomotion tracking (vx, vy, yaw rate) --
+    vx_tracking = RewTerm(
+        func=mdp.vx_tracking_reward,
+        weight=2.0,
+        params={"std": 0.30, "robot_cfg": SceneEntityCfg("robot")},
+    )
+    vy_tracking = RewTerm(
+        func=mdp.vy_tracking_reward,
+        weight=2.0,
+        params={"std": 0.30, "robot_cfg": SceneEntityCfg("robot")},
+    )
+    yaw_rate_tracking = RewTerm(
+        func=mdp.yaw_rate_tracking_reward,
+        weight=1.5,
+        params={"std": 0.60, "robot_cfg": SceneEntityCfg("robot")},
+    )
+    vxy_error = RewTerm(
+        func=mdp.vxy_error_l2,
+        weight=-1.5,
+        params={"min_cmd_magnitude": 0.02, "robot_cfg": SceneEntityCfg("robot")},
+    )
+    yaw_rate_error = RewTerm(
+        func=mdp.yaw_rate_error_l2,
+        weight=-1.0,
+        params={"min_cmd_magnitude": 0.05, "robot_cfg": SceneEntityCfg("robot")},
     )
 
     # -- Penalties --
