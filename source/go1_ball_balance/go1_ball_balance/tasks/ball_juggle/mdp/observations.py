@@ -16,15 +16,23 @@ def target_apex_height_obs(
 ) -> torch.Tensor:
     """Returns the current target apex height, normalised to [0, 1].
 
-    If per-env targets exist (``env._target_apex_heights``), returns per-env
-    normalised values.  Otherwise reads the scalar ``target_height`` parameter
-    from the reward term (backwards compatible with fixed-target curriculum).
+    Reads the live ``target_height`` parameter from the ball_apex_height reward
+    term so the policy can condition on the curriculum stage.  Without this, a
+    policy trained at Stage A (target=0.10 m) has no signal to change behaviour
+    when the curriculum advances to Stage B (target=0.20 m).
+
+    Args:
+        reward_term_name: Name of the apex-height reward term in RewardsCfg.
+        max_target_height: Value at which the observation saturates to 1.0.
+            Should match the highest curriculum stage target height.
 
     Returns:
         Tensor of shape (num_envs, 1) — normalised target height.
     """
-    if hasattr(env, "_target_apex_heights"):
-        return (env._target_apex_heights / max(max_target_height, 1e-6)).unsqueeze(-1)
+    # Per-env target (set by randomize_apex_height event) takes priority
+    if hasattr(env, "_apex_target_h"):
+        norm = env._apex_target_h / max(max_target_height, 1e-6)   # (N,)
+        return norm.unsqueeze(1)                                     # (N, 1)
 
     target_h = 0.10  # default (Stage A)
     if hasattr(env, "reward_manager"):

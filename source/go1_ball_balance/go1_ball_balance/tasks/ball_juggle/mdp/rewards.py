@@ -23,6 +23,7 @@ def ball_apex_height_reward(
     paddle_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.070),
     min_height: float = 0.34,
     nominal_height: float = 0.40,
+    paddle_radius: float = 0.153,
 ) -> torch.Tensor:
     """Gaussian reward for launching the ball to a target apex height above the paddle.
 
@@ -30,15 +31,16 @@ def ball_apex_height_reward(
     above the paddle surface (0 when resting on the paddle).  Peak reward of 1.0
     when the ball is exactly at target_height; decays symmetrically above and below.
 
-    Supports per-env targets: if ``env._target_apex_heights`` exists (set by the
-    ``randomize_target_apex`` reset event), those per-env values are used instead
-    of the scalar ``target_height`` / ``std`` params.
+    This fires every policy step — when the ball is ascending through target_height
+    AND when descending through it — so repeated bouncing earns reward continuously.
 
     Height-gated so a collapsed robot earns no ball reward.
 
     Args:
-        target_height: Fallback scalar target (used when per-env targets are not set).
-        std: Fallback scalar sigma.
+        target_height: Target ball height above paddle surface (metres).
+            Curriculum stages: 0.10 → 0.20 → 0.30 → 0.45 → 0.60 m.
+        std: Gaussian half-width (metres).  Tighter = more precise apex required.
+            Curriculum tightens in lock-step with target_height.
         ball_radius: Physical radius of the ball (metres).
         ball_cfg: Scene entity config for the ball.
         robot_cfg: Scene entity config for the robot.
@@ -63,16 +65,16 @@ def ball_apex_height_reward(
     paddle_z = paddle_pos_w[:, 2]
     h = ball_z - paddle_z - ball_radius   # (N,)
 
-    # Per-env targets override scalar params when available
-    if hasattr(env, "_target_apex_heights"):
-        tgt = env._target_apex_heights   # (N,)
-        sig = env._target_apex_sigmas    # (N,)
+    # Per-env target height (set by randomize_apex_height event) or fixed param
+    if hasattr(env, "_apex_target_h"):
+        t_h = env._apex_target_h  # (N,)
+        t_std = env._apex_target_std if hasattr(env, "_apex_target_std") else torch.full_like(t_h, std)
     else:
-        tgt = target_height
-        sig = std
+        t_h = target_height
+        t_std = std
 
     # Gaussian kernel centred at target_height
-    reward = torch.exp(-(h - tgt).pow(2) / (2.0 * sig ** 2))
+    reward = torch.exp(-(h - t_h).pow(2) / (2.0 * t_std ** 2))
 
     # Height gate: suppress reward when robot is collapsed
     trunk_z = trunk_pos_w[:, 2]
@@ -80,4 +82,172 @@ def ball_apex_height_reward(
         (trunk_z - min_height) / (nominal_height - min_height), 0.0, 1.0
     )
 
+    # Paddle XY gate: zero reward if ball is outside the paddle disc area.
+    # Prevents the robot from cheating by juggling with its body instead of paddle.
+    ball_xy = ball.data.root_pos_w[:, :2]
+    paddle_xy = paddle_pos_w[:, :2]
+    xy_dist = torch.norm(ball_xy - paddle_xy, dim=-1)           # (N,)
+    paddle_gate = (xy_dist <= paddle_radius).float()            # 1 inside, 0 outside
+
+    return height_gate * paddle_gate * reward
+
+
+def ball_bouncing_reward(
+    env: "ManagerBasedRLEnv",
+    target_vz: float = 1.5,
+    std: float = 0.5,
+    ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    paddle_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.070),
+    min_height: float = 0.34,
+    nominal_height: float = 0.40,
+) -> torch.Tensor:
+    """Reward for high ball vertical speed — penalises cradling (ball_vz ≈ 0).
+
+    Uses a half-Gaussian reward: peak 1.0 when |ball_vz| >= target_vz,
+    decaying when the ball is slow (resting on paddle).
+
+    Height-gated like ball_apex_height_reward.
+
+    Args:
+        target_vz: Target |ball_vz| in m/s. Default 1.5 m/s ≈ 0.11m apex.
+        std: Gaussian width in m/s. Wider = more forgiving of low speed.
+        ball_cfg: Scene entity config for the ball.
+        robot_cfg: Scene entity config for the robot.
+        paddle_offset_b: Paddle-centre offset from trunk origin (body frame).
+        min_height: Trunk Z below which gate is 0 (metres).
+        nominal_height: Trunk Z at which gate reaches 1 (metres).
+
+    Returns:
+        Tensor of shape (num_envs,).
+    """
+    ball: RigidObject = env.scene[ball_cfg.name]
+    robot: Articulation = env.scene[robot_cfg.name]
+
+    ball_vz_abs = ball.data.root_lin_vel_w[:, 2].abs()  # (N,)
+
+    # Half-Gaussian: full reward above target_vz, decays below
+    speed_err = (ball_vz_abs - target_vz).clamp(max=0.0)  # 0 when fast, negative when slow
+    reward = torch.exp(-speed_err.pow(2) / (2.0 * std ** 2))
+
+    # Height gate: suppress reward when robot is collapsed
+    trunk_z = robot.data.root_pos_w[:, 2]
+    height_gate = torch.clamp(
+        (trunk_z - min_height) / (nominal_height - min_height), 0.0, 1.0
+    )
+
     return height_gate * reward
+
+
+def ball_apex_overshoot_penalty(
+    env: "ManagerBasedRLEnv",
+    window: float = 0.05,
+    ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    paddle_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.070),
+    min_height: float = 0.34,
+    nominal_height: float = 0.40,
+) -> torch.Tensor:
+    """Penalty when ball height exceeds target + window.
+
+    Returns a linear penalty proportional to how much the ball exceeds the
+    target apex window. Zero when ball is at or below target + window.
+    Fires every step so it discourages energy building beyond the target.
+
+    Args:
+        window: Allowed overshoot above target [m]. Penalty starts at target + window.
+        ball_cfg: Scene entity config for the ball.
+        robot_cfg: Scene entity config for the robot.
+        paddle_offset_b: Paddle-centre offset from trunk origin (body frame).
+        min_height: Trunk Z below which gate is 0 (metres).
+        nominal_height: Trunk Z at which gate reaches 1 (metres).
+
+    Returns:
+        Tensor of shape (num_envs,), values >= 0 (used with negative weight).
+    """
+    ball: RigidObject = env.scene[ball_cfg.name]
+    robot: Articulation = env.scene[robot_cfg.name]
+
+    trunk_pos_w = robot.data.root_pos_w
+    trunk_quat_w = robot.data.root_quat_w
+    offset_b = torch.tensor(paddle_offset_b, device=env.device).unsqueeze(0).expand(env.num_envs, -1)
+    paddle_pos_w = trunk_pos_w + math_utils.quat_apply(trunk_quat_w, offset_b)
+
+    ball_z = ball.data.root_pos_w[:, 2]
+    paddle_z = paddle_pos_w[:, 2]
+    h = ball_z - paddle_z   # height above paddle
+
+    # Per-env target
+    if hasattr(env, "_apex_target_h"):
+        target = env._apex_target_h
+    else:
+        target = torch.zeros(env.num_envs, device=env.device)
+
+    overshoot = (h - (target + window)).clamp(min=0.0)  # 0 below ceiling, >0 above
+
+    trunk_z = trunk_pos_w[:, 2]
+    height_gate = torch.clamp(
+        (trunk_z - min_height) / (nominal_height - min_height), 0.0, 1.0
+    )
+
+    return height_gate * overshoot
+
+
+def ball_apex_in_window(
+    env: "ManagerBasedRLEnv",
+    window: float = 0.05,
+    ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    paddle_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.070),
+    min_height: float = 0.34,
+    nominal_height: float = 0.40,
+) -> torch.Tensor:
+    """Termination condition: ball apex has entered the target window.
+
+    Returns True for envs where the ball just peaked (vz crossed 0 downward)
+    AND that peak height was within [target - window, target + window].
+    Used as a success termination so pi1 learns to stop once it nails the target.
+
+    Args:
+        window: Half-width of the success window [m].
+        ball_cfg: Scene entity config for the ball.
+        robot_cfg: Scene entity config for the robot.
+        paddle_offset_b: Paddle-centre offset from trunk origin (body frame).
+        min_height: Trunk Z below which condition is suppressed.
+        nominal_height: Trunk Z at which gate reaches 1.
+
+    Returns:
+        Bool tensor of shape (num_envs,).
+    """
+    ball: RigidObject = env.scene[ball_cfg.name]
+    robot: Articulation = env.scene[robot_cfg.name]
+
+    trunk_pos_w = robot.data.root_pos_w
+    trunk_quat_w = robot.data.root_quat_w
+    offset_b = torch.tensor(paddle_offset_b, device=env.device).unsqueeze(0).expand(env.num_envs, -1)
+    paddle_pos_w = trunk_pos_w + math_utils.quat_apply(trunk_quat_w, offset_b)
+
+    ball_z = ball.data.root_pos_w[:, 2]
+    ball_vz = ball.data.root_lin_vel_w[:, 2]
+    paddle_z = paddle_pos_w[:, 2]
+    h = ball_z - paddle_z
+
+    # Detect apex: ball currently descending (vz <= 0) and was ascending last step
+    if not hasattr(env, "_launcher_prev_vz"):
+        env._launcher_prev_vz = torch.zeros(env.num_envs, device=env.device)
+    just_peaked = (env._launcher_prev_vz > 0) & (ball_vz <= 0)
+    env._launcher_prev_vz[:] = ball_vz
+
+    # Per-env target
+    if hasattr(env, "_apex_target_h"):
+        target = env._apex_target_h
+    else:
+        target = torch.full((env.num_envs,), 0.30, device=env.device)
+
+    in_window = (h >= target - window) & (h <= target + window)
+
+    # Only trigger when robot is standing
+    trunk_z = trunk_pos_w[:, 2]
+    robot_ok = trunk_z >= min_height
+
+    return just_peaked & in_window & robot_ok

@@ -1,6 +1,6 @@
 """Custom ActionTerm that wraps a frozen pi2 (torso-tracking) policy.
 
-pi1 outputs 8D torso commands → this term constructs pi2's 41D observation
+pi1 outputs 6D torso commands → this term constructs pi2's 39D observation
 vector, runs the frozen pi2 actor MLP, and applies the resulting 12D joint
 position targets to the robot.
 
@@ -32,34 +32,30 @@ if TYPE_CHECKING:
 
 # Command dimension ranges for scaling [-1, 1] → physical units
 _CMD_SCALES = torch.tensor([
-    0.15,    # h: half-range (centre 0.35)
-    1.5,     # h_dot
-    0.5,     # roll
-    0.5,     # pitch
-    4.0,     # omega_roll
-    4.0,     # omega_pitch
-    0.5,     # vx: half-range 0.5
-    0.5,     # vy: half-range 0.5
+    0.125,   # h: half-range (centre 0.375)
+    1.0,     # h_dot
+    0.4,     # roll
+    0.4,     # pitch
+    3.0,     # omega_roll
+    3.0,     # omega_pitch
 ])
 
 _CMD_OFFSETS = torch.tensor([
-    0.35,    # h centre = (0.20+0.50)/2
+    0.375,   # h centre
     0.0,
     0.0,
     0.0,
     0.0,
     0.0,
-    0.0,     # vx symmetric
-    0.0,     # vy symmetric
 ])
 
 
 class TorsoCommandAction(ActionTerm):
-    """Action term that takes 8D torso commands from pi1, runs frozen pi2, and
+    """Action term that takes 6D torso commands from pi1, runs frozen pi2, and
     applies 12D joint position targets.
 
-    The 8D input actions (from pi1) are in [-1, 1] and are scaled to physical
-    units before being fed as part of pi2's 41D observation vector.
+    The 6D input actions (from pi1) are in [-1, 1] and are scaled to physical
+    units before being fed as part of pi2's 39D observation vector.
     """
 
     cfg: "TorsoCommandActionCfg"
@@ -79,22 +75,11 @@ class TorsoCommandAction(ActionTerm):
         self._num_joints = len(self._joint_ids)
 
         # Action buffers
-        self._raw_actions = torch.zeros(self._num_envs, 8, device=self._device)
+        self._raw_actions = torch.zeros(self._num_envs, 6, device=self._device)
         self._joint_targets = torch.zeros(self._num_envs, self._num_joints, device=self._device)
 
         # Default joint positions (for offset)
         self._default_joint_pos = self._robot.data.default_joint_pos[:, self._joint_ids].clone()
-
-        # Paddle reference for rigid attachment (if paddle exists in scene)
-        self._paddle = None
-        self._paddle_offset_b = None
-        try:
-            self._paddle = env.scene["paddle"]
-            self._paddle_offset_b = torch.tensor(
-                [0.0, 0.0, 0.070], device=self._device, dtype=torch.float32,
-            )
-        except KeyError:
-            pass  # no paddle in scene (e.g., torso-tracking task)
 
         # Scaling tensors
         self._cmd_scales = _CMD_SCALES.to(self._device)
@@ -168,7 +153,7 @@ class TorsoCommandAction(ActionTerm):
 
     @property
     def action_dim(self) -> int:
-        return 8
+        return 6
 
     @property
     def raw_actions(self) -> torch.Tensor:
@@ -179,7 +164,7 @@ class TorsoCommandAction(ActionTerm):
         return self._joint_targets
 
     def process_actions(self, actions: torch.Tensor) -> None:
-        """Convert 8D commands → 12D joint targets via frozen pi2.
+        """Convert 6D commands → 12D joint targets via frozen pi2.
 
         Called once per policy step (50 Hz).
         """
@@ -188,8 +173,8 @@ class TorsoCommandAction(ActionTerm):
         # Scale [-1, 1] → physical units
         torso_cmd = actions * self._cmd_scales + self._cmd_offsets
 
-        # Build pi2's 41D observation vector (must match training order exactly):
-        # [torso_command_normalized(8), base_lin_vel(3), base_ang_vel(3),
+        # Build pi2's 39D observation vector (must match training order exactly):
+        # [torso_command_normalized(6), base_lin_vel(3), base_ang_vel(3),
         #  projected_gravity(3), joint_pos_rel(12), joint_vel_rel(12)]
 
         # Normalize torso command (same as torso_command_obs)
@@ -207,13 +192,13 @@ class TorsoCommandAction(ActionTerm):
 
         # Concatenate in training order
         pi2_obs = torch.cat([
-            torso_cmd_norm,    # 8
+            torso_cmd_norm,    # 6
             base_lin_vel,      # 3
             base_ang_vel,      # 3
             projected_gravity, # 3
             joint_pos_rel,     # 12
             joint_vel,         # 12
-        ], dim=-1)  # (N, 41)
+        ], dim=-1)  # (N, 39)
 
         # Apply normalizer if available
         if self._obs_normalizer is not None:
@@ -229,23 +214,8 @@ class TorsoCommandAction(ActionTerm):
         self._joint_targets[:] = self._default_joint_pos + 0.25 * pi2_actions
 
     def apply_actions(self) -> None:
-        """Apply joint position targets to robot (called every physics step).
-
-        Also updates the kinematic paddle pose to ensure rigid attachment
-        with zero visual lag (belt-and-suspenders with the interval event).
-        """
+        """Apply joint position targets to robot (called every physics step)."""
         self._robot.set_joint_position_target(self._joint_targets, joint_ids=self._joint_ids)
-
-        if self._paddle is not None:
-            trunk_pos_w = self._robot.data.root_pos_w
-            trunk_quat_w = self._robot.data.root_quat_w
-            off_w = math_utils.quat_apply(
-                trunk_quat_w,
-                self._paddle_offset_b.unsqueeze(0).expand(self._num_envs, -1),
-            )
-            paddle_pos_w = trunk_pos_w + off_w
-            pose = torch.cat([paddle_pos_w, trunk_quat_w], dim=-1)
-            self._paddle.write_root_pose_to_sim(pose)
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         self._raw_actions[env_ids] = 0.0
