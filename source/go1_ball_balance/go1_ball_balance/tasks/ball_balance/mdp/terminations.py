@@ -39,6 +39,24 @@ def trunk_height_collapsed(
     return below & past_grace
 
 
+def robot_tilt(
+    env: ManagerBasedRLEnv,
+    max_tilt: float = 0.5,
+    grace_steps: int = 50,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Terminate when trunk tilt (roll/pitch) magnitude exceeds ``max_tilt``.
+
+    Uses projected gravity XY magnitude = sin(tilt_angle). Returns True when
+    past the grace period AND tilt exceeds threshold. Applied with time_out=False
+    (treated as failure termination).
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    tilt = torch.norm(asset.data.projected_gravity_b[:, :2], dim=-1)
+    past_grace = env.episode_length_buf >= grace_steps
+    return (tilt > max_tilt) & past_grace
+
+
 def ball_off_paddle(
     env: ManagerBasedRLEnv,
     radius: float = 0.15,
