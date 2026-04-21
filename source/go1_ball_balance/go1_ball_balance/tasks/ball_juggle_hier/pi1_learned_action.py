@@ -45,6 +45,8 @@ class LearnedPi1TorsoAction(TorsoCommandAction):
         Args:
             actions: (N, 6) tensor, each dim nominally in [-1, 1].
         """
+        if self.cfg.clip_actions:
+            actions = actions.clamp(-1.0, 1.0)
         super().process_actions(actions)
 
 
@@ -53,3 +55,17 @@ class LearnedPi1TorsoActionCfg(TorsoCommandActionCfg):
     """Configuration for LearnedPi1TorsoAction."""
 
     class_type: type = LearnedPi1TorsoAction
+
+    clip_actions: bool = True
+    """Clamp pi1's raw 6D output to [-1, 1] before scaling to physical torso commands.
+
+    PPO's Gaussian action head is unbounded, and Frank's launcher pi1 converged to
+    mean actions with magnitude 5-10× beyond [-1, 1] (reward optimum in sim treats
+    saturated physical commands as equivalent). At play/eval time those extreme
+    values scale to physically impossible torso targets (e.g. h=0.8m vs pi2's
+    trained [0.25, 0.50] range), which crowds out user-command tracking.
+
+    Clamping here maps every raw output to the same physical command it already
+    produced in sim (post-saturation), and keeps the user's 3D locomotion slice
+    in the distribution pi2 knows how to track. Set False to reproduce legacy
+    launcher behaviour exactly."""
