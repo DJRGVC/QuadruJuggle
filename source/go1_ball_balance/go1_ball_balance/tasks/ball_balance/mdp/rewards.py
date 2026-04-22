@@ -432,6 +432,28 @@ def feet_off_ground_penalty(
     return airborne.sum(dim=-1)                                  # (N,)
 
 
+def trunk_contact_penalty(
+    env: ManagerBasedRLEnv,
+    contact_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
+    min_force: float = 1.0,
+) -> torch.Tensor:
+    """Penalise any external contact on the trunk link.
+
+    Fires a +1 per-env whenever the trunk net contact-force magnitude exceeds
+    ``min_force`` Newtons (i.e. the body has scraped or fallen onto something).
+    Apply with a negative weight.
+
+    Requires a ContactSensorCfg in the scene named ``contact_forces`` matching
+    the trunk prim path (e.g. ``/Robot/trunk``).
+    """
+    sensor: ContactSensor = env.scene[contact_cfg.name]
+    # Use force history max — contacts are fleeting within the decimation window.
+    force_history = sensor.data.net_forces_w_history  # (N, H, num_bodies, 3)
+    force_mags = torch.norm(force_history, dim=-1)    # (N, H, num_bodies)
+    max_force = force_mags.amax(dim=(1, 2))           # (N,)
+    return (max_force > min_force).float()
+
+
 def feet_slide_penalty(
     env: ManagerBasedRLEnv,
     foot_contact_cfg: SceneEntityCfg = SceneEntityCfg("foot_contact_forces"),

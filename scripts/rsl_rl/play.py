@@ -42,6 +42,22 @@ parser.add_argument(
     metavar="N",
     help="Slow-motion multiplier: sleep N × the policy step duration per step (e.g. --slow 4 = 4× slower than real-time).",
 )
+# 9D pi2: user locomotion commands (vx, vy, omega_yaw) written into env._user_cmd_vel
+parser.add_argument(
+    "--user-cmd",
+    choices=["none", "keyboard", "fixed"],
+    default="none",
+    help="How to drive user locomotion commands (vx/vy/yaw). 'keyboard' uses Se2Keyboard "
+    "(arrow keys / Z/X for yaw); 'fixed' uses --user-vx/vy/yaw CLI values; 'none' keeps zero.",
+)
+parser.add_argument("--user-vx", type=float, default=0.0,
+                    help="Normalized [-1,1] forward velocity (0.5 m/s at ±1). --user-cmd must be 'fixed'.")
+parser.add_argument("--user-vy", type=float, default=0.0,
+                    help="Normalized [-1,1] lateral velocity. --user-cmd must be 'fixed'.")
+parser.add_argument("--user-yaw", type=float, default=0.0,
+                    help="Normalized [-1,1] yaw rate (1.5 rad/s at ±1). --user-cmd must be 'fixed'.")
+parser.add_argument("--target-apex", type=float, default=None,
+                    help="Override juggle apex target [m above paddle] — used by hier / mirror-law tasks.")
 # --record-traj and --record-steps are stripped from sys.argv BEFORE argparse/Hydra
 # ever see them.  Reason: argparse's parse_known_args() can occasionally leak the
 # VALUE of a hyphenated flag (e.g. "/tmp/traj.npz") into hydra_args.  Hydra then
@@ -51,7 +67,6 @@ parser.add_argument(
 _record_traj_path = None
 _record_steps = 600          # default: 3 s at 200 Hz physics rate; override with --record-steps N
 _pi2_checkpoint_path = None  # for hierarchical tasks: path to frozen pi2 checkpoint
-_max_vxy = None              # override: force vxy commands to ±this value (e.g. 0.5)
 _clean_argv = []
 _i = 0
 while _i < len(sys.argv):
@@ -63,9 +78,6 @@ while _i < len(sys.argv):
         _i += 2
     elif sys.argv[_i] in ("--pi2-checkpoint", "--pi2_checkpoint") and _i + 1 < len(sys.argv):
         _pi2_checkpoint_path = sys.argv[_i + 1]
-        _i += 2
-    elif sys.argv[_i] in ("--max-vxy", "--max_vxy") and _i + 1 < len(sys.argv):
-        _max_vxy = float(sys.argv[_i + 1])
         _i += 2
     else:
         _clean_argv.append(sys.argv[_i])
@@ -178,21 +190,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if hasattr(env_cfg, "_torso_smooth_enabled") and env_cfg._torso_smooth_enabled:
         env.unwrapped._torso_smooth_enabled = True
 
-    # Enable circle command pattern for torso-tracking play
-    if hasattr(env_cfg, "_torso_circle_enabled") and env_cfg._torso_circle_enabled:
-        env.unwrapped._torso_circle_enabled = True
-
-    # Override vxy command ranges if --max-vxy is set
-    if _max_vxy is not None and hasattr(env.unwrapped, "_torso_cmd_ranges"):
-        env.unwrapped._torso_cmd_ranges["vx"] = [-_max_vxy, _max_vxy]
-        env.unwrapped._torso_cmd_ranges["vy"] = [-_max_vxy, _max_vxy]
-        print(f"[INFO] Overriding vxy command range to ±{_max_vxy:.2f} m/s")
-    elif _max_vxy is not None:
-        # Buffer not created yet — it will be created on first resample;
-        # store the override so _ensure_cmd_buffer picks it up
-        env.unwrapped._max_vxy_override = _max_vxy
-        print(f"[INFO] Will override vxy command range to ±{_max_vxy:.2f} m/s (deferred)")
-
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):
         env = multi_agent_to_single_agent(env)
@@ -212,24 +209,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # wrap around environment for rsl-rl
     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
-    # ── Banner: show exactly which checkpoint is being played ──────────────
-    from datetime import datetime as _dt
-    _ckpt_mtime = os.path.getmtime(resume_path)
-    _ckpt_time_str = _dt.fromtimestamp(_ckpt_mtime).strftime("%Y-%m-%d %H:%M:%S")
-    _run_dir = os.path.basename(os.path.dirname(resume_path))
-    _ckpt_name = os.path.basename(resume_path)
-    print(
-        "\n"
-        "╔══════════════════════════════════════════════════════════════════╗\n"
-        f"║  PLAYING CHECKPOINT                                            ║\n"
-        f"║  Task:  {task_name:<56}║\n"
-        f"║  Run:   {_run_dir:<56}║\n"
-        f"║  File:  {_ckpt_name:<56}║\n"
-        f"║  Saved: {_ckpt_time_str:<56}║\n"
-        f"║  Path:  {resume_path[-56:]:<56}║\n"
-        "╚══════════════════════════════════════════════════════════════════╝"
-    )
-
+    print(f"[INFO]: Loading model checkpoint from: {resume_path}")
     # load previously trained model
     if agent_cfg.class_name == "OnPolicyRunner":
         runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
@@ -293,12 +273,82 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                   "Press Ctrl-C again to force-quit (data may be lost).")
         signal.signal(signal.SIGINT, _on_sigint)
 
+    # ── User-command injection (9D pi2 hierarchy) ───────────────────────────
+    # _user_cmd_vel is a (N, 3) tensor written by TorsoCommandAction.
+    # Keyboard and fixed modes both feed into the same buffer, overwriting any
+    # value that ball_juggle_hier randomization would otherwise drive.
+    _uw = env.unwrapped
+    _user_keyboard = None
+    _user_fixed = None
+    if args_cli.user_cmd == "keyboard":
+        try:
+            from isaaclab.devices.keyboard import Se2Keyboard, Se2KeyboardCfg
+            _user_keyboard = Se2Keyboard(Se2KeyboardCfg(
+                v_x_sensitivity=1.0,
+                v_y_sensitivity=1.0,
+                omega_z_sensitivity=1.0,
+                sim_device=_uw.device,
+            ))
+            print("[USER-CMD] keyboard mode ON")
+            print(str(_user_keyboard))
+        except Exception as e:
+            print(f"[USER-CMD] keyboard init failed: {e}; falling back to 'none'")
+    elif args_cli.user_cmd == "fixed":
+        _user_fixed = torch.tensor(
+            [args_cli.user_vx, args_cli.user_vy, args_cli.user_yaw],
+            device=_uw.device,
+        ).clamp(-1.0, 1.0)
+        print(f"[USER-CMD] fixed mode: vx={_user_fixed[0]:.2f} vy={_user_fixed[1]:.2f} yaw={_user_fixed[2]:.2f} (normalized)")
+
+    # Target-apex override (hier/mirror-law juggling tasks)
+    _target_apex_override = args_cli.target_apex
+    if _target_apex_override is not None:
+        print(f"[USER-CMD] target apex override: {_target_apex_override:.3f} m above paddle")
+
+    def _apply_user_commands():
+        """Write user commands into env buffers every step.
+
+        Two paths:
+        - hier task: `_user_cmd_vel` exists (lazy-created by TorsoCommandAction);
+          process_actions() concats it into _torso_cmd[:, 6:9] next step.
+        - torso-tracking task (pi2-only): no TorsoCommandAction; the 9D
+          `_torso_cmd` is populated by resample events. We overwrite the
+          last 3 dims directly so keyboard/fixed commands take precedence
+          over random resampling.
+        """
+        cmd = None
+        if _user_keyboard is not None:
+            cmd = _user_keyboard.advance().clamp(-1.0, 1.0)
+        elif _user_fixed is not None:
+            cmd = _user_fixed
+        if cmd is not None:
+            if hasattr(_uw, "_user_cmd_vel"):
+                _uw._user_cmd_vel[:, 0] = cmd[0]
+                _uw._user_cmd_vel[:, 1] = cmd[1]
+                _uw._user_cmd_vel[:, 2] = cmd[2]
+            elif hasattr(_uw, "_torso_cmd") and _uw._torso_cmd.shape[-1] >= 9:
+                # Torso-tracking task: write both _torso_cmd and _torso_cmd_goal so
+                # update_torso_commands_smooth() doesn't drift the user command
+                # back toward the resampled random goal.
+                _uw._torso_cmd[:, 6] = cmd[0]
+                _uw._torso_cmd[:, 7] = cmd[1]
+                _uw._torso_cmd[:, 8] = cmd[2]
+                if hasattr(_uw, "_torso_cmd_goal"):
+                    _uw._torso_cmd_goal[:, 6] = cmd[0]
+                    _uw._torso_cmd_goal[:, 7] = cmd[1]
+                    _uw._torso_cmd_goal[:, 8] = cmd[2]
+        if _target_apex_override is not None and hasattr(_uw, "_target_apex_heights"):
+            _uw._target_apex_heights[:] = _target_apex_override
+
     # reset environment
     obs = env.get_observations()
+    _apply_user_commands()
     timestep = 0
     # simulate environment
     while simulation_app.is_running() and not _stop:
         start_time = time.time()
+        # refresh user commands for this step (keyboard reads latest key state)
+        _apply_user_commands()
         # run everything in inference mode
         with torch.inference_mode():
             actions = policy(obs)
@@ -354,19 +404,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             _r, _p, _ = _math_utils.euler_xyz_from_quat(_robot.data.root_quat_w[0:1])
             _wr = _robot.data.root_ang_vel_b[0, 0].item()
             _wp = _robot.data.root_ang_vel_b[0, 1].item()
-            _vx = _robot.data.root_lin_vel_b[0, 0].item()
-            _vy = _robot.data.root_lin_vel_b[0, 1].item()
-            _vx_cmd = _cmd[6].item() if _cmd.shape[0] > 6 else 0.0
-            _vy_cmd = _cmd[7].item() if _cmd.shape[0] > 7 else 0.0
+            _vx_b = _robot.data.root_lin_vel_b[0, 0].item()
+            _vy_b = _robot.data.root_lin_vel_b[0, 1].item()
+            _wy_b = _robot.data.root_ang_vel_b[0, 2].item()
             print(
-                f"[TORSO] cmd h={_cmd[0]:.3f} act={_z:.3f} | "
-                f"hd={_cmd[1]:.2f} act={_zd:.2f} | "
-                f"roll={_cmd[2]:.2f} act={_r[0]:.2f} | "
-                f"pitch={_cmd[3]:.2f} act={_p[0]:.2f} | "
-                f"wr={_cmd[4]:.1f} act={_wr:.1f} | "
-                f"wp={_cmd[5]:.1f} act={_wp:.1f} | "
-                f"vx={_vx_cmd:.2f} act={_vx:.2f} | "
-                f"vy={_vy_cmd:.2f} act={_vy:.2f}"
+                f"[TORSO] h={_cmd[0]:.2f}→{_z:.2f}  hd={_cmd[1]:+.1f}→{_zd:+.1f}  "
+                f"r={_cmd[2]:+.2f}→{_r[0]:+.2f}  p={_cmd[3]:+.2f}→{_p[0]:+.2f}  "
+                f"wr={_cmd[4]:+.1f}→{_wr:+.1f}  wp={_cmd[5]:+.1f}→{_wp:+.1f}  "
+                f"| vx={_cmd[6]:+.2f}→{_vx_b:+.2f}  vy={_cmd[7]:+.2f}→{_vy_b:+.2f}  "
+                f"wy={_cmd[8]:+.1f}→{_wy_b:+.1f}"
             )
 
         if args_cli.video:

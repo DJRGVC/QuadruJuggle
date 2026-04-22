@@ -1,18 +1,25 @@
 # Copyright (c) 2022-2026, The Isaac Lab Project Developers.
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Train RL agent for the torso-tracking task (pi2) with 3-stage curriculum.
+"""Train RL agent for the torso-tracking task (pi2) with command-range curriculum
+and early stopping.
 
-Follows Isaac Lab's approach: learn to WALK first, then add pose tracking.
+Curriculum advances through 4 stages (A→D) when mean tracking reward ≥ 0.7
+for 10 consecutive iterations.  Each stage widens the command ranges from
+narrow (easy) to full (hard).
 
-  Stage  h_range        roll/pitch       h_dot            omega             vxy
-  A      0.38 (fixed)   0.0 (fixed)     0.0 (fixed)     0.0 (fixed)      [-0.50, 0.50]
-  B      [0.32, 0.44]   [-0.15, 0.15]   [-0.3,  0.3]   [-1.0, 1.0]      [-0.50, 0.50]
-  C      [0.20, 0.50]   [-0.50, 0.50]   [-1.5,  1.5]   [-4.0, 4.0]      [-0.50, 0.50]
+Early stopping: if mean reward does not improve by min_delta=0.5 for 100
+consecutive iterations, training halts and saves the best checkpoint.
 
-A→B: timeout ≥ 85% AND vxy_error > -0.80 (robot is actually walking)
-B→C: timeout ≥ 85% (pose tracking working)
-Early stopping: 500 iterations without reward improvement on final stage.
+9D extension: stages B–D progressively introduce body-frame velocity (vx, vy)
+and yaw-rate commands on top of Frank's original pose+rate tracking. Stage A
+remains pose-only (vxy=0, yaw=0) so the policy first learns to stand+tilt.
+
+  Stage  h_range      rp           h_dot        omega       vxy           yaw
+  A      [0.36,0.42]  [-0.1,0.1]   [-0.1,0.1]   [-0.5,0.5]  [0,0]         [0,0]
+  B      [0.32,0.46]  [-0.2,0.2]   [-0.4,0.4]   [-1.0,1.0]  [-0.15,0.15]  [-0.3,0.3]
+  C      [0.28,0.48]  [-0.3,0.3]   [-0.7,0.7]   [-2.0,2.0]  [-0.3,0.3]    [-0.8,0.8]
+  D      [0.25,0.50]  [-0.4,0.4]   [-1.0,1.0]   [-3.0,3.0]  [-0.5,0.5]    [-1.5,1.5]
 
 Usage:
     uv run --active python scripts/rsl_rl/train_torso_tracking.py \\
@@ -100,26 +107,31 @@ torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = False
 
 
-# ── Torso-tracking 3-stage curriculum ─────────────────────────────────────────
+# ── Torso-tracking command-range curriculum ──────────────────────────────────
+# Stages define the command ranges for each dimension.
+# Format: (h_lo, h_hi, rp_lo, rp_hi, hd_lo, hd_hi, om_lo, om_hi,
+#          vxy_lo, vxy_hi, yaw_lo, yaw_hi)
 #
-# Isaac Lab approach: NO curriculum on velocity.  Full vxy range from the start.
-# The robot must learn to walk first (Stage A), then mild pose (B), then full (C).
+# vxy_* applies to BOTH vx and vy (body-frame, symmetric).
+# yaw_* is omega_yaw (body-frame, symmetric).
 #
-# Format: (h_lo, h_hi, rp_lo, rp_hi, hd_lo, hd_hi, om_lo, om_hi, vxy_lo, vxy_hi)
+# Stage A is pose-only (vxy=0, yaw=0) so the policy first learns to stand+tilt
+# with the same ranges as Frank's original 6D baseline. Stages B–D widen pose
+# and progressively introduce locomotion.
 _TT_STAGES = [
-    # h_lo   h_hi   rp_lo  rp_hi  hd_lo  hd_hi  om_lo  om_hi  vxy_lo vxy_hi
-    (0.38,   0.38,   0.0,  0.0,    0.0,  0.0,    0.0,  0.0,  -0.50,  0.50),   # A — walk (full speed)
-    (0.32,   0.44,  -0.15, 0.15,  -0.3,  0.3,   -1.0,  1.0,  -0.50,  0.50),   # B — walk + mild pose
-    (0.20,   0.50,  -0.50, 0.50,  -1.5,  1.5,   -4.0,  4.0,  -0.50,  0.50),   # C — full 8D
+    # h_lo   h_hi   rp_lo  rp_hi  hd_lo  hd_hi  om_lo  om_hi  vxy_lo vxy_hi yaw_lo yaw_hi
+    (0.36,   0.42,  -0.1,  0.1,   -0.1,  0.1,   -0.5,  0.5,   0.0,   0.0,   0.0,   0.0),    # A — pose only
+    (0.32,   0.46,  -0.2,  0.2,   -0.4,  0.4,   -1.0,  1.0,  -0.15,  0.15, -0.3,   0.3),    # B — light locomotion
+    (0.28,   0.48,  -0.3,  0.3,   -0.7,  0.7,   -2.0,  2.0,  -0.3,   0.3,  -0.8,   0.8),    # C — medium locomotion
+    (0.25,   0.50,  -0.4,  0.4,   -1.0,  1.0,   -3.0,  3.0,  -0.5,   0.5,  -1.5,   1.5),    # D — full 9D
 ]
-_STAGE_LABELS = "ABC"
-_TT_TIMEOUT_THRESHOLD = 0.85   # timeout% >= 85% to advance
-_TT_VXY_ERROR_GATE = -0.80    # vxy_error must be > this to advance from A (proves walking)
-_TT_SUSTAIN = 100              # consecutive iterations at threshold before advancing
-_TT_TRANSITION = 20            # iterations to blend between stages
+_TT_THRESHOLD = 0.7    # mean tracking reward fraction to advance
+_TT_HEIGHT_THRESHOLD = 0.3  # minimum height_tracking reward to advance (prevents ignoring height)
+_TT_SUSTAIN = 10       # consecutive iterations at threshold
+_TT_TRANSITION = 5     # iterations to blend between stages
 
-# Early stopping config (only active on final stage)
-_ES_PATIENCE = 500     # iterations without improvement
+# Early stopping config
+_ES_PATIENCE = 99999   # effectively disabled
 _ES_MIN_DELTA = 0.5    # minimum total reward improvement to count
 
 
@@ -129,7 +141,7 @@ class EarlyStopException(Exception):
 
 
 def _tt_apply_stage(rl_env, stage_idx: int) -> None:
-    """Set command ranges to a specific stage."""
+    """Set command ranges to a specific stage (12-element tuple)."""
     s = _TT_STAGES[stage_idx]
     rl_env._torso_cmd_ranges["h"] = [s[0], s[1]]
     rl_env._torso_cmd_ranges["roll"] = [s[2], s[3]]
@@ -139,20 +151,20 @@ def _tt_apply_stage(rl_env, stage_idx: int) -> None:
     rl_env._torso_cmd_ranges["omega_pitch"] = [s[6], s[7]]
     rl_env._torso_cmd_ranges["vx"] = [s[8], s[9]]
     rl_env._torso_cmd_ranges["vy"] = [s[8], s[9]]
-    label = _STAGE_LABELS[stage_idx] if stage_idx < len(_STAGE_LABELS) else str(stage_idx)
+    rl_env._torso_cmd_ranges["omega_yaw"] = [s[10], s[11]]
     print(
-        f"\n[TORSO-CURRICULUM] Stage {label}  "
-        f"h=[{s[0]:.2f},{s[1]:.2f}]  roll/pitch=[{s[2]:.2f},{s[3]:.2f}]  "
+        f"\n[TORSO-CURRICULUM] Stage {stage_idx}/{len(_TT_STAGES) - 1}  "
+        f"h=[{s[0]:.2f},{s[1]:.2f}]  roll/pitch=[{s[2]:.1f},{s[3]:.1f}]  "
         f"h_dot=[{s[4]:.1f},{s[5]:.1f}]  omega=[{s[6]:.1f},{s[7]:.1f}]  "
-        f"vxy=[{s[8]:.2f},{s[9]:.2f}]\n"
+        f"vxy=[{s[8]:.2f},{s[9]:.2f}]  yaw=[{s[10]:.1f},{s[11]:.1f}]\n"
     )
 
 
 def _tt_blend_stages(rl_env, old_idx: int, new_idx: int, alpha: float) -> None:
-    """Linearly interpolate command ranges between two stages."""
+    """Linearly interpolate command ranges between two stages (12 dims)."""
     o = _TT_STAGES[old_idx]
     n = _TT_STAGES[new_idx]
-    blended = tuple(o[i] + alpha * (n[i] - o[i]) for i in range(10))
+    blended = tuple(o[i] + alpha * (n[i] - o[i]) for i in range(12))
     rl_env._torso_cmd_ranges["h"] = [blended[0], blended[1]]
     rl_env._torso_cmd_ranges["roll"] = [blended[2], blended[3]]
     rl_env._torso_cmd_ranges["pitch"] = [blended[2], blended[3]]
@@ -161,10 +173,11 @@ def _tt_blend_stages(rl_env, old_idx: int, new_idx: int, alpha: float) -> None:
     rl_env._torso_cmd_ranges["omega_pitch"] = [blended[6], blended[7]]
     rl_env._torso_cmd_ranges["vx"] = [blended[8], blended[9]]
     rl_env._torso_cmd_ranges["vy"] = [blended[8], blended[9]]
+    rl_env._torso_cmd_ranges["omega_yaw"] = [blended[10], blended[11]]
 
 
 def _tt_install_curriculum(runner) -> None:
-    """Monkey-patch runner.log() for 3-stage curriculum + early stopping."""
+    """Monkey-patch runner.log() for curriculum + early stopping."""
     try:
         rl_env = runner.env.unwrapped
     except AttributeError:
@@ -177,11 +190,10 @@ def _tt_install_curriculum(runner) -> None:
     _tt_apply_stage(rl_env, 0)
 
     original_log = runner.log
-    _FINAL_SUSTAIN = 750  # iterations at threshold on final stage before auto-stop
+    _STAGE_LETTERS = "ABCD"
     state = {
         "stage":       0,
         "above_count": 0,
-        "final_count": 0,
         "stage_iter":  0,
         "old_stage":   None,
         "trans_iter":  0,
@@ -198,7 +210,7 @@ def _tt_install_curriculum(runner) -> None:
         state["stage_iter"] += 1
         s      = state["stage"]
         s_iter = state["stage_iter"]
-        label  = _STAGE_LABELS[s] if s < len(_STAGE_LABELS) else str(s)
+        label  = _STAGE_LETTERS[s] if s < len(_STAGE_LETTERS) else str(s)
         final  = s >= len(_TT_STAGES) - 1
 
         # ── continue in-progress parameter transition ─────────────────────────
@@ -209,13 +221,20 @@ def _tt_install_curriculum(runner) -> None:
             if state["trans_iter"] >= _TT_TRANSITION:
                 state["old_stage"] = None
 
-        # ── extract metrics ───────────────────────────────────────────────────
+        # ── extract per-term tracking rewards + total reward ────────────────
         ep_infos = locs.get("ep_infos", [])
         mean_reward = locs.get("mean_reward", None)
 
-        display_keys = ["height_error", "vx_tracking", "vy_tracking", "vxy_error"]
-        display_vals = {}
+        # Core pose-tracking terms for the advancement signal. Locomotion
+        # tracking (vx/vy/yaw) is kept out of the signal because its targets
+        # are zero in Stage A — including those would trivially inflate
+        # tracking_mean and cause premature advancement. Locomotion tracking
+        # is rewarded via the env rewards, just not gated on here.
+        tracking_keys = ["height_tracking", "roll_tracking", "pitch_tracking",
+                         "height_vel_tracking", "roll_rate_tracking", "pitch_rate_tracking"]
+        tracking_vals = {}
         time_out_frac = None
+        height_tracking_val = None
 
         if ep_infos:
             for key in ep_infos[0]:
@@ -223,40 +242,29 @@ def _tt_install_curriculum(runner) -> None:
                     vals = [float(ep[key]) for ep in ep_infos if key in ep]
                     if vals:
                         time_out_frac = sum(vals) / len(vals)
-                for dk in display_keys:
-                    if dk in key.lower():
+                for tk in tracking_keys:
+                    if tk in key.lower():
                         vals = [float(ep[key]) for ep in ep_infos if key in ep]
                         if vals:
-                            display_vals[dk] = sum(vals) / len(vals)
+                            tracking_vals[tk] = sum(vals) / len(vals)
 
-        height_error_val = display_vals.get("height_error", None)
-        vx_tracking_val = display_vals.get("vx_tracking", None)
-        vy_tracking_val = display_vals.get("vy_tracking", None)
-        vxy_error_val = display_vals.get("vxy_error", None)
+        # Height tracking is the hardest — extract it specifically
+        height_tracking_val = tracking_vals.get("height_tracking", None)
 
-        # ── advancement check ─────────────────────────────────────────────────
-        # Stage A→B requires: timeout ≥ 85% AND vxy_error > -0.80
-        #   (proves the robot is actually walking, not standing still)
-        # Stage B→C requires: timeout ≥ 85% only
-        #   (mild pose tracking is working)
-        if not final and time_out_frac is not None:
-            timeout_ok = time_out_frac >= _TT_TIMEOUT_THRESHOLD
+        # Compute mean of all tracking terms for curriculum signal
+        tracking_mean = None
+        if tracking_vals:
+            tracking_mean = sum(tracking_vals.values()) / len(tracking_vals)
 
-            if s == 0:
-                # Stage A: must prove walking via velocity tracking quality
-                vxy_ok = (vxy_error_val is not None) and (vxy_error_val > _TT_VXY_ERROR_GATE)
-                advance_ok = timeout_ok and vxy_ok
-            else:
-                # Stage B+: survival is sufficient
-                advance_ok = timeout_ok
-
-            if advance_ok:
+        # ── curriculum: advance only if ALL tracking is good, including height ─
+        if not final and tracking_mean is not None:
+            height_ok = (height_tracking_val is None) or (height_tracking_val >= _TT_HEIGHT_THRESHOLD)
+            if tracking_mean >= _TT_THRESHOLD and height_ok:
                 state["above_count"] += 1
             else:
                 state["above_count"] = 0
 
             if state["above_count"] >= _TT_SUSTAIN:
-                old_label = label
                 state["old_stage"]   = s
                 state["trans_iter"]  = 0
                 state["stage"]      += 1
@@ -266,75 +274,52 @@ def _tt_install_curriculum(runner) -> None:
                 state["best_reward"] = float("-inf")
                 state["no_improve"]  = 0
                 s     = state["stage"]
-                label = _STAGE_LABELS[s] if s < len(_STAGE_LABELS) else str(s)
+                label = _STAGE_LETTERS[s] if s < len(_STAGE_LETTERS) else str(s)
                 n = _TT_STAGES[s]
                 print(
-                    f"\n[TORSO-CURRICULUM] ═══ {old_label} → {label} ═══  "
-                    f"Blending over {_TT_TRANSITION} iters.  "
+                    f"\n[TORSO-CURRICULUM] Stage {s-1}→{s} ({_STAGE_LETTERS[s-1]}→{label})  "
+                    f"blending over {_TT_TRANSITION} iters  "
                     f"h=[{n[0]:.2f},{n[1]:.2f}]  "
-                    f"roll/pitch=[{n[2]:.2f},{n[3]:.2f}]  "
+                    f"roll/pitch=[{n[2]:.1f},{n[3]:.1f}]  "
                     f"h_dot=[{n[4]:.1f},{n[5]:.1f}]  "
                     f"omega=[{n[6]:.1f},{n[7]:.1f}]  "
-                    f"vxy=[{n[8]:.2f},{n[9]:.2f}]\n"
+                    f"vxy=[{n[8]:.2f},{n[9]:.2f}]  "
+                    f"yaw=[{n[10]:.1f},{n[11]:.1f}]\n"
                 )
 
-        # ── final stage completion (auto-stop after sustained convergence) ────
-        if final and time_out_frac is not None:
-            if time_out_frac >= _TT_TIMEOUT_THRESHOLD:
-                state["final_count"] += 1
-            else:
-                state["final_count"] = 0
-            if state["final_count"] >= _FINAL_SUSTAIN:
-                print(
-                    f"\n[TORSO-CURRICULUM] Stage {label} sustained {_FINAL_SUSTAIN} iters.  "
-                    f"Training complete.\n"
-                )
-                if log_dir:
-                    runner.save(os.path.join(log_dir, "model_best.pt"))
-                raise EarlyStopException()
-
-        # ── early stopping (paused during blends) ─────────────────────────────
+        # ── early stopping ─────────────────────────────────────────────────────
+        # RSL-RL stores episode returns in locs["rewbuffer"] (list)
         if mean_reward is None:
             rew_buf = locs.get("rewbuffer", [])
             if rew_buf:
                 import statistics
                 mean_reward = statistics.mean(rew_buf)
-        if state["old_stage"] is None:  # only update ES when not blending
-            reward_for_es = mean_reward if mean_reward is not None else 0.0
-            if reward_for_es > state["best_reward"] + _ES_MIN_DELTA:
-                state["best_reward"] = reward_for_es
-                state["no_improve"] = 0
-                if log_dir:
-                    best_path = os.path.join(log_dir, "model_best.pt")
-                    runner.save(best_path)
-            else:
-                state["no_improve"] += 1
+        reward_for_es = mean_reward if mean_reward is not None else 0.0
+        if reward_for_es > state["best_reward"] + _ES_MIN_DELTA:
+            state["best_reward"] = reward_for_es
+            state["no_improve"] = 0
+            # Save best checkpoint
+            if log_dir:
+                best_path = os.path.join(log_dir, "model_best.pt")
+                runner.save(best_path)
+        else:
+            state["no_improve"] += 1
 
         # ── per-iteration status line ─────────────────────────────────────────
-        he_str   = f"{height_error_val:.3f}" if height_error_val is not None else "n/a"
-        vx_str   = f"{vx_tracking_val:.3f}" if vx_tracking_val is not None else "n/a"
-        vy_str   = f"{vy_tracking_val:.3f}" if vy_tracking_val is not None else "n/a"
-        vxye_str = f"{vxy_error_val:.3f}" if vxy_error_val is not None else "n/a"
-        to_str   = f"{time_out_frac:.0%}" if time_out_frac is not None else "n/a"
-        rew_str  = f"{mean_reward:.1f}" if mean_reward is not None else "n/a"
+        trk_str = f"{tracking_mean:.3f}" if tracking_mean is not None else "n/a"
+        ht_str  = f"{height_tracking_val:.3f}" if height_tracking_val is not None else "n/a"
+        to_str  = f"{time_out_frac:.0%}" if time_out_frac is not None else "n/a"
+        rew_str = f"{mean_reward:.1f}" if mean_reward is not None else "n/a"
         blend_tag = ""
         if state["old_stage"] is not None:
-            next_label = _STAGE_LABELS[s] if s < len(_STAGE_LABELS) else str(s)
-            blend_tag = f" [→{next_label} blend {state['trans_iter']}/{_TT_TRANSITION}]"
-        # Show vxy gate status on Stage A
-        vxy_gate_str = ""
-        if s == 0 and vxy_error_val is not None:
-            gate_status = "OK" if vxy_error_val > _TT_VXY_ERROR_GATE else "NEED WALKING"
-            vxy_gate_str = f"  [{gate_status}]"
+            blend_tag = f" [→{label} blend {state['trans_iter']}/{_TT_TRANSITION}]"
         print(
-            f"[TORSO] {label} | "
+            f"[TORSO-CURRICULUM] Stage {s}/{len(_TT_STAGES) - 1} ({label}) | "
             f"iter {s_iter:>4} | "
-            f"timeout={to_str}/{_TT_TIMEOUT_THRESHOLD:.0%}  "
-            f"vx={vx_str}  vy={vy_str}  vxy_err={vxye_str}{vxy_gate_str}  "
-            f"h_err={he_str}  "
-            f"rew={rew_str} | "
-            f"adv {state['above_count']:>3}/{_TT_SUSTAIN} | "
-            f"{'FINAL ' + str(state['final_count']) + '/' + str(_FINAL_SUSTAIN) + ' | ' if final else ''}"
+            f"trk={trk_str}/{_TT_THRESHOLD:.1f}  "
+            f"ht={ht_str}/{_TT_HEIGHT_THRESHOLD:.1f}  "
+            f"timeout={to_str}  rew={rew_str} | "
+            f"advance {state['above_count']:>2}/{_TT_SUSTAIN} | "
             f"ES {state['no_improve']}/{_ES_PATIENCE}{blend_tag}"
         )
 
@@ -347,14 +332,12 @@ def _tt_install_curriculum(runner) -> None:
 
     runner.log = _wrapped_log
     print(
-        f"[TORSO-CURRICULUM] 3-stage curriculum installed.\n"
-        f"  A = walk only (vxy ±0.50, pose fixed)\n"
-        f"  B = walk + mild pose (h=[0.32,0.44], rp=±0.15, omega=±1.0)\n"
-        f"  C = full 8D (h=[0.20,0.50], rp=±0.50, omega=±4.0)\n"
-        f"  A→B: timeout ≥ {_TT_TIMEOUT_THRESHOLD:.0%} AND vxy_error > {_TT_VXY_ERROR_GATE}  "
-        f"for {_TT_SUSTAIN} iters\n"
-        f"  B→C: timeout ≥ {_TT_TIMEOUT_THRESHOLD:.0%} for {_TT_SUSTAIN} iters\n"
-        f"  ES patience: {_ES_PATIENCE}"
+        f"[TORSO-CURRICULUM] Installed.  "
+        f"Stages: {len(_TT_STAGES)}  "
+        f"Threshold: {_TT_THRESHOLD}  "
+        f"Sustain: {_TT_SUSTAIN} iters  "
+        f"Transition: {_TT_TRANSITION} iters  "
+        f"Early-stop patience: {_ES_PATIENCE} iters"
     )
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -435,17 +418,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # Install torso-tracking curriculum + early stopping
     _tt_install_curriculum(runner)
 
-    banner = (
-        "\n"
-        "╔══════════════════════════════════════════════════════════════════╗\n"
-        f"║  TORSO TRACKING (pi2) — TRAINING START                         ║\n"
-        f"║  Log dir: {os.path.basename(log_dir):<54}║\n"
-        f"║  Time:    {datetime.now().strftime('%Y-%m-%d %H:%M:%S'):<54}║\n"
-        f"║  Envs:    {env_cfg.scene.num_envs:<54}║\n"
-        "╚══════════════════════════════════════════════════════════════════╝"
-    )
-    print(banner)
-
     try:
         runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
     except EarlyStopException:
@@ -453,17 +425,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         runner.save(os.path.join(log_dir, "model_early_stop.pt"))
         print("[INFO] Saved early-stop checkpoint.")
 
-    elapsed = round(time.time() - start_time, 2)
-    banner_end = (
-        "\n"
-        "╔══════════════════════════════════════════════════════════════════╗\n"
-        f"║  TORSO TRACKING (pi2) — TRAINING COMPLETE                      ║\n"
-        f"║  Log dir: {os.path.basename(log_dir):<54}║\n"
-        f"║  Time:    {datetime.now().strftime('%Y-%m-%d %H:%M:%S'):<54}║\n"
-        f"║  Elapsed: {elapsed:<54}║\n"
-        "╚══════════════════════════════════════════════════════════════════╝"
-    )
-    print(banner_end)
+    print(f"Training time: {round(time.time() - start_time, 2)} seconds")
     env.close()
 
 

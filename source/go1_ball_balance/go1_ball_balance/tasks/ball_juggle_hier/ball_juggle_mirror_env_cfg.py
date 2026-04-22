@@ -1,13 +1,16 @@
-"""Environment configuration for the hierarchical ball-juggle task (pi1 + frozen pi2).
+"""Environment configuration for mirror-law hierarchical ball juggling.
 
-Same scene, observations, rewards, and terminations as the flat ball_juggle task.
-The key difference is the action space: 6D torso commands (via TorsoCommandAction)
-instead of 12D joint position targets.
+Same scene and rewards as ball_juggle_hier, but pi1 is the closed-form
+mirror-law controller instead of a trained RL policy.
 
-pi1 (this task's policy) outputs 6D torso commands.
-TorsoCommandAction runs the frozen pi2 actor to produce 12D joint targets.
+The mirror-law computes paddle orientation from ball state to reflect the
+ball toward a target apex height.  No pi1 training is required — only the
+frozen pi2 (torso tracking) checkpoint is needed.
 
-The pi2_checkpoint path must be set before env creation — see train_juggle_hier.py.
+Usage (play script):
+    python scripts/play_mirror_law.py \\
+        --pi2_checkpoint logs/rsl_rl/go1_torso_tracking/.../model_best.pt \\
+        --apex_height 0.20
 """
 
 import os
@@ -26,41 +29,35 @@ from isaaclab.sensors import ContactSensorCfg
 from isaaclab.utils import configclass
 
 from . import mdp
-from go1_ball_balance.tasks.torso_tracking.action_term import TorsoCommandActionCfg
+from go1_ball_balance.tasks.torso_tracking.mirror_law_action import MirrorLawTorsoActionCfg
 
 from isaaclab_assets.robots.unitree import UNITREE_GO1_CFG  # isort: skip
 
-# Path to local assets directory (shared with ball_balance)
 _ASSETS_DIR = os.path.normpath(os.path.join(
-    os.path.dirname(__file__),          # .../tasks/ball_juggle_hier/
-    "..", "..", "..", "..", "..",        # up to QuadruJuggle/
+    os.path.dirname(__file__),
+    "..", "..", "..", "..", "..",
     "assets", "paddle",
 ))
 
-# Geometry constants (identical to ball_balance/ball_juggle)
 _PADDLE_OFFSET_B  = (0.0, 0.0, 0.070)
-_PADDLE_HALF_EXTENT = 0.085
+_PADDLE_HALF_EXTENT = 0.153  # 0.085 * 1.8 scale
 _BALL_RADIUS      = 0.020
 
 
 # ---------------------------------------------------------------------------
-# Scene — same as ball_juggle
+# Scene — identical to ball_juggle_hier
 # ---------------------------------------------------------------------------
 
 @configclass
-class BallJuggleHierSceneCfg(InteractiveSceneCfg):
-    """Scene: Go1 + kinematic paddle + ping-pong ball on flat ground."""
-
+class BallJuggleMirrorSceneCfg(InteractiveSceneCfg):
     ground = AssetBaseCfg(
         prim_path="/World/ground",
         spawn=sim_utils.GroundPlaneCfg(),
     )
-
     dome_light = AssetBaseCfg(
         prim_path="/World/DomeLight",
-        spawn=sim_utils.DomeLightCfg(color=(0.9, 0.9, 0.9), intensity=1000.0),
+        spawn=sim_utils.DomeLightCfg(color=(0.9, 0.9, 0.9), intensity=500.0),
     )
-
     robot: ArticulationCfg = UNITREE_GO1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
     ball = RigidObjectCfg(
@@ -68,8 +65,8 @@ class BallJuggleHierSceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.SphereCfg(
             radius=_BALL_RADIUS,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                linear_damping=0.1,
-                angular_damping=0.1,
+                linear_damping=0.01,
+                angular_damping=0.01,
                 max_linear_velocity=10.0,
                 max_angular_velocity=50.0,
                 max_depenetration_velocity=1.0,
@@ -78,22 +75,25 @@ class BallJuggleHierSceneCfg(InteractiveSceneCfg):
             mass_props=sim_utils.MassPropertiesCfg(mass=0.0027),
             collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
             physics_material=sim_utils.RigidBodyMaterialCfg(
-                restitution=0.85,
+                restitution=0.99,
                 restitution_combine_mode="max",
                 static_friction=0.3,
                 dynamic_friction=0.3,
             ),
             visual_material=sim_utils.PreviewSurfaceCfg(
-                diffuse_color=(0.8, 0.2, 0.8),   # purple — visually distinct from flat juggle (blue)
+                diffuse_color=(1.0, 0.5, 0.0),  # orange — distinct from RL variants
             ),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 0.54)),
     )
 
+
+
     paddle = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Paddle",
         spawn=sim_utils.UsdFileCfg(
             usd_path=f"{_ASSETS_DIR}/disc.usda",
+            scale=(1.8, 1.8, 1.0),  # wider paddle for easier juggling
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 kinematic_enabled=True,
                 disable_gravity=True,
@@ -109,7 +109,6 @@ class BallJuggleHierSceneCfg(InteractiveSceneCfg):
         history_length=3,
         track_air_time=False,
     )
-
     foot_contact_forces = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/.*_foot",
         history_length=3,
@@ -118,7 +117,7 @@ class BallJuggleHierSceneCfg(InteractiveSceneCfg):
 
 
 # ---------------------------------------------------------------------------
-# MDP: Observations (40D — same as flat juggle)
+# Observations — same as ball_juggle_hier (40D)
 # ---------------------------------------------------------------------------
 
 @configclass
@@ -141,6 +140,16 @@ class ObservationsCfg:
             },
         )
 
+# ##################Test ball velocity###################
+#         ball_vel_test = ObsTerm(
+#             func=mdp.ball_vel_in_paddle_frame,
+#             params={
+#                 "ball_cfg": SceneEntityCfg("ball"),
+#                 "robot_cfg": SceneEntityCfg("robot"),
+#             },
+#         )
+
+# #####################################
 
         base_lin_vel      = ObsTerm(func=mdp.base_lin_vel)
         base_ang_vel      = ObsTerm(func=mdp.base_ang_vel)
@@ -156,26 +165,33 @@ class ObservationsCfg:
         )
 
         def __post_init__(self):
-            self.enable_corruption = True
+            self.enable_corruption = False  # deterministic controller
             self.concatenate_terms = True
 
     policy: PolicyCfg = PolicyCfg()
 
 
 # ---------------------------------------------------------------------------
-# MDP: Actions (6D — via TorsoCommandAction wrapping frozen pi2)
+# Actions — mirror-law pi1 wrapping frozen pi2
 # ---------------------------------------------------------------------------
 
 @configclass
 class ActionsCfg:
-    torso_cmd = TorsoCommandActionCfg(
+    torso_cmd = MirrorLawTorsoActionCfg(
         asset_name="robot",
         pi2_checkpoint="MUST_BE_SET_BEFORE_ENV_CREATION",
+        ball_cfg=SceneEntityCfg("ball"),
+        paddle_offset_b=_PADDLE_OFFSET_B,
+        apex_height_min=0.05,
+        apex_height_max=0.40,
+        h_nominal=0.38,
+        centering_gain=2.0,
+        restitution=0.99,
     )
 
 
 # ---------------------------------------------------------------------------
-# MDP: Events (same as flat juggle)
+# Events — same as ball_juggle_hier
 # ---------------------------------------------------------------------------
 
 @configclass
@@ -183,21 +199,13 @@ class EventCfg:
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_scale,
         mode="reset",
-        params={
-            "position_range": (1.0, 1.0),
-            "velocity_range": (0.0, 0.0),
-        },
+        params={"position_range": (1.0, 1.0), "velocity_range": (0.0, 0.0)},
     )
-
     reset_base = EventTerm(
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {
-                "x": (0.0, 0.0),
-                "y": (0.0, 0.0),
-                "yaw": (-0.3, 0.3),
-            },
+            "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (-0.3, 0.3)},
             "velocity_range": {
                 "x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0),
                 "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0),
@@ -205,16 +213,11 @@ class EventCfg:
             "asset_cfg": SceneEntityCfg("robot"),
         },
     )
-
     reset_paddle = EventTerm(
         func=mdp.reset_paddle_pose,
         mode="reset",
-        params={
-            "paddle_cfg": SceneEntityCfg("paddle"),
-            "offset_b": _PADDLE_OFFSET_B,
-        },
+        params={"paddle_cfg": SceneEntityCfg("paddle"), "offset_b": _PADDLE_OFFSET_B},
     )
-
     update_paddle = EventTerm(
         func=mdp.update_paddle_pose,
         mode="interval",
@@ -225,7 +228,6 @@ class EventCfg:
             "offset_b": _PADDLE_OFFSET_B,
         },
     )
-
     reset_ball = EventTerm(
         func=mdp.reset_ball_on_paddle,
         mode="reset",
@@ -233,16 +235,17 @@ class EventCfg:
             "ball_cfg": SceneEntityCfg("ball"),
             "paddle_offset_b": _PADDLE_OFFSET_B,
             "ball_radius": _BALL_RADIUS,
-            "xy_std": 0.02,
+            "xy_std": 0.01,
             "drop_height_mean": 0.05,
-            "drop_height_std": 0.005,
+            "drop_height_std": 0.01,
             "vel_xy_std": 0.0,
+            "vel_z_mean": 1.2,
         },
     )
 
 
 # ---------------------------------------------------------------------------
-# MDP: Rewards (same as flat juggle)
+# Rewards — same as ball_juggle_hier
 # ---------------------------------------------------------------------------
 
 @configclass
@@ -254,14 +257,13 @@ class RewardsCfg:
         weight=-5.0,
         params={"min_height": 0.34, "robot_cfg": SceneEntityCfg("robot")},
     )
-
     early_termination = RewTerm(func=mdp.early_termination_penalty, weight=-200.0)
 
     ball_apex_height = RewTerm(
         func=mdp.ball_apex_height_reward,
         weight=25.0,
         params={
-            "target_height": 0.10,
+            "target_height": 0.20,
             "std": 0.10,
             "ball_radius": _BALL_RADIUS,
             "ball_cfg": SceneEntityCfg("ball"),
@@ -271,7 +273,6 @@ class RewardsCfg:
             "nominal_height": 0.40,
         },
     )
-
     ball_xy_dist = RewTerm(
         func=mdp.ball_xy_dist_penalty,
         weight=-1.0,
@@ -283,45 +284,29 @@ class RewardsCfg:
             "nominal_height": 0.40,
         },
     )
-
-    trunk_tilt = RewTerm(
-        func=mdp.trunk_tilt_penalty,
-        weight=-2.0,
-        params={"robot_cfg": SceneEntityCfg("robot")},
-    )
-
-    body_lin_vel = RewTerm(
-        func=mdp.body_lin_vel_penalty,
-        weight=-0.10,
-        params={"robot_cfg": SceneEntityCfg("robot")},
-    )
-    body_ang_vel = RewTerm(
-        func=mdp.body_ang_vel_penalty,
-        weight=-0.05,
-        params={"robot_cfg": SceneEntityCfg("robot")},
-    )
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
+    trunk_tilt    = RewTerm(func=mdp.trunk_tilt_penalty, weight=-2.0,
+                            params={"robot_cfg": SceneEntityCfg("robot")})
+    body_lin_vel  = RewTerm(func=mdp.body_lin_vel_penalty, weight=-0.10,
+                            params={"robot_cfg": SceneEntityCfg("robot")})
+    body_ang_vel  = RewTerm(func=mdp.body_ang_vel_penalty, weight=-0.05,
+                            params={"robot_cfg": SceneEntityCfg("robot")})
+    action_rate   = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
     joint_torques = RewTerm(
-        func=mdp.joint_torques_l2,
-        weight=-2e-4,
+        func=mdp.joint_torques_l2, weight=-2e-4,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
-
     base_height_max = RewTerm(
-        func=mdp.base_height_max_penalty,
-        weight=-8.0,
+        func=mdp.base_height_max_penalty, weight=-8.0,
         params={"max_height": 0.43, "robot_cfg": SceneEntityCfg("robot")},
     )
-
     foot_contact = RewTerm(
-        func=mdp.feet_off_ground_penalty,
-        weight=-3.0,
+        func=mdp.feet_off_ground_penalty, weight=-3.0,
         params={"foot_contact_cfg": SceneEntityCfg("foot_contact_forces")},
     )
 
 
 # ---------------------------------------------------------------------------
-# MDP: Terminations (same as flat juggle)
+# Terminations — same as ball_juggle_hier
 # ---------------------------------------------------------------------------
 
 @configclass
@@ -337,7 +322,6 @@ class TerminationsCfg:
             "paddle_offset_b": _PADDLE_OFFSET_B,
         },
     )
-
     ball_below = DoneTerm(
         func=mdp.ball_below_paddle,
         params={
@@ -350,12 +334,12 @@ class TerminationsCfg:
 
 
 # ---------------------------------------------------------------------------
-# Top-level environment configs
+# Top-level env config
 # ---------------------------------------------------------------------------
 
 @configclass
-class BallJuggleHierEnvCfg(ManagerBasedRLEnvCfg):
-    scene: BallJuggleHierSceneCfg = BallJuggleHierSceneCfg(num_envs=12288, env_spacing=3.0)
+class BallJuggleMirrorEnvCfg(ManagerBasedRLEnvCfg):
+    scene: BallJuggleMirrorSceneCfg = BallJuggleMirrorSceneCfg(num_envs=16, env_spacing=3.0)
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
     events: EventCfg = EventCfg()
@@ -369,18 +353,4 @@ class BallJuggleHierEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = self.decimation
         self.viewer.eye = (2.0, 2.0, 1.5)
         self.viewer.lookat = (0.0, 0.0, 0.5)
-        self.sim.physx.gpu_max_rigid_patch_count = 400000
-
-
-@configclass
-class BallJuggleHierEnvCfg_PLAY(BallJuggleHierEnvCfg):
-    def __post_init__(self):
-        super().__post_init__()
-        self.scene.num_envs = 16
-        self.scene.env_spacing = 3.5
-        self.observations.policy.enable_corruption = False
-        self.events.reset_ball.params["xy_std"] = 0.0
-        self.events.reset_ball.params["drop_height_std"] = 0.0
-        # Final stage (Stage G) reward parameters for play evaluation
-        self.rewards.ball_apex_height.params["target_height"] = 1.00
-        self.rewards.ball_apex_height.params["std"] = 0.05
+        self.sim.physx.gpu_max_rigid_patch_count = 100000

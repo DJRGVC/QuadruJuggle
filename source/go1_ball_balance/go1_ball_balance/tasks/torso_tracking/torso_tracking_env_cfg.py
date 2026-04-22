@@ -1,11 +1,10 @@
 """Environment configuration for Go1 torso-tracking task (pi2).
 
-Goal: The Go1 must track randomised 8D torso pose/velocity commands
+Goal: The Go1 must track randomised 9D torso pose/velocity commands
 (height, height velocity, roll, pitch, roll rate, pitch rate,
-body-frame vx, body-frame vy) using its 12 joint actuators.  This is
-the low-level policy in the hierarchical architecture: pi1 (ball
-planner) outputs 8D commands, pi2 (this task) converts them to joint
-targets.
+vx, vy, yaw rate) using its 12 joint actuators.  This is the low-level
+policy in the hierarchical architecture: pi1 (ball planner) outputs the
+first 6 dims (juggling); the last 3 dims are user-driven at play time.
 
 Scene:
   - Unitree Go1 on flat ground
@@ -15,51 +14,42 @@ Scene:
   - Foot contact sensors for anti-exploit penalty
   - Target marker (translucent disc) showing commanded height/tilt
 
-Observations (53D):
-  - torso_command (normalized)  (8)  — target pose/velocity
-  - base_lin_vel               (3)  + noise ±0.1
-  - base_ang_vel               (3)  + noise ±0.2
-  - projected_gravity          (3)  + noise ±0.05
-  - joint_pos (relative)      (12)  + noise ±0.01
-  - joint_vel                 (12)  + noise ±1.5
-  - last_action               (12)  — critical for gait coordination
+Observations (42D):
+  - torso_command (normalized)  (9)  — target pose/velocity
+  - base_lin_vel               (3)
+  - base_ang_vel               (3)
+  - projected_gravity          (3)
+  - joint_pos (relative)      (12)
+  - joint_vel                 (12)
 
 Actions (12D):
   - Joint position targets (scale=0.25, default offset)
 
-Rewards (aligned with Isaac Lab Go1 flat terrain velocity tracking config):
-  POSITIVE (velocity tracking — only way to earn reward):
-  - vx_tracking        +1.5   Gaussian on body vx (std=0.50, Isaac Lab standard)
-  - vy_tracking        +1.5   Gaussian on body vy (std=0.50)
-  - feet_air_time      +0.25  gait encouragement (Isaac Lab Go1 flat: 0.25)
-  NEGATIVE (velocity error — constant gradient to walk):
-  - vxy_error          -4.0   linear L2 on (v_actual - v_cmd); fills Gaussian flat tail
-  NEGATIVE (pose tracking as squared-error penalties):
-  - height_error       -2.0   (z - h_target)^2
-  - height_vel_error   -0.2   (z_dot - h_dot_target)^2
-  - roll_error         -3.0   (roll - roll_target)^2
-  - pitch_error        -3.0   (pitch - pitch_target)^2
-  - roll_rate_error    -0.3   (omega_roll - target)^2
-  - pitch_rate_error   -0.3   (omega_pitch - target)^2
-  NEGATIVE (regularization — Isaac Lab standard set):
-  - base_height        -1.0   safety net below 0.17m
-  - base_height_max    -1.0   safety net above 0.53m
-  - lin_vel_z          -2.0   vertical bounce damping
-  - ang_vel_xy         -0.05  roll/pitch rate penalty
+Rewards:
+  - alive              +1.0   per-step survival
+  - height_tracking    +5.0   Gaussian on trunk z vs h_target
+  - height_vel_tracking +3.0  Gaussian on z_dot vs h_dot_target
+  - roll_tracking      +3.0   Gaussian on roll vs roll_target
+  - pitch_tracking     +4.0   Gaussian on pitch vs pitch_target
+  - roll_rate_tracking +2.5   Gaussian on omega_roll vs target
+  - pitch_rate_tracking +2.5  Gaussian on omega_pitch vs target
+  - vx_tracking        +2.0   Gaussian on body vx vs target (9D ext)
+  - vy_tracking        +2.0   Gaussian on body vy vs target (9D ext)
+  - yaw_rate_tracking  +1.5   Gaussian on body yaw rate vs target (9D ext)
+  - vxy_error          -1.5   Linear penalty fills Gaussian flat tail
+  - yaw_rate_error     -1.0   Linear penalty for yaw tracking tail
+  - base_height        -5.0   penalise trunk below 0.22m
+  - base_height_max    -5.0   penalise trunk above 0.53m
+  - foot_contact       -0.5   per foot off ground
   - action_rate        -0.01  smooth joint commands
   - joint_torques      -2e-4  joint effort
-  - dof_acc            -2.5e-7 joint acceleration smoothing
-  NOTE: No foot_contact penalty (Isaac Lab doesn't use one for locomotion;
-  it penalizes foot lifting which kills walking)
 
 Terminations:
   - time_out: 20s (1000 steps)
   - trunk_collapsed: trunk z < 0.15m
 
 Curriculum (managed by train_torso_tracking.py):
-  3 stages: A (walk) → B (mild pose) → C (full 8D).  Full vxy from the start.
-  A→B: timeout ≥ 85% AND vxy_error > -0.80 (proves actual walking).
-  B→C: timeout ≥ 85% for 100 iters.  Resample interval 5-10s (Isaac Lab: 10s).
+  4 stages A→D: pose only → full 9D (pose + vxy + yaw rate).
 """
 
 import os
@@ -76,7 +66,6 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg
 from isaaclab.utils import configclass
-from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from . import mdp
 
@@ -175,48 +164,6 @@ class TorsoTrackingSceneCfg(InteractiveSceneCfg):
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 0.85)),
     )
 
-    # Commanded velocity arrow — cyan, placed adjacent to paddle.
-    # Points in the direction of the commanded body-frame vx/vy.
-    cmd_velocity_arrow = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/CmdVelocityArrow",
-        spawn=sim_utils.CylinderCfg(
-            radius=0.012,
-            height=0.30,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                kinematic_enabled=True,
-                disable_gravity=True,
-            ),
-            mass_props=sim_utils.MassPropertiesCfg(mass=0.001),
-            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
-            visual_material=sim_utils.PreviewSurfaceCfg(
-                diffuse_color=(0.0, 0.8, 1.0),   # cyan = commanded
-                opacity=0.9,
-            ),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 0.5)),
-    )
-
-    # Actual velocity arrow — orange, placed adjacent to paddle.
-    # Points in the direction of the actual body-frame vx/vy.
-    actual_velocity_arrow = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/ActualVelocityArrow",
-        spawn=sim_utils.CylinderCfg(
-            radius=0.012,
-            height=0.30,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                kinematic_enabled=True,
-                disable_gravity=True,
-            ),
-            mass_props=sim_utils.MassPropertiesCfg(mass=0.001),
-            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
-            visual_material=sim_utils.PreviewSurfaceCfg(
-                diffuse_color=(1.0, 0.5, 0.0),   # orange = actual
-                opacity=0.9,
-            ),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 0.5)),
-    )
-
     contact_forces = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/trunk",
         history_length=3,
@@ -226,28 +173,26 @@ class TorsoTrackingSceneCfg(InteractiveSceneCfg):
     foot_contact_forces = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/.*_foot",
         history_length=3,
-        track_air_time=True,
+        track_air_time=False,
     )
 
 
 # ---------------------------------------------------------------------------
-# MDP: Observations (41D)
+# MDP: Observations (39D)
 # ---------------------------------------------------------------------------
 
 @configclass
 class ObservationsCfg:
     @configclass
     class PolicyCfg(ObsGroup):
-        # 8D torso command (normalized to ~[-1,1])
+        # 6D torso command (normalized to ~[-1,1])
         torso_command = ObsTerm(func=mdp.torso_command_obs)
-        # Robot proprioception (33D — matches Isaac Lab velocity tracking)
-        base_lin_vel      = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
-        base_ang_vel      = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
-        projected_gravity = ObsTerm(func=mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05))
-        joint_pos         = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
-        joint_vel         = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
-        # Last action (12D — Isaac Lab includes this; critical for gait coordination)
-        actions           = ObsTerm(func=mdp.last_action)
+        # Robot proprioception (33D)
+        base_lin_vel      = ObsTerm(func=mdp.base_lin_vel)
+        base_ang_vel      = ObsTerm(func=mdp.base_ang_vel)
+        projected_gravity = ObsTerm(func=mdp.projected_gravity)
+        joint_pos         = ObsTerm(func=mdp.joint_pos_rel)
+        joint_vel         = ObsTerm(func=mdp.joint_vel_rel)
 
         def __post_init__(self):
             self.enable_corruption = True
@@ -329,12 +274,11 @@ class EventCfg:
         mode="reset",
     )
 
-    # Resample torso commands periodically.
-    # Isaac Lab resamples velocity every 10s.  Slower = more time to respond = easier.
+    # Resample torso commands periodically (1–4s interval)
     resample_commands_interval = EventTerm(
         func=mdp.resample_torso_commands,
         mode="interval",
-        interval_range_s=(5.0, 10.0),
+        interval_range_s=(0.15, 0.5),
     )
 
     # Smooth command blending (runs every physics step, only active when
@@ -358,78 +302,6 @@ class EventCfg:
         },
     )
 
-    # Update velocity arrows (commanded + actual) adjacent to paddle
-    update_velocity_arrows = EventTerm(
-        func=mdp.update_velocity_arrows_pose,
-        mode="interval",
-        interval_range_s=(0.005, 0.005),   # 200 Hz
-        params={
-            "cmd_arrow_cfg": SceneEntityCfg("cmd_velocity_arrow"),
-            "actual_arrow_cfg": SceneEntityCfg("actual_velocity_arrow"),
-            "robot_cfg": SceneEntityCfg("robot"),
-            "paddle_offset_b": _PADDLE_OFFSET_B,
-            "paddle_radius": 0.085,
-            "margin": 0.05,
-        },
-    )
-
-    # Circle command pattern (only active when env._torso_circle_enabled=True)
-    circle_commands = EventTerm(
-        func=mdp.update_circle_commands,
-        mode="interval",
-        interval_range_s=(0.005, 0.005),   # 200 Hz — checks internally for policy step
-    )
-
-    # -- Domain Randomization --
-    # MINIMAL DR during walking acquisition (matched to Isaac Lab Go1 rough).
-    # Isaac Lab Go1 only randomizes trunk mass (+3/-1 kg, additive) — nothing else.
-    # Aggressive DR (motor gains, joint friction, external forces) PREVENTED
-    # walking from emerging.  Re-enable in Stage C after gait is stable.
-
-    # Trunk mass only (Isaac Lab Go1: (-1.0, 3.0) additive on trunk)
-    randomize_robot_mass = EventTerm(
-        func=mdp.randomize_rigid_body_mass,
-        mode="reset",
-        params={
-            "mass_distribution_params": (-1.0, 3.0),
-            "operation": "add",
-            "asset_cfg": SceneEntityCfg("robot", body_names="trunk"),
-        },
-    )
-
-    # Foot-ground friction — keep but tighten to Isaac Lab range
-    randomize_foot_friction = EventTerm(
-        func=mdp.randomize_rigid_body_material,
-        mode="reset",
-        params={
-            "static_friction_range": (0.8, 0.8),
-            "dynamic_friction_range": (0.6, 0.6),
-            "restitution_range": (0.0, 0.0),
-            "num_buckets": 64,
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
-        },
-    )
-
-    # DISABLED until walking is stable:
-    # randomize_robot_com — CoM shifts
-    # randomize_actuator_gains — motor PD gain variation
-    # randomize_joint_friction — joint friction variation
-    # randomize_paddle_material — paddle surface
-    # push_robot — velocity perturbation at reset
-    # external_wrench — persistent external forces
-
-    # External force/torque — DISABLED (zeroed out)
-    external_wrench = EventTerm(
-        func=mdp.apply_external_force_torque,
-        mode="interval",
-        interval_range_s=(0.0, 0.0),
-        params={
-            "force_range": (0.0, 0.0),
-            "torque_range": (0.0, 0.0),
-            "asset_cfg": SceneEntityCfg("robot", body_names="trunk"),
-        },
-    )
-
 
 # ---------------------------------------------------------------------------
 # MDP: Rewards
@@ -437,126 +309,88 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    # ══════════════════════════════════════════════════════════════════════════
-    # POSITIVE REWARDS — velocity tracking (Isaac Lab Go1 flat terrain config)
-    # Standing still earns 0 positive reward.  Moving is the only way to earn.
-    # ══════════════════════════════════════════════════════════════════════════
+    # -- Survival --
+    alive = RewTerm(func=mdp.is_alive, weight=1.0)
+
+    # -- Tracking rewards --
+    height_tracking = RewTerm(
+        func=mdp.height_tracking_reward,
+        weight=5.0,
+        params={"std": 0.10, "robot_cfg": SceneEntityCfg("robot")},
+    )
+    height_vel_tracking = RewTerm(
+        func=mdp.height_vel_tracking_reward,
+        weight=3.0,
+        params={"std": 0.3, "robot_cfg": SceneEntityCfg("robot")},
+    )
+    roll_tracking = RewTerm(
+        func=mdp.roll_tracking_reward,
+        weight=3.0,
+        params={"std": 0.05, "robot_cfg": SceneEntityCfg("robot")},
+    )
+    pitch_tracking = RewTerm(
+        func=mdp.pitch_tracking_reward,
+        weight=4.0,
+        params={"std": 0.08, "robot_cfg": SceneEntityCfg("robot")},
+    )
+    roll_rate_tracking = RewTerm(
+        func=mdp.roll_rate_tracking_reward,
+        weight=2.5,
+        params={"std": 0.8, "robot_cfg": SceneEntityCfg("robot")},
+    )
+    pitch_rate_tracking = RewTerm(
+        func=mdp.pitch_rate_tracking_reward,
+        weight=2.5,
+        params={"std": 0.8, "robot_cfg": SceneEntityCfg("robot")},
+    )
+
+    # -- 9D extension: locomotion tracking (vx, vy, yaw rate) --
     vx_tracking = RewTerm(
         func=mdp.vx_tracking_reward,
-        weight=1.5,
-        # Per-axis Gaussian.  std=0.50 = Isaac Lab's sqrt(0.25).
-        # gate_std=10.0 = effectively no gate (velocity is ungated).
-        params={"std": 0.50, "min_cmd": 0.10, "gate_std": 10.0, "robot_cfg": SceneEntityCfg("robot")},
+        weight=2.0,
+        params={"std": 0.30, "robot_cfg": SceneEntityCfg("robot")},
     )
     vy_tracking = RewTerm(
         func=mdp.vy_tracking_reward,
+        weight=2.0,
+        params={"std": 0.30, "robot_cfg": SceneEntityCfg("robot")},
+    )
+    yaw_rate_tracking = RewTerm(
+        func=mdp.yaw_rate_tracking_reward,
         weight=1.5,
-        params={"std": 0.50, "min_cmd": 0.10, "gate_std": 10.0, "robot_cfg": SceneEntityCfg("robot")},
+        params={"std": 0.60, "robot_cfg": SceneEntityCfg("robot")},
     )
-    feet_air_time = RewTerm(
-        func=mdp.feet_air_time_reward,
-        weight=0.25,
-        # Isaac Lab Go1 flat: 0.25.  Critical for gait emergence — encourages
-        # lifting feet instead of shuffling.  Was 0.01 (way too low).
-        params={
-            "threshold": 0.5,
-            "min_cmd": 0.10,
-            "foot_contact_cfg": SceneEntityCfg("foot_contact_forces"),
-        },
-    )
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # NEGATIVE PENALTIES — velocity error (constant gradient to walk)
-    # The Gaussian tracking rewards have flat tails — standing still barely
-    # hurts.  This linear penalty provides constant gradient at ALL errors.
-    # ══════════════════════════════════════════════════════════════════════════
     vxy_error = RewTerm(
-        func=mdp.vxy_error_penalty,
-        weight=-4.0,
-        # L2 norm of (v_actual - v_cmd) in XY.  Masked when cmd near zero.
-        # Provides the "stick" to complement the Gaussian "carrot".
-        params={"min_cmd": 0.10, "robot_cfg": SceneEntityCfg("robot")},
+        func=mdp.vxy_error_l2,
+        weight=-1.5,
+        params={"min_cmd_magnitude": 0.02, "robot_cfg": SceneEntityCfg("robot")},
+    )
+    yaw_rate_error = RewTerm(
+        func=mdp.yaw_rate_error_l2,
+        weight=-1.0,
+        params={"min_cmd_magnitude": 0.05, "robot_cfg": SceneEntityCfg("robot")},
     )
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # NEGATIVE PENALTIES — pose tracking (squared error, 0 at perfect)
-    # In Phase 1 (walking), pose commands are fixed (h=0.38, roll/pitch=0,
-    # rates=0) so these act like Isaac Lab's flat_orientation_l2: keep upright.
-    # In Phase 2 they track varying 8D commands.
-    # ══════════════════════════════════════════════════════════════════════════
-    height_error = RewTerm(
-        func=mdp.height_error_penalty,
-        weight=-2.0,
-        # Reduced from -5.0.  Acts like flat_orientation during walking.
-        params={"robot_cfg": SceneEntityCfg("robot")},
-    )
-    height_vel_error = RewTerm(
-        func=mdp.height_vel_error_penalty,
-        weight=-0.2,
-        params={"robot_cfg": SceneEntityCfg("robot")},
-    )
-    roll_error = RewTerm(
-        func=mdp.roll_error_penalty,
-        weight=-3.0,
-        # Was -1.0 — too weak; RMS error ~10 deg.  3× increase forces angle tracking.
-        params={"robot_cfg": SceneEntityCfg("robot")},
-    )
-    pitch_error = RewTerm(
-        func=mdp.pitch_error_penalty,
-        weight=-3.0,
-        # Was -1.0 — same as roll.
-        params={"robot_cfg": SceneEntityCfg("robot")},
-    )
-    roll_rate_error = RewTerm(
-        func=mdp.roll_rate_error_penalty,
-        weight=-0.3,
-        # Was -0.05 — nearly ignored (RMS 2.3 rad/s).  6× increase to actually
-        # damp angular oscillation and track commanded rates.
-        params={"robot_cfg": SceneEntityCfg("robot")},
-    )
-    pitch_rate_error = RewTerm(
-        func=mdp.pitch_rate_error_penalty,
-        weight=-0.3,
-        # Was -0.05 — same as roll_rate.
-        params={"robot_cfg": SceneEntityCfg("robot")},
-    )
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # NEGATIVE PENALTIES — regularization (Isaac Lab standard set)
-    # Matched to Isaac Lab Go1 rough/flat weights.  No foot_contact penalty
-    # (Isaac Lab doesn't use one for locomotion — it kills walking).
-    # ══════════════════════════════════════════════════════════════════════════
+    # -- Penalties --
     base_height = RewTerm(
         func=mdp.base_height_penalty,
-        weight=-1.0,
-        # Safety net only.  Reduced from -5.0.
-        params={"min_height": 0.17, "robot_cfg": SceneEntityCfg("robot")},
+        weight=-5.0,
+        params={"min_height": 0.22, "robot_cfg": SceneEntityCfg("robot")},
     )
     base_height_max = RewTerm(
         func=mdp.base_height_max_penalty,
-        weight=-1.0,
-        # Safety net only.  Reduced from -5.0.
+        weight=-5.0,
         params={"max_height": 0.53, "robot_cfg": SceneEntityCfg("robot")},
     )
-    lin_vel_z = RewTerm(
-        func=mdp.lin_vel_z_l2,
-        weight=-2.0,
-        params={"asset_cfg": SceneEntityCfg("robot")},
-    )
-    ang_vel_xy = RewTerm(
-        func=mdp.ang_vel_xy_l2,
-        weight=-0.05,
-        params={"asset_cfg": SceneEntityCfg("robot")},
+    foot_contact = RewTerm(
+        func=mdp.feet_off_ground_penalty,
+        weight=-0.5,
+        params={"foot_contact_cfg": SceneEntityCfg("foot_contact_forces")},
     )
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
     joint_torques = RewTerm(
         func=mdp.joint_torques_l2,
         weight=-2e-4,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
-    )
-    dof_acc = RewTerm(
-        func=mdp.joint_acc_l2,
-        weight=-2.5e-7,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
 
@@ -571,7 +405,7 @@ class TerminationsCfg:
 
     trunk_collapsed = DoneTerm(
         func=mdp.trunk_height_collapsed,
-        params={"minimum_height": 0.08, "grace_steps": 20, "asset_cfg": SceneEntityCfg("robot")},
+        params={"minimum_height": 0.15, "grace_steps": 20, "asset_cfg": SceneEntityCfg("robot")},
     )
 
 
@@ -602,10 +436,9 @@ class TorsoTrackingEnvCfg(ManagerBasedRLEnvCfg):
 class TorsoTrackingEnvCfg_PLAY(TorsoTrackingEnvCfg):
     def __post_init__(self):
         super().__post_init__()
-        self.scene.num_envs = 5
-        self.scene.env_spacing = 1.5   # tight spacing for playback viewing
+        self.scene.num_envs = 16
+        self.scene.env_spacing = 1.2
         self.observations.policy.enable_corruption = False
-        # Resample from full Stage C ranges every 5-10s (same as training)
-        self.events.resample_commands_interval.interval_range_s = (2.0, 5.0)
-        self._torso_smooth_enabled = False   # no smoothing — snap like training
-        self._torso_circle_enabled = False   # use random commands, not circle pattern
+        # Use full command ranges (Stage C) for play evaluation
+        # Enable smooth command interpolation for visual clarity
+        self._torso_smooth_enabled = True

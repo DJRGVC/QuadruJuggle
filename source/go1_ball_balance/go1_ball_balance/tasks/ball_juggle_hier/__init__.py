@@ -1,8 +1,18 @@
-"""Hierarchical ball-juggle task — pi1 outputs 8D torso commands, frozen pi2 converts to joints."""
+"""Hierarchical ball-juggle task — pi1 outputs 6D torso commands, frozen pi2 converts to joints."""
 
 import gymnasium as gym
 
 from . import agents
+
+gym.register(
+    id="Isaac-BallJuggleMirror-Go1-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.ball_juggle_mirror_env_cfg:BallJuggleMirrorEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:BallJuggleHierPPORunnerCfg",
+    },
+)
 
 gym.register(
     id="Isaac-BallJuggleHier-Go1-v0",
@@ -21,5 +31,36 @@ gym.register(
     kwargs={
         "env_cfg_entry_point": f"{__name__}.ball_juggle_hier_env_cfg:BallJuggleHierEnvCfg_PLAY",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:BallJuggleHierPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="Isaac-BallJugglePi1-Go1-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.ball_juggle_pi1_env_cfg:BallJugglePi1EnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:BallJuggleHierPPORunnerCfg",
+    },
+)
+
+# V4: Launcher pi1 — precision launcher trained to hand off cleanly to mirror law
+gym.register(
+    id="Isaac-BallJuggleLauncher-Go1-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.ball_juggle_launcher_env_cfg:BallJuggleLauncherEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:BallJuggleLauncherPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="Isaac-BallJuggleLauncher-Go1-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.ball_juggle_launcher_env_cfg:BallJuggleLauncherEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:BallJuggleLauncherPPORunnerCfg",
     },
 )

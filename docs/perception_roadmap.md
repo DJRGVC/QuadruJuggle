@@ -202,6 +202,29 @@ Position noise std = `σ_base + σ_dist × d + σ_omega × |ω|`
 
 These are educated guesses. Phase 5 calibrates them from real data.
 
+**Empirical residual-noise budget (2026-04-21):** the mirror-law controller (the simpler
+hybrid substitute for the learned pi1) was swept against i.i.d. Gaussian noise on
+ball position and velocity separately, at apex 0.30 m + vx = 0.1 m/s. Results at
+n=20 envs per noise level, reported as drop rate with Wilson 95 % CI:
+
+| Quantity | Safe (≤ ~20 % drop) | Knee |
+|---|---|---|
+| Position σ | ≤ 6 mm (0 %, CI 0–16 %) | 10 mm: 40 % (22–61 %) |
+| Velocity σ | ≤ 0.05 m/s (5 %, CI 1–24 %) | 0.10 m/s: 70 % (48–85 %) |
+
+(An earlier n=4 sweep suggested the position knee was at ~12 mm, but n=20 shows
+the true rate at 10 mm is ~40 %. The n=4 CI overlapped this, so the smaller
+sweep was coarse but not wrong. Details in `docs/mirror_law_noise_sweep.md`.)
+
+**Design targets:** EKF post-filter residual σ ≤ 6 mm (position) and σ ≤ 0.05 m/s
+(velocity). The educated-guess `σ_base ≈ 3 mm` above is comfortably inside the
+safe region; `σ_base + σ_dist × d` must stay below 6 mm for paddle-distance
+measurements (d ≈ 0.1–0.3 m gives ~0.5–1.5 mm from the distance term, so fine).
+If the EKF cannot hold σ ≤ 6 mm on real hardware, the fallback is
+perception-aware pi1 retraining (Step 2c) to recover the gap. Asymmetric
+sensitivity — position noise dominates — means detector pixel precision matters
+more than frame rate for a given sensor budget.
+
 ### Step 2b: Perception-aware env config
 New env config replacing privileged ball obs with EKF output:
 - **Asymmetric actor-critic:** actor gets `[pos_est(3), vel_est(3)]` from EKF;
