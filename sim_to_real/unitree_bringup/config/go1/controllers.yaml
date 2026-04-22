@@ -1,0 +1,53 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 500  # Hz
+
+    state_estimator:
+      type: legged_controllers/StateEstimator
+    standby_controller:
+      type: legged_controllers/StandbyController
+    getup_controller:
+      type: legged_rl_controllers/OnnxController
+    walking_controller:
+      type: legged_rl_controllers/OnnxController
+    handstand_controller:
+      type: legged_rl_controllers/OnnxController
+
+state_estimator:
+  ros__parameters:
+    model:
+      base_name: "base"
+      three_dof_contact_names: [ "FL_FOOT", "RL_FOOT" ,"FR_FOOT", "RR_FOOT" ]
+    estimation:
+      contact:
+        radius: 0.02
+        force_threshold: 20.0
+        force_scale: 0.5
+
+standby_controller:
+  ros__parameters:
+    joint_names: [ "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint", "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint",
+                   "RR_hip_joint", "RR_thigh_joint",  "RR_calf_joint", "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint", ]
+    default_position: [ 0.1, 0.9, -1.8, -0.1, 0.9, -1.8, 0.1, 0.9, -1.8, -0.1, 0.9, -1.8 ]
+    kp: [ 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0 ]
+    kd: [ 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0 ]
+
+getup_controller:
+  ros__parameters:
+    policy:
+      update_rate: 50
+      path: "config/go1/go1_getup.onnx"
+      action_type: "position_delta"
+
+walking_controller:
+  ros__parameters:
+    update_rate: 50
+    policy:
+      path: "config/go1/go1_joystick.onnx"
+
+handstand_controller:
+  ros__parameters:
+    update_rate: 50
+    policy:
+      path: "config/go1/go1_handstand.onnx"
+      action_type: "position_relative"

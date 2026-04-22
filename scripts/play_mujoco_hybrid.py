@@ -566,6 +566,7 @@ def main():
             run_loop(viewer=viewer)
 
     print(f"\n[play_mujoco_hybrid] Done. Total bounces: {bounce_count}")
+    os._exit(0)  # bypass MuJoCo viewer destructor segfault on exit
 
 
 if __name__ == "__main__":

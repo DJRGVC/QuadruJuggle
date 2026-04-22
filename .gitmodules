@@ -1,0 +1,3 @@
+[submodule "sim_to_real/go1/unitree_bringup"]
+	path = sim_to_real/go1/unitree_bringup
+	url = https://github.com/qiayuanl/unitree_bringup.git
