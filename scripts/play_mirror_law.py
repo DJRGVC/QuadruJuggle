@@ -57,8 +57,22 @@ parser.add_argument("--video", action="store_true", default=False,
                     help="Record replay as MP4. Always overwrites videos/mirror_law_latest.mp4.")
 parser.add_argument("--video_length", type=int, default=500,
                     help="Number of steps to record when --video is set (default 500).")
+parser.add_argument("--user-cmd", dest="user_cmd", choices=["none", "keyboard", "fixed"],
+                    default="none",
+                    help="Drive the 3D user slice (vx, vy, omega_yaw) of the 9D torso command. "
+                         "'keyboard' uses Se2Keyboard (arrows + Z/X); 'fixed' uses --user-vx/vy/yaw.")
+parser.add_argument("--user-vx",  dest="user_vx",  type=float, default=0.0,
+                    help="Normalized [-1,1] forward velocity (±0.5 m/s at ±1). --user-cmd must be 'fixed'.")
+parser.add_argument("--user-vy",  dest="user_vy",  type=float, default=0.0,
+                    help="Normalized [-1,1] lateral velocity (±0.5 m/s at ±1). --user-cmd must be 'fixed'.")
+parser.add_argument("--user-yaw", dest="user_yaw", type=float, default=0.0,
+                    help="Normalized [-1,1] yaw rate (±1.5 rad/s at ±1). --user-cmd must be 'fixed'.")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
+
+# --video needs rgb_array rendering; --headless otherwise disables it.
+if args.video:
+    args.enable_cameras = True
 
 app_launcher = AppLauncher(args)
 simulation_app = app_launcher.app
@@ -129,11 +143,51 @@ if args.video:
     print(f"[play_mirror_law] Recording {args.video_length} steps → {video_folder}/mirror_law_latest-episode-0.mp4")
 
 device = env.unwrapped.device
+_uw = env.unwrapped
 
 # Mirror law is deterministic — feed a fixed apex height (normalised 1.0 = max)
 # Changing this to a value in [0, 1] scales the apex toward apex_height_min.
 apex_action = torch.ones(args.num_envs, 1, device=device)
 # apex_action = torch.tensor([[0.3], [0.2], [2.0], [1.0]], device=device)
+
+# ── User-command injection (drives env._user_cmd_vel; 9D pi2 reads it) ──────
+_user_keyboard = None
+_user_fixed = None
+if args.user_cmd == "keyboard":
+    try:
+        from isaaclab.devices.keyboard import Se2Keyboard, Se2KeyboardCfg
+        _user_keyboard = Se2Keyboard(Se2KeyboardCfg(
+            v_x_sensitivity=1.0,
+            v_y_sensitivity=1.0,
+            omega_z_sensitivity=1.0,
+            sim_device=device,
+        ))
+        print("[USER-CMD] keyboard mode ON")
+        print(str(_user_keyboard))
+    except Exception as e:
+        print(f"[USER-CMD] keyboard init failed: {e}; falling back to 'none'")
+elif args.user_cmd == "fixed":
+    _user_fixed = torch.tensor(
+        [args.user_vx, args.user_vy, args.user_yaw],
+        device=device,
+    ).clamp(-1.0, 1.0)
+    print(f"[USER-CMD] fixed mode: vx={_user_fixed[0]:.2f} vy={_user_fixed[1]:.2f} yaw={_user_fixed[2]:.2f} (normalized)")
+
+def _apply_user_commands():
+    """Write user commands into env._user_cmd_vel every step.
+
+    TorsoCommandAction (parent of MirrorLawTorsoAction) lazily creates this
+    buffer on first call. We seed it after reset below and refresh per-step.
+    """
+    cmd = None
+    if _user_keyboard is not None:
+        cmd = _user_keyboard.advance().clamp(-1.0, 1.0)
+    elif _user_fixed is not None:
+        cmd = _user_fixed
+    if cmd is not None and hasattr(_uw, "_user_cmd_vel"):
+        _uw._user_cmd_vel[:, 0] = cmd[0]
+        _uw._user_cmd_vel[:, 1] = cmd[1]
+        _uw._user_cmd_vel[:, 2] = cmd[2]
 
 
 print(f"\n[play_mirror_law] pi2 checkpoint : {args.pi2_checkpoint}")
@@ -147,12 +201,22 @@ print(f"[play_mirror_law] num_envs       : {args.num_envs}")
 print("[play_mirror_law] Running — close window or Ctrl+C to stop.\n")
 
 obs, _ = env.reset()
+
+# Ensure _user_cmd_vel buffer exists before the first step so fixed/keyboard
+# commands take effect on iteration 0 (TorsoCommandAction would otherwise
+# lazily create it mid-step).
+if args.user_cmd != "none":
+    from go1_ball_balance.tasks.torso_tracking.action_term import ensure_user_cmd_buffer
+    ensure_user_cmd_buffer(_uw)
+    _apply_user_commands()
+
 step = 0
 episode_rewards = torch.zeros(args.num_envs, device=device)
 episode_lengths = torch.zeros(args.num_envs, device=device)
 
 try:
     while simulation_app.is_running():
+        _apply_user_commands()
         with torch.no_grad():
             obs, rew, terminated, truncated, info = env.step(apex_action)
 
