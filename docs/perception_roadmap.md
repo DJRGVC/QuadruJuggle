@@ -202,6 +202,16 @@ Position noise std = `σ_base + σ_dist × d + σ_omega × |ω|`
 
 These are educated guesses. Phase 5 calibrates them from real data.
 
+**Empirical residual-noise budget (2026-04-21):** the mirror-law controller (the simpler
+hybrid substitute for the learned pi1) was swept against i.i.d. Gaussian ball-position
+noise at apex 0.30 m + vx = 0.1 m/s. Results: 4/4 envs sustain 16 s continuous juggling
+at σ ≤ 10 mm; the knee is at ~12 mm (2/4 drops); 15 mm drops 3/4. Full writeup:
+[`docs/mirror_law_noise_sweep.md`](mirror_law_noise_sweep.md). **Design target:
+keep EKF post-filter residual σ ≤ 10 mm** so the learned pi1 (which should be at least
+as robust as the classical mirror law) inherits a comfortable margin. If the EKF
+cannot achieve this on real hardware, the fallback is perception-aware pi1
+retraining (Step 2c) to recover the gap.
+
 ### Step 2b: Perception-aware env config
 New env config replacing privileged ball obs with EKF output:
 - **Asymmetric actor-critic:** actor gets `[pos_est(3), vel_est(3)]` from EKF;
