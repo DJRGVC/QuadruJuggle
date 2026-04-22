@@ -24,6 +24,8 @@ episode terminates before step 800 counts as a drop. Remaining envs record
 
 ## Results
 
+### Ball-position noise
+
 | noise σ [mm] | drops observed | envs sustained 800/800 | ep_len when dropped (steps) |
 |---|---|---|---|
 | 2  | 0 | 4/4 | — |
@@ -35,6 +37,26 @@ episode terminates before step 800 counts as a drop. Remaining envs record
 Demo 19 was a one-env probe (num_envs=1); its single drop at step 690 is a tail
 event in what the full sweep shows is a robust region — 2 mm and 10 mm both
 sustain 4/4 with zero drops across the 16 s window.
+
+### Ball-velocity noise
+
+| noise σ [m/s] | drops observed | envs sustained 800/800 | ep_len when dropped (steps) |
+|---|---|---|---|
+| 0.01 | 1 | 3/4 | 765 |
+| 0.03 | 1 | 3/4 | 634 |
+| 0.05 | 0 | 4/4 | — |
+| 0.10 | 2 | 2/4 | 651, 730 |
+
+**Caveat on ordering.** 0.05 m/s shows 0 drops while 0.01 and 0.03 each show
+1 drop. With n=4 envs per level the per-point drop rate is a noisy estimator;
+these three points are statistically indistinguishable. The honest reading is
+that the whole σ ≤ 0.05 m/s band is roughly 85-100 % sustained, with the first
+clear degradation at 0.10 m/s (50 %). The mirror law is markedly more robust
+to velocity noise than to position noise — at 100 mm/s (≈3-4 % of the ball's
+peak juggle speed) it still sustains 2/4 envs, whereas 15 mm position noise
+drops 3/4. Hypothesis: position error enters the mirror law's feedback term
+directly (determines paddle tilt), while velocity error only enters through an
+internal differentiation that is already smoothed.
 
 ## Interpretation
 
@@ -53,26 +75,31 @@ sustain 4/4 with zero drops across the 16 s window.
 
 ## Limitations
 
-- Only **i.i.d. Gaussian position noise** was tested. Real camera pipelines
-  introduce temporally correlated noise (motion blur, white-balance drift,
-  detector dropouts) that the mirror law may tolerate differently.
-- Ball **velocity** noise was held at zero. Separate sweep needed — the mirror
-  law differentiates position to estimate velocity internally, so velocity
-  noise is expected to be more corrosive.
+- Only **i.i.d. Gaussian noise** was tested. Real camera pipelines introduce
+  temporally correlated noise (motion blur, white-balance drift, detector
+  dropouts) that the mirror law may tolerate differently.
+- Position and velocity noise were swept **independently**. Real perception
+  produces both simultaneously, often correlated, and the interaction was not
+  characterised here.
 - Fixed conditions: apex 0.30 m and vx = 0.1 m/s. Higher apex and higher vx
   both reduce margins (see clips 11, 18 in `myrecordings/user_cmd_demos/`).
 - Only **4 independent samples per noise level**. A production robustness
-  study would run ≥20 per level and report quantile bands.
+  study would run ≥20 per level and report quantile bands. At n=4 the drop
+  rate is a coarse estimator — differences of ±1/4 between adjacent points
+  (e.g. 0.01 vs 0.05 m/s) are noise, not signal.
 
 ## Raw data
 
-Per-run logs: `/tmp/noise_sweep/n0.{002,010,012,015}.log`
-Analysis script: `/tmp/analyze_noise_sweep.sh`
-Boundary clip (12 mm): `myrecordings/user_cmd_demos/20_mirror_noise_boundary_12mm.mp4`
+- Position-noise logs: `/tmp/noise_sweep/n0.{002,010,012,015}.log`
+- Velocity-noise logs: `/tmp/velnoise_sweep/v0.{01,03,05,10}.log`
+- Analysis scripts: `/tmp/analyze_noise_sweep.sh`, `/tmp/analyze_velnoise_sweep.sh`
+- Boundary clip (position 12 mm): `myrecordings/user_cmd_demos/20_mirror_noise_boundary_12mm.mp4`
 
 ## Follow-ups
 
-1. Ball-velocity noise sweep (σ = 0.005–0.05 m/s).
-2. Temporally correlated noise (AR(1) with τ ≈ 30 ms).
+1. **Higher-n re-run** of each curve (≥20 envs per σ) for confidence bands.
+2. Temporally correlated noise (AR(1) with τ ≈ 30 ms) — more realistic than i.i.d.
 3. Detector-dropout probe: simulate 0.1–0.5 s perception gaps.
-4. Re-run with higher apex (0.45 m) — expect tighter margin.
+4. Re-run at higher apex (0.45 m) — expect tighter margin on both axes.
+5. Joint position × velocity noise: determine whether combined budgets
+   interact sub-linearly (independent) or super-linearly (coupled failure).
