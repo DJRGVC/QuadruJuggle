@@ -1,0 +1,64 @@
+## SETUP
+# Mount the D435 so the ball's workspace is visible
+# Connect via USB 3.0
+
+## BEFORE TUNING, AFTER SETUP
+# ROS 2 Humble packages
+sudo apt install ros-humble-realsense2-camera -y
+sudo apt install ros-humble-cv-bridge -y
+sudo apt install ros-humble-tf2-ros -y
+sudo apt install ros-humble-tf2-geometry-msgs -y
+
+# Python packages
+pip install pyrealsense2 opencv-python numpy filterpy
+
+# Make perception node executable (run once after cloning)
+chmod +x ball_perception.py
+
+## BEFORE RUNNING
+# Fill in camera mount transform (x y z qx qy qz qw) in your launch file
+# Identity rotation (camera not rotated): 0 0 0 0 0 0 1
+
+## TUNING
+
+python hsv_tuner.py    # press 'p' to print HSV values, 'q' to quit
+
+## LAUNCH REALSENSE NODE + STATIC CAMERA TF
+
+# Terminal 1 — RealSense camera node
+ros2 launch realsense2_camera rs_launch.py \
+    enable_color:=true \
+    enable_depth:=true \
+    align_depth.enable:=true
+
+# Terminal 2 — Static TF from robot base to camera (edit values for your mount)
+ros2 run tf2_ros static_transform_publisher \
+    --x 0.0 --y 0.0 --z 0.0 \
+    --qx 0.0 --qy 0.0 --qz 0.0 --qw 1.0 \
+    --frame-id base_link --child-frame-id camera_link
+
+# Verify topics are publishing
+ros2 topic list | grep camera
+ros2 topic hz /camera/color/image_raw               # should be ~30 Hz
+ros2 topic hz /camera/aligned_depth_to_color/image_raw
+
+## RUN AND VERIFY
+
+# Terminal 3 — Ball perception node
+ros2 run perception ball_perception.py   # or: python ball_perception.py
+
+# Terminal 4 — Check output
+ros2 topic echo /ball/position
+ros2 topic echo /ball/velocity
+
+# Visualise detection
+ros2 run rqt_image_view rqt_image_view /ball/debug_image
+
+## TUNE KF (kf.R, kf.Q)
+
+## EXTRACT STATE VECTOR
+
+obs = np.array([
+    msg_pos.point.x, msg_pos.point.y, msg_pos.point.z,
+    msg_vel.twist.linear.x, msg_vel.twist.linear.y, msg_vel.twist.linear.z
+])

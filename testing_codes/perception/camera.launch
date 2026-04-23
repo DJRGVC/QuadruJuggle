@@ -1,0 +1,12 @@
+<launch>
+  <!-- RealSense D435: color + aligned depth at 30 Hz -->
+  <include file="$(find realsense2_camera)/launch/rs_camera.launch">
+    <arg name="align_depth" value="true"/>
+  </include>
+
+  <!-- Static transform: world → camera_color_optical_frame
+       Replace the xyz and xyzw values with your physical camera mount measurements.
+       Identity rotation quaternion (no rotation): 0 0 0 0 0 0 1 -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="camera_tf"
+        args="x y z qx qy qz qw world camera_color_optical_frame"/>
+</launch>

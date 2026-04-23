@@ -223,7 +223,7 @@
     <contact>
         <!-- Ball-paddle: high restitution (~0.99), stiff spring, margin prevents tunneling -->
         <pair geom1="ball_geom" geom2="paddle"
-            solref="-20000 -0.1"
+            solref="-10000 -0.1"
             solimp="0.8 0.95 0.001 0.5 2"
             margin="0.025"/>
         <!-- Ball-body (trunk + hip motors): tunable elasticity, margin prevents tunneling -->
