@@ -7,6 +7,7 @@ import numpy as np
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image, CameraInfo
 from geometry_msgs.msg import PointStamped, TwistStamped
+from std_msgs.msg import Float64
 import tf2_ros
 import tf2_geometry_msgs
 from filterpy.kalman import KalmanFilter
@@ -61,9 +62,10 @@ class BallPerception(Node):
                                  self.info_cb,  10)
 
         # ── Publishers ──────────────────────────────────────────────────────
-        self.pos_pub = self.create_publisher(PointStamped, "/ball/position",    1)
-        self.vel_pub = self.create_publisher(TwistStamped, "/ball/velocity",    1)
-        self.vis_pub = self.create_publisher(Image,        "/ball/debug_image", 1)
+        self.pos_pub  = self.create_publisher(PointStamped, "/ball/position",    1)
+        self.vel_pub  = self.create_publisher(TwistStamped, "/ball/velocity",    1)
+        self.vis_pub  = self.create_publisher(Image,        "/ball/debug_image", 1)
+        self.dist_pub = self.create_publisher(Float64,      "/ball/distance",    1)
 
         self.get_logger().info("Ball perception node ready.")
 
@@ -147,6 +149,11 @@ class BallPerception(Node):
             cx, cy, r = detection
             cv2.circle(vis, (cx, cy), int(r), (0,255,0), 2)
             cv2.circle(vis, (cx, cy), 3,      (0,0,255), -1)
+            depth_mm_preview = self.sample_depth(cx, cy)
+            if depth_mm_preview is not None:
+                dist_m = depth_mm_preview / 1000.0
+                cv2.putText(vis, f"{dist_m:.2f} m", (cx + int(r) + 5, cy),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
         self.vis_pub.publish(self.bridge.cv2_to_imgmsg(vis, "bgr8"))
 
         if detection is None:
@@ -196,6 +203,11 @@ class BallPerception(Node):
         vel_msg.twist.linear.y  = float(smooth_vel[1])
         vel_msg.twist.linear.z  = float(smooth_vel[2])
         self.vel_pub.publish(vel_msg)
+
+        # ── Publish distance from camera origin ─────────────────────────────
+        dist_msg = Float64()
+        dist_msg.data = float(np.linalg.norm(smooth_pos))
+        self.dist_pub.publish(dist_msg)
 
 
 if __name__ == "__main__":
